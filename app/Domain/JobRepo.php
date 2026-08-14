@@ -1,0 +1,90 @@
+<?php
+declare(strict_types=1);
+
+namespace Pjas\Domain;
+
+use Pjas\Support\Config;
+use Pjas\Support\Db;
+
+/**
+ * ジョブは web が起票し、agent が実行する。
+ * agent は状態を job_dir/<id>.json に、ログを job_dir/<id>.log に書く。
+ * web は表示時に sync() でそれを DB に取り込む (web は root を持たないため、
+ * 実行中の状態はファイル経由で受け取る)。
+ */
+final class JobRepo
+{
+    public static function create(int $serviceId, string $type, string $actor, string $detail = ''): int
+    {
+        return Db::insert(
+            'INSERT INTO jobs (service_id, type, state, detail, actor) VALUES (?,?,?,?,?)',
+            [$serviceId, $type, 'queued', $detail, $actor]
+        );
+    }
+
+    public static function find(int $id): ?array
+    {
+        return Db::one('SELECT * FROM jobs WHERE id = ?', [$id]);
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public static function recent(int $limit = 20, ?int $serviceId = null): array
+    {
+        $sql = 'SELECT j.*, s.name AS service FROM jobs j LEFT JOIN services s ON s.id = j.service_id';
+        $arg = [];
+        if ($serviceId !== null) {
+            $sql .= ' WHERE j.service_id = ?';
+            $arg[] = $serviceId;
+        }
+        $sql .= ' ORDER BY j.id DESC LIMIT ' . $limit;
+        return Db::all($sql, $arg);
+    }
+
+    public static function logPath(int $id): string
+    {
+        return rtrim((string) Config::get('job_dir'), '/') . "/{$id}.log";
+    }
+
+    public static function statusPath(int $id): string
+    {
+        return rtrim((string) Config::get('job_dir'), '/') . "/{$id}.json";
+    }
+
+    public static function log(int $id): string
+    {
+        $p = self::logPath($id);
+        return is_readable($p) ? (string) file_get_contents($p) : '';
+    }
+
+    /** agent が書いた状態ファイルを DB に取り込む。 */
+    public static function sync(int $id): ?array
+    {
+        $job = self::find($id);
+        if ($job === null || in_array($job['state'], ['succeeded', 'failed'], true)) {
+            return $job;
+        }
+        $p = self::statusPath($id);
+        if (!is_readable($p)) {
+            return $job;
+        }
+        $st = json_decode((string) file_get_contents($p), true);
+        if (!is_array($st) || empty($st['state'])) {
+            return $job;
+        }
+
+        $state  = (string) $st['state'];                  // running|succeeded|failed
+        $detail = (string) ($st['detail'] ?? $job['detail']);
+        Db::run(
+            'UPDATE jobs SET state = ?, detail = ?, finished_at = ? WHERE id = ?',
+            [$state, $detail, in_array($state, ['succeeded', 'failed'], true) ? ($st['finished_at'] ?? date('Y-m-d H:i:s')) : null, $id]
+        );
+
+        if (!empty($st['release']) && $job['service_id']) {
+            ReleaseRepo::syncFromAgent((int) $job['service_id'], $st['release'], (string) $job['actor']);
+        }
+        if (!empty($st['health']) && $job['service_id']) {
+            ServiceRepo::setState((int) $job['service_id'], $st['health'] === 'ok' ? 'healthy' : 'unhealthy');
+        }
+        return self::find($id);
+    }
+}

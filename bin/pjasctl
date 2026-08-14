@@ -1,0 +1,149 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+/**
+ * pjasctl — CI / 手元運用向け CLI。web UI と同じ経路 (agent RPC) を通る。
+ *
+ *   pjasctl services
+ *   pjasctl status <service>
+ *   pjasctl deploy <service> <archive.zip|tar.gz> [--label v1.2.3] [--no-rollback]
+ *   pjasctl rollback <service> <tag>
+ *   pjasctl vhost <service> [--apply]
+ *   pjasctl logs <job-id>
+ */
+
+require dirname(__DIR__) . '/app/bootstrap.php';
+
+use Pjas\Agent\AgentClient;
+use Pjas\Domain\Deployer;
+use Pjas\Domain\JobRepo;
+use Pjas\Domain\ReleaseRepo;
+use Pjas\Domain\ServiceRepo;
+use Pjas\Domain\VhostRenderer;
+use Pjas\Support\Audit;
+use Pjas\Support\Config;
+use Pjas\Support\Db;
+
+$actor = 'cli:' . (posix_getpwuid(posix_geteuid())['name'] ?? 'unknown');
+$argv0 = array_shift($argv);
+$cmd   = array_shift($argv) ?? 'help';
+
+$flag = static function (string $name) use (&$argv): bool {
+    $i = array_search('--' . $name, $argv, true);
+    if ($i === false) {
+        return false;
+    }
+    array_splice($argv, (int) $i, 1);
+    return true;
+};
+$opt = static function (string $name, string $default = '') use (&$argv): string {
+    $i = array_search('--' . $name, $argv, true);
+    if ($i === false) {
+        return $default;
+    }
+    $v = $argv[(int) $i + 1] ?? $default;
+    array_splice($argv, (int) $i, 2);
+    return $v;
+};
+
+try {
+    switch ($cmd) {
+        case 'services':
+            foreach (ServiceRepo::all() as $s) {
+                $cur = ReleaseRepo::current((int) $s['id']);
+                printf("%-20s %-32s %-12s %-16s %s\n",
+                    $s['name'], $s['domain'], $s['runtime'], $cur['tag'] ?? '-', $s['state']);
+            }
+            break;
+
+        case 'status':
+            $s = ServiceRepo::findOrFail((string) ($argv[0] ?? ''));
+            $r = AgentClient::call('health.check', ['service' => Deployer::spec($s)], $actor);
+            printf("%s  %s  HTTP %s  %s\n", $s['name'], $r['url'], $r['status'], !empty($r['ok']) ? 'OK' : 'NG');
+            ServiceRepo::setState((int) $s['id'], !empty($r['ok']) ? 'healthy' : 'unhealthy');
+            exit(!empty($r['ok']) ? 0 : 1);
+
+        case 'deploy':
+            $label   = $opt('label');
+            $noRb    = $flag('no-rollback');
+            $s       = ServiceRepo::findOrFail((string) ($argv[0] ?? ''));
+            $archive = (string) ($argv[1] ?? '');
+            if (!is_file($archive)) {
+                throw new RuntimeException("アーカイブが見つかりません: {$archive}");
+            }
+
+            // web のアップロード相当: upload_dir に置いてから agent に渡す
+            $dir   = rtrim((string) Config::get('upload_dir'), '/');
+            $stage = $dir . '/' . bin2hex(random_bytes(12)) . (str_ends_with($archive, '.zip') ? '.zip' : '.tar.gz');
+            if (!copy($archive, $stage)) {
+                throw new RuntimeException('アーカイブを配置できません');
+            }
+            chmod($stage, 0640);
+
+            $job = JobRepo::create((int) $s['id'], 'deploy', $actor, basename($archive));
+            AgentClient::call('deploy.start', [
+                'job_id'        => $job,
+                'service'       => Deployer::spec($s),
+                'source'        => ['type' => 'upload', 'path' => $stage,
+                                    'sha256' => hash_file('sha256', $stage), 'name' => basename($archive)],
+                'label'         => $label,
+                'auto_rollback' => !$noRb,
+            ], $actor);
+            Audit::log($actor, 'service.deploy', $s['name'], ['job' => $job, 'source' => 'cli']);
+            exit(tail($job));
+
+        case 'rollback':
+            $s   = ServiceRepo::findOrFail((string) ($argv[0] ?? ''));
+            $job = Deployer::rollback($s, (string) ($argv[1] ?? ''), $actor);
+            exit(tail($job));
+
+        case 'vhost':
+            $s = ServiceRepo::findOrFail((string) ($argv[0] ?? ''));
+            if ($flag('apply')) {
+                $r = AgentClient::call('apache.apply', ['service' => Deployer::spec($s)], $actor);
+                Audit::log($actor, 'apache.vhost.apply', $s['name'], ['hash' => $r['hash'] ?? '']);
+                echo "適用しました: {$r['path']} ({$r['configtest']})\n";
+            } else {
+                $p = AgentClient::call('apache.render', ['service' => Deployer::spec($s)], $actor);
+                foreach (VhostRenderer::diff((string) $p['current'], (string) $p['rendered']) as [$sign, $line]) {
+                    if ($sign !== ' ') {
+                        echo $sign . ' ' . $line . "\n";
+                    }
+                }
+            }
+            break;
+
+        case 'logs':
+            exit(tail((int) ($argv[0] ?? 0)));
+
+        default:
+            echo file_get_contents(__FILE__, false, null, 0, 900);
+    }
+} catch (Throwable $e) {
+    fwrite(STDERR, 'エラー: ' . $e->getMessage() . "\n");
+    exit(1);
+}
+
+/** ジョブ完了までログを追う。終了コードは成功 0 / 失敗 1。 */
+function tail(int $job): int
+{
+    $offset = 0;
+    $path   = JobRepo::logPath($job);
+    while (true) {
+        clearstatcache(false, $path);
+        $size = is_file($path) ? (int) filesize($path) : 0;
+        if ($size > $offset) {
+            $fh = fopen($path, 'rb');
+            fseek($fh, $offset);
+            echo fread($fh, $size - $offset);
+            fclose($fh);
+            $offset = $size;
+        }
+        $j = JobRepo::sync($job);
+        if ($j && in_array($j['state'], ['succeeded', 'failed'], true)) {
+            return $j['state'] === 'succeeded' ? 0 : 1;
+        }
+        usleep(500_000);
+    }
+}

@@ -1,0 +1,41 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+/** DB 初期化と管理ユーザー作成: sudo -u www-data bin/pjas-init <email> */
+
+require dirname(__DIR__) . '/app/bootstrap.php';
+
+use Pjas\Support\Config;
+use Pjas\Support\Db;
+
+$email = $argv[1] ?? null;
+if ($email === null) {
+    fwrite(STDERR, "使い方: bin/pjas-init <管理者メールアドレス>\n");
+    exit(1);
+}
+
+Db::migrate(PJAS_ROOT . '/db/schema.sql');
+echo "スキーマを適用しました: " . Config::get('db') . "\n";
+
+if (Db::one('SELECT id FROM users WHERE email = ?', [$email])) {
+    echo "ユーザー {$email} は既に存在します\n";
+    exit(0);
+}
+
+echo "パスワード (入力は表示されません): ";
+system('stty -echo 2>/dev/null');
+$pw = trim((string) fgets(STDIN));
+system('stty echo 2>/dev/null');
+echo "\n";
+
+if (strlen($pw) < 12) {
+    fwrite(STDERR, "パスワードは 12 文字以上にしてください\n");
+    exit(1);
+}
+
+Db::insert(
+    'INSERT INTO users (email, password_hash, role) VALUES (?,?,?)',
+    [$email, password_hash($pw, PASSWORD_DEFAULT), 'owner']
+);
+echo "owner ユーザー {$email} を作成しました\n";

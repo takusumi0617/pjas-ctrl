@@ -1,0 +1,25 @@
+[Unit]
+Description=pjas-ctrl privileged agent
+Documentation=file:/opt/pjas-ctrl/docs/architecture.md
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/php /opt/pjas-ctrl/agent/pjas-agentd.php
+Restart=always
+RestartSec=2
+
+# root で動く唯一のプロセス。書き込めるパスを最小限に絞る。
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=no
+ReadWritePaths=/var/www /etc/apache2/sites-available /etc/apache2/sites-enabled /var/log/pjas /var/lib/pjas /run /etc/letsencrypt /var/log/letsencrypt /var/lib/letsencrypt
+RuntimeDirectory=pjas
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

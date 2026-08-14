@@ -1,0 +1,25 @@
+<?php
+// pjas-ctrl 設定。config.php にコピーして環境に合わせる。
+return [
+    // 状態 DB (www-data が読み書きできること)
+    'db'            => '/var/lib/pjas/pjas.db',
+
+    // アップロード一時置き場。web が書き、agent がここからのみ読む。
+    'upload_dir'    => '/var/lib/pjas/uploads',
+
+    // ジョブログ (agent が書き、web が読む)
+    'job_dir'       => '/var/log/pjas/jobs',
+
+    // 特権エージェントの Unix ソケット
+    'agent_socket'  => '/run/pjas-agent.sock',
+    'agent_timeout' => 900,
+
+    // サービスの配置先 (agent 側 agent/config.php と一致させること)
+    'www_root'      => '/var/www',
+
+    'max_upload'    => 512 * 1024 * 1024,
+    'session_name'  => 'pjasctrl',
+
+    // 管理画面の表示名
+    'site_name'     => 'pjas-ctrl',
+];

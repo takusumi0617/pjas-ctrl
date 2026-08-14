@@ -1,0 +1,5 @@
+/config.php
+/agent/config.local.php
+*.db
+*.db-wal
+*.db-shm
