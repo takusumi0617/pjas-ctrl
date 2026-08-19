@@ -43,10 +43,13 @@ agent は何が公開されているのか判断できないため、**エラー
 vhost の DocumentRoot は常に `/var/www/<name>/current/<docroot>`。**初回デプロイ前に vhost を
 反映すると、まだ `current` が無いので 403/404 になる。** 必ずデプロイを先にする。
 
-また、既存サイトの Apache 設定ファイル（例 `billing.conf`）は有効なまま残る。pjas-ctrl が書くのは
-`pjas-<name>.conf` だけなので、同じ ServerName の vhost が二重に有効になり、先に読まれた方が使われる。
-画面の「管理画面の管理下にありません」警告は `pjas-<name>.conf` の有無しか見ておらず、
-別名の既存 conf は検知しない。
+既存サイトの Apache 設定ファイル（例 `billing.conf`）は、**反映時に自動で無効化される**。
+同じ `ServerName` / `ServerAlias` を持つ管理外の有効サイトを探して `a2dissite` する仕組みで、
+configtest や graceful に失敗した場合は無効化したサイトも元に戻る。
+何を無効化するかは適用前に画面と `pjasctl vhost <service>` の出力で確認できる。
+
+pjas-ctrl が書いた設定 (`# managed by pjas-ctrl` で始まるもの) は対象外なので、
+別サービスの設定が巻き込まれることはない。
 
 ## 手順
 
@@ -61,14 +64,14 @@ sudo chown -R www-data:www-data /var/www/billing/shared
 # 3. 初回デプロイ (既存ファイルが自動で引き継がれる)
 sudo -u www-data php bin/pjasctl deploy billing /tmp/billing-1.8.2.zip --label v1.8.2
 
-# 4. 既存の Apache 設定を無効化し、pjas-ctrl の設定を反映する
-sudo a2dissite billing
-sudo -u www-data php bin/pjasctl vhost billing            # 差分確認
+# 4. 公開設定を反映する (同じアドレスの古い設定は自動で無効化される)
+sudo -u www-data php bin/pjasctl vhost billing            # 差分と、無効化される設定の確認
 sudo -u www-data php bin/pjasctl vhost billing --apply
 ```
 
 3 でヘルスチェックに失敗した場合は、引き継いだリリースへ自動で戻っているので、
-原因を直して再デプロイすればよい。4 の切り替え時に短い断が入るため、時間帯は選ぶこと。
+原因を直して再デプロイすればよい。4 では配信元が旧設定から pjas-ctrl の設定へ切り替わるため、
+短い断が入る可能性がある。時間帯は選ぶこと。
 
 ## 補足
 
@@ -77,3 +80,5 @@ sudo -u www-data php bin/pjasctl vhost billing --apply
 - サイト登録時、既存の base ディレクトリの所有者が `www-data:www-data`、権限が 0755 に変わる
 - vhost を反映しないまま放置すると、「管理画面には正常と出るが、実際は管理下の設定で
   配信されていない」状態になる。取り込むなら 4 まで通すこと
+- 自動で無効化されるのは、同じ `ServerName` / `ServerAlias` を持つ管理外の**有効な**サイトだけ。
+  `sites-available` に置いてあるだけの設定や、別ドメインの設定はそのまま残る

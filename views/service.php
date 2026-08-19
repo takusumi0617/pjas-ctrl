@@ -116,6 +116,10 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
     <?php if (!empty($live) && empty($managed)): ?>
       <br><b>現在の設定はこの管理画面の管理下にありません。</b>反映すると、いまの設定内容は置き換わります。
     <?php endif; ?>
+    <?php if (!empty($conflicts)): ?>
+      <br>同じ公開アドレスを使っている古い設定が有効になっています。反映時に自動で無効化します:
+      <span class="mono"><?= View::e(implode(', ', $conflicts)) ?></span>
+    <?php endif; ?>
   </div>
   <div class="f2">
     <div class="card"><div class="card-h">これから反映される設定

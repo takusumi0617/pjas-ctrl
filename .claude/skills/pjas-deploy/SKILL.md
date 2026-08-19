@@ -83,7 +83,9 @@ sudo -u www-data php bin/pjasctl vhost <service>            # 差分表示 (適�
 sudo -u www-data php bin/pjasctl vhost <service> --apply    # 適用
 ```
 
-差分を必ず先に見せて、内容を説明してから `--apply` する。
+差分を必ず先に見せて、内容を説明してから `--apply` する。差分表示には、同じ公開アドレスを
+使っている管理外の有効サイト（`--apply` 時に自動で無効化される）も併せて出るので、
+無効化されるものがあるときは、その点も伝えてから実行すること。
 
 ## 切り戻し
 
@@ -125,10 +127,12 @@ sudo -u www-data php bin/pjasctl logs <job-id>
 `current` をそこへ張ってから新リリースの処理に入る。手で退避する必要はなく、
 初回でも自動ロールバック先ができる。
 
-ただし vhost の DocumentRoot は `current/<docroot>` を指すため、**初回デプロイより先に
-vhost を反映すると 403/404 になる**。既存の Apache 設定 (`billing.conf` など) も
-有効なまま残るので `a2dissite` が要る。この状況に当たったら
-`references/migration.md` の手順どおりに進めること。
+同じ公開アドレスを使っている管理外の Apache 設定 (`billing.conf` など) も、
+反映時に自動で無効化される（失敗すれば元に戻る）。
+
+残る注意点は順序だけで、vhost の DocumentRoot は `current/<docroot>` を指すため、
+**初回デプロイより先に vhost を反映すると 403/404 になる**。
+この状況に当たったら `references/migration.md` の手順どおりに進めること。
 
 ## 参照
 

@@ -85,10 +85,12 @@ final class ServiceController
                 $cur = AgentClient::call('apache.render', ['service' => Deployer::spec($s)], Auth::actor());
                 $data['live']    = (string) ($cur['current'] ?? '');
                 $data['managed'] = (bool) ($cur['managed'] ?? false);
+                $data['conflicts'] = (array) ($cur['conflicts'] ?? []);
                 $data['rendered'] = (string) ($cur['rendered'] ?? $data['rendered']); // agent 側が正
             } catch (AgentException $e) {
                 $data['live'] = '';
                 $data['managed'] = false;
+                $data['conflicts'] = [];
                 $data['agentErr'] = $e->getMessage();
             }
             $data['diff'] = VhostRenderer::diff($data['live'], $data['rendered']);

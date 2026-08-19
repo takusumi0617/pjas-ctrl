@@ -13,8 +13,11 @@ return [
     'web_group'     => 'www-data',
 
     'apache_sites'  => '/etc/apache2/sites-available',
+    // 有効化済みサイト。同じ ServerName の管理外設定を反映時に無効化するために見る
+    'apache_sites_enabled' => '/etc/apache2/sites-enabled',
     'apachectl'     => '/usr/sbin/apachectl',
     'a2ensite'      => '/usr/sbin/a2ensite',
+    'a2dissite'     => '/usr/sbin/a2dissite',
     'systemctl'     => '/usr/bin/systemctl',
     'certbot'       => '/usr/bin/certbot',
     'certbot_email' => 'ops@example.com',

@@ -33,6 +33,7 @@ tests/             web と agent の vhost 生成一致テスト
 - 送れるのは登録済み op 名 + パラメータのみ。**任意コマンド文字列も設定ファイル本文も送れない**
 - agent は受け取った値を `agent/lib/Spec.php` で再検証する。web 側の検証は UX のためのもので、権限判断はしない
 - after_deploy フックと vhost 追加ディレクティブは許可リスト方式
+- vhost 適用時、同じ ServerName を持つ管理外の有効サイトは自動で無効化する (失敗時は元に戻す)
 
 ## デプロイの流れ
 
@@ -60,6 +61,7 @@ sudo -u www-data bin/pjasctl vhost billing --apply    # 適用
 ```bash
 php tests/vhost_parity.php
 php tests/adopt_plan.php
+php tests/vhost_conflicts.php
 ```
 
 画面で承認した vhost と agent が実際に書き出す vhost が一致することを確認する。

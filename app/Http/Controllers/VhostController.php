@@ -37,9 +37,15 @@ final class VhostController
             [(string) ($r['configtest'] ?? 'Syntax OK'), $job]);
         Db::insert('INSERT INTO vhosts (service_id, rendered_hash, applied_by) VALUES (?,?,?)',
             [$s['id'], (string) ($r['hash'] ?? ''), $actor]);
-        Audit::log($actor, 'apache.vhost.apply', $s['name'], ['hash' => $r['hash'] ?? '']);
+        $disabled = array_values((array) ($r['disabled'] ?? []));
+        Audit::log($actor, 'apache.vhost.apply', $s['name'],
+            ['hash' => $r['hash'] ?? '', 'disabled' => $disabled]);
 
-        View::redirect('/services/' . $s['name'] . '?tab=vhost', '公開設定を反映しました。サイトは止まらずに切り替わっています');
+        $msg = '公開設定を反映しました。サイトは止まらずに切り替わっています';
+        if ($disabled) {
+            $msg .= '。同じアドレスを使っていた古い設定を無効にしました: ' . implode(', ', $disabled);
+        }
+        View::redirect('/services/' . $s['name'] . '?tab=vhost', $msg);
     }
 
     public function tls(array $a): void

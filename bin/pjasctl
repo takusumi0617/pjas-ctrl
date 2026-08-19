@@ -104,12 +104,18 @@ try {
                 $r = AgentClient::call('apache.apply', ['service' => Deployer::spec($s)], $actor);
                 Audit::log($actor, 'apache.vhost.apply', $s['name'], ['hash' => $r['hash'] ?? '']);
                 echo "適用しました: {$r['path']} ({$r['configtest']})\n";
+                foreach ((array) ($r['disabled'] ?? []) as $old) {
+                    echo "同じアドレスの古い設定を無効化しました: {$old}\n";
+                }
             } else {
                 $p = AgentClient::call('apache.render', ['service' => Deployer::spec($s)], $actor);
                 foreach (VhostRenderer::diff((string) $p['current'], (string) $p['rendered']) as [$sign, $line]) {
                     if ($sign !== ' ') {
                         echo $sign . ' ' . $line . "\n";
                     }
+                }
+                foreach ((array) ($p['conflicts'] ?? []) as $old) {
+                    echo "! 同じアドレスの管理外設定が有効です (--apply 時に無効化します): {$old}\n";
                 }
             }
             break;

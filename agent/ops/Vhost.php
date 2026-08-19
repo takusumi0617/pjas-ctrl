@@ -26,6 +26,57 @@ final class Vhost
         return rtrim((string) $this->cfg['apache_sites'], '/') . "/pjas-{$name}.conf";
     }
 
+    /** 有効化済みサイトのディレクトリ (既定では sites-available の隣) */
+    public function enabledDir(): string
+    {
+        return (string) ($this->cfg['apache_sites_enabled']
+            ?? dirname(rtrim((string) $this->cfg['apache_sites'], '/')) . '/sites-enabled');
+    }
+
+    /**
+     * 同じ ServerName / ServerAlias を持つ、pjas-ctrl 管理外の有効サイトを探す。
+     *
+     * 既存サイトを取り込むとき、旧来の設定 (billing.conf など) が有効なまま残ると
+     * 同じ名前の vhost が二重に有効になり、どちらが使われるか読み込み順で決まってしまう。
+     * ファイルを触らない判定なのでテストから直接呼べる。
+     *
+     * @return array<int,string> a2dissite に渡すサイト名 (.conf を除いたもの)
+     */
+    public static function conflictingSites(string $enabledDir, string $domain, string $selfConf): array
+    {
+        if (!is_dir($enabledDir)) {
+            return [];
+        }
+        $domain = strtolower(rtrim($domain, '.'));
+        $hits   = [];
+
+        foreach (array_diff(scandir($enabledDir) ?: [], ['.', '..']) as $entry) {
+            if (!str_ends_with($entry, '.conf') || $entry === basename($selfConf)) {
+                continue;
+            }
+            $body = @file_get_contents($enabledDir . '/' . $entry);   // リンクは追跡される
+            if ($body === false || trim($body) === '') {
+                continue;
+            }
+            // pjas-ctrl が書いたものは対象外 (別サービスの設定を落とさない)
+            if (str_starts_with($body, self::MANAGED_HEADER)) {
+                continue;
+            }
+            if (preg_match_all('/^\s*Server(?:Name|Alias)\s+(.+)$/mi', $body, $m)) {
+                foreach ($m[1] as $line) {
+                    foreach (preg_split('/\s+/', trim($line)) ?: [] as $host) {
+                        if (strtolower(rtrim($host, '.')) === $domain) {
+                            $hits[] = substr($entry, 0, -5);
+                            continue 3;
+                        }
+                    }
+                }
+            }
+        }
+        sort($hits);
+        return array_values(array_unique($hits));
+    }
+
     public function render(array $spec): string
     {
         $name    = $spec['name'];
@@ -85,10 +136,11 @@ final class Vhost
         $cur  = is_file($path) ? (string) file_get_contents($path) : '';
 
         return [
-            'rendered' => $this->render($spec),
-            'current'  => $cur,
-            'managed'  => $cur !== '' && str_starts_with($cur, self::MANAGED_HEADER),
-            'path'     => $path,
+            'rendered'  => $this->render($spec),
+            'current'   => $cur,
+            'managed'   => $cur !== '' && str_starts_with($cur, self::MANAGED_HEADER),
+            'path'      => $path,
+            'conflicts' => self::conflictingSites($this->enabledDir(), (string) $spec['domain'], $path),
         ];
     }
 
@@ -107,7 +159,15 @@ final class Vhost
         }
         chmod($path, 0644);
 
+        // 同じ ServerName の管理外サイトは、二重定義になるのでここで無効化する。
+        // 失敗したときは下の catch で元に戻すため、Apache から見て中途半端な状態にはならない。
+        $disabled = [];
+
         try {
+            foreach (self::conflictingSites($this->enabledDir(), (string) $spec['domain'], $path) as $site) {
+                Proc::must([$this->a2dissite(), '-q', $site], null, 30);
+                $disabled[] = $site;
+            }
             Proc::must([$this->cfg['a2ensite'], '-q', "pjas-{$name}"], null, 30);
             $test = Proc::run([$this->cfg['apachectl'], 'configtest'], null, 30);
             if ($test['code'] !== 0) {
@@ -121,6 +181,7 @@ final class Vhost
                 'hash'       => hash('sha256', $conf),
                 'configtest' => trim($test['err'] ?: $test['out']) ?: 'Syntax OK',
                 'path'       => $path,
+                'disabled'   => $disabled,
             ];
         } catch (\Throwable $e) {
             // 失敗したら直前の内容へ戻し、Apache を安全側に保つ
@@ -128,11 +189,20 @@ final class Vhost
                 file_put_contents($path, $backup);
             } else {
                 @unlink($path);
-                Proc::run(['/usr/sbin/a2dissite', '-q', "pjas-{$name}"], null, 30);
+                Proc::run([$this->a2dissite(), '-q', "pjas-{$name}"], null, 30);
+            }
+            // 無効化した管理外サイトも戻す (元の設定で配信され続けるように)
+            foreach ($disabled as $site) {
+                Proc::run([$this->cfg['a2ensite'], '-q', $site], null, 30);
             }
             Proc::run([$this->cfg['apachectl'], 'graceful'], null, 60);
             throw new OpException($e->getMessage() . ' (設定は適用前の状態に戻しました)');
         }
+    }
+
+    private function a2dissite(): string
+    {
+        return (string) ($this->cfg['a2dissite'] ?? '/usr/sbin/a2dissite');
     }
 
     public function reload(): array
