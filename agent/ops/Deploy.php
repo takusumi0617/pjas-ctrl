@@ -93,6 +93,64 @@ final class Deploy
         return ['job_id' => $jobId, 'pid' => $pid];
     }
 
+    /**
+     * デプロイを伴わない取り込み。いま /var/www/<name> にあるファイルをそのまま
+     * ひとつのリリースにして current を張る。導入時の移行用で、新しいアーカイブを
+     * 用意しなくても既存サイトを管理下に置ける。
+     */
+    public function adopt(array $params): array
+    {
+        $jobId = (int) ($params['job_id'] ?? 0);
+        if ($jobId <= 0) {
+            throw new OpException('job_id がありません');
+        }
+        $spec = Spec::service($params['service'] ?? null);
+        $name = $spec['name'];
+
+        if ($this->paths->currentTag($name) !== null) {
+            throw new OpException('すでに管理下のリリースが公開されています。取り込みは初回のみ行えます');
+        }
+
+        $pid = pcntl_fork();
+        if ($pid < 0) {
+            throw new OpException('取り込みプロセスを起動できません');
+        }
+        if ($pid === 0) {
+            posix_setsid();
+            $log = new JobLog($jobId, (string) $this->cfg['job_dir']);
+            try {
+                $log->line("adopt {$name}: " . $this->paths->base($name) . ' の中身を取り込みます');
+
+                $tag = date('Ymd-His');
+                if (is_dir($this->paths->release($name, $tag))) {
+                    $tag = $this->adoptTag($name, $tag);
+                }
+                $adopted = $this->adoptExisting($name, $tag, $log);
+                if ($adopted === null) {
+                    throw new OpException(
+                        '取り込めるファイルがありません。'
+                        . '公開したいファイルを置いてから実行するか、通常のデプロイを使ってください'
+                    );
+                }
+
+                $this->switchCurrent($name, $adopted['tag'], $log);
+                $log->set('adopted', ['tag' => $adopted['tag'], 'state' => 'current'] + $adopted['release']);
+
+                // 公開設定を反映する前でも実行できる操作なので、ヘルスチェックは
+                // 結果をログに残すだけにする (この時点の NG は「まだ反映していない」の
+                // 意味にしかならず、サイトの状態として記録すると誤解を招くため)。
+                if (!$this->health->poll($spec, fn($m) => $log->line($m))) {
+                    $log->line('まだ応答がありません。「公開設定」を反映すると配信が切り替わります');
+                }
+                $log->finish('succeeded', "既存ファイルを releases/{$adopted['tag']} として取り込みました");
+            } catch (\Throwable $e) {
+                $log->finish('failed', $e->getMessage());
+            }
+            exit(0);
+        }
+        return ['job_id' => $jobId, 'pid' => $pid];
+    }
+
     // ---------------------------------------------------------------- 本体
 
     private function run(int $jobId, array $spec, array $source, array $opts): void
@@ -114,7 +172,7 @@ final class Deploy
 
             // [0.5] 初回デプロイなら、既にディレクトリにあるファイルを 1 リリースとして引き継ぐ
             if ($prev === null) {
-                $adopted = $this->adoptExisting($name, $tag, $log);
+                $adopted = $this->adoptExisting($name, $this->adoptTag($name, $tag), $log);
                 if ($adopted !== null) {
                     // current を取り込んだリリースへ向けておくと、この後どこで失敗しても
                     // 管理下のパス (current/<docroot>) で既存サイトが配信され続ける。
@@ -376,7 +434,7 @@ final class Deploy
      *
      * @return array{tag:string,count:int,release:array<string,mixed>}|null
      */
-    private function adoptExisting(string $name, string $newTag, JobLog $log): ?array
+    private function adoptExisting(string $name, string $tag, JobLog $log): ?array
     {
         $base = $this->paths->base($name);
         $plan = self::adoptPlan($base);
@@ -397,7 +455,6 @@ final class Deploy
             return null;
         }
 
-        $tag = $this->adoptTag($name, $newTag);
         $dir = $this->paths->release($name, $tag);
         if (!mkdir($dir, 0755, true) && !is_dir($dir)) {
             throw new OpException("引き継ぎ先を作成できません: {$dir}");

@@ -127,6 +127,13 @@ sudo -u www-data php bin/pjasctl logs <job-id>
 `current` をそこへ張ってから新リリースの処理に入る。手で退避する必要はなく、
 初回でも自動ロールバック先ができる。
 
+新しいバージョンをまだ用意していない（いまのファイルを管理下に置きたいだけの）場合は、
+デプロイを伴わない取り込みを使う:
+
+```bash
+sudo -u www-data php bin/pjasctl adopt <service>
+```
+
 同じ公開アドレスを使っている管理外の Apache 設定 (`billing.conf` など) も、
 反映時に自動で無効化される（失敗すれば元に戻る）。
 

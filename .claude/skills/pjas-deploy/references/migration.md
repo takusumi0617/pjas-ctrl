@@ -6,7 +6,18 @@
 （退避しても構わないが、その場合は切り戻し先が作られない）。それでも Apache 設定の
 切り替えだけは手順が必要なので、下の順序を守ること。
 
-## 初回デプロイが自動でやること
+## 2 通りの入り口
+
+| やりたいこと | 使うもの |
+|---|---|
+| いまのファイルをそのまま管理下に置きたい（新しいアーカイブは無い） | `pjasctl adopt <service>` / 画面の「既存ファイルを取り込む」 |
+| 移行と同時に新しいバージョンを公開したい | 通常の `pjasctl deploy`（引き継ぎは自動で先に走る） |
+
+どちらも下の引き継ぎ処理を通る。`adopt` は取り込みと `current` の作成だけを行い、
+アーカイブの展開・フック・ヘルスチェックによる合否判定は行わない
+（公開設定を反映する前でも実行できるようにするため）。すでに管理下のリリースがある場合は拒否される。
+
+## 引き継ぎで起きること
 
 `prev`（管理下の `current`）が無い状態のデプロイでは、アーカイブを展開する前に次が走る
 (`agent/ops/Deploy.php` の `adoptExisting()`)。
@@ -61,7 +72,10 @@ pjas-ctrl が書いた設定 (`# managed by pjas-ctrl` で始まるもの) は�
 sudo cp /var/www/billing/.env /var/www/billing/shared/.env
 sudo chown -R www-data:www-data /var/www/billing/shared
 
-# 3. 初回デプロイ (既存ファイルが自動で引き継がれる)
+# 3a. いまのファイルをそのまま管理下に置く場合
+sudo -u www-data php bin/pjasctl adopt billing
+
+# 3b. 移行と同時に新しいバージョンを公開する場合 (引き継ぎは自動で先に走る)
 sudo -u www-data php bin/pjasctl deploy billing /tmp/billing-1.8.2.zip --label v1.8.2
 
 # 4. 公開設定を反映する (同じアドレスの古い設定は自動で無効化される)
@@ -69,7 +83,7 @@ sudo -u www-data php bin/pjasctl vhost billing            # 差分と、無効�
 sudo -u www-data php bin/pjasctl vhost billing --apply
 ```
 
-3 でヘルスチェックに失敗した場合は、引き継いだリリースへ自動で戻っているので、
+3b でヘルスチェックに失敗した場合は、引き継いだリリースへ自動で戻っているので、
 原因を直して再デプロイすればよい。4 では配信元が旧設定から pjas-ctrl の設定へ切り替わるため、
 短い断が入る可能性がある。時間帯は選ぶこと。
 

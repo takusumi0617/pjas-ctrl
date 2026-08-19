@@ -38,6 +38,7 @@ final class Labels
         return match ($v) {
             'deploy'   => '公開',
             'rollback' => '前のバージョンに戻す',
+            'adopt'    => '既存ファイルの取り込み',
             'vhost'    => '公開設定の反映',
             'tls'      => '証明書の取得・更新',
             'reload'   => 'サーバー再読み込み',
@@ -74,6 +75,7 @@ final class Labels
             'service.update'     => 'サイト設定の変更',
             'service.deploy'     => '公開 (デプロイ)',
             'service.rollback'   => '前のバージョンに戻す',
+            'service.adopt'      => '既存ファイルの取り込み',
             'service.health'     => '動作確認',
             'apache.vhost.apply' => '公開設定の反映',
             'tls.issue'          => '証明書の取得・更新',

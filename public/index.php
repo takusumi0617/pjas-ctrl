@@ -34,6 +34,7 @@ $dep = new DeployController();
 $r->get('/deploy', [$dep, 'form'], 'operator');
 $r->post('/deploy', [$dep, 'deploy'], 'operator');
 $r->post('/services/{name}/rollback', [$dep, 'rollback'], 'operator');
+$r->post('/services/{name}/adopt', [$dep, 'adopt'], 'operator');
 
 $vh = new VhostController();
 $r->post('/services/{name}/vhost', [$vh, 'apply'], 'owner');

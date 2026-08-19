@@ -66,6 +66,7 @@ $registry = [
     'service.destroy' => [$service, 'destroy'],
     'deploy.start'    => [$deploy, 'start'],
     'deploy.rollback' => [$deploy, 'rollback'],
+    'deploy.adopt'    => [$deploy, 'adopt'],
     'apache.render'   => [$vhost, 'preview'],
     'apache.apply'    => [$vhost, 'apply'],
     'apache.reload'   => static fn(array $p): array => $vhost->reload(),

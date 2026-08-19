@@ -8,6 +8,7 @@ declare(strict_types=1);
  *   pjasctl services
  *   pjasctl status <service>
  *   pjasctl deploy <service> <archive.zip|tar.gz> [--label v1.2.3] [--no-rollback]
+ *   pjasctl adopt <service>                  既存ファイルをそのまま最初のリリースにする
  *   pjasctl rollback <service> <tag>
  *   pjasctl vhost <service> [--apply]
  *   pjasctl logs <job-id>
@@ -91,6 +92,11 @@ try {
                 'auto_rollback' => !$noRb,
             ], $actor);
             Audit::log($actor, 'service.deploy', $s['name'], ['job' => $job, 'source' => 'cli']);
+            exit(tail($job));
+
+        case 'adopt':
+            $s   = ServiceRepo::findOrFail((string) ($argv[0] ?? ''));
+            $job = Deployer::adopt($s, $actor);
             exit(tail($job));
 
         case 'rollback':

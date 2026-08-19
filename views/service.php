@@ -42,6 +42,17 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
 <?php endif; ?>
 
 <?php if ($tab === 'overview'): ?>
+  <?php if ($current === null && Auth::can('operator')): ?>
+    <div class="note" style="margin-bottom:14px">
+      このサイトはまだ管理下のバージョンを持っていません。
+      すでにサーバーにファイルが置かれている場合は、それをそのまま最初のバージョンとして取り込めます
+      （新しくファイルを用意する必要はありません）。
+      <form method="post" action="/services/<?= $name ?>/adopt" style="margin-top:8px"
+            onsubmit="return confirm('いま置かれているファイルを最初のバージョンとして取り込みます。よろしいですか?')">
+        <?= Csrf::field() ?><button class="btn">既存ファイルを取り込む</button>
+      </form>
+    </div>
+  <?php endif; ?>
   <div class="f2">
     <div class="card"><div class="card-h">このサイトの設定</div><div class="card-b">
       <dl class="kv">

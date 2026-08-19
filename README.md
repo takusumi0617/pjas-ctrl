@@ -39,6 +39,8 @@ tests/             web と agent の vhost 生成一致テスト
 
 初回デプロイでは、すでに `/var/www/<name>` にあるファイルを 1 つのリリースとして引き継ぎ、
 `current` をそこへ向けてから新リリースの処理に入る (既存サイトを消さず、切り戻し先にする)。
+新しいファイルをまだ用意していない場合は `pjasctl adopt <service>` (画面では
+「既存ファイルを取り込む」) で、引き継ぎだけを単独で実行できる。
 
 `releases/<timestamp>` へ展開 → shared リンク → フック → `php -l` / `apachectl configtest`
 → `current` シンボリックリンクを原子的に張り替え → reload → ヘルスチェック
@@ -51,6 +53,7 @@ tests/             web と agent の vhost 生成一致テスト
 ```bash
 sudo -u www-data bin/pjasctl services
 sudo -u www-data bin/pjasctl deploy billing ./billing-1.8.2.zip --label v1.8.2
+sudo -u www-data bin/pjasctl adopt billing            # 既存ファイルをそのまま管理下に置く
 sudo -u www-data bin/pjasctl rollback billing 20260814-183012
 sudo -u www-data bin/pjasctl vhost billing            # 差分表示
 sudo -u www-data bin/pjasctl vhost billing --apply    # 適用

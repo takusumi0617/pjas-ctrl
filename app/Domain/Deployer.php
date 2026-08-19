@@ -104,6 +104,24 @@ final class Deployer
         return $job;
     }
 
+    /**
+     * デプロイを伴わない取り込み。既に /var/www/<name> にあるファイルを
+     * そのままひとつのリリースにして公開状態にする (導入時の移行用)。
+     */
+    public static function adopt(array $service, string $actor): int
+    {
+        if (ReleaseRepo::current((int) $service['id']) !== null) {
+            throw new ValidationException(['すでに公開中のバージョンがあります。取り込みは初回のみ行えます']);
+        }
+        $job = JobRepo::create((int) $service['id'], 'adopt', $actor, '既存ファイルの取り込み');
+        AgentClient::call('deploy.adopt', [
+            'job_id'  => $job,
+            'service' => self::spec($service),
+        ], $actor);
+        Audit::log($actor, 'service.adopt', $service['name'], ['job' => $job]);
+        return $job;
+    }
+
     public static function rollback(array $service, string $tag, string $actor): int
     {
         if (ReleaseRepo::find((int) $service['id'], $tag) === null) {
