@@ -4,28 +4,32 @@ use Pjas\Domain\VhostRenderer;
 use Pjas\Http\Auth;
 use Pjas\Http\Csrf;
 use Pjas\Http\View;
+use Pjas\Support\Labels;
 
 $s    = $service;
 $name = View::e($s['name']);
-$tabs = ['overview' => '概要', 'releases' => 'リリース', 'vhost' => 'Apache 設定',
-         'files' => 'ファイル', 'jobs' => 'ジョブ', 'settings' => '設定'];
+$tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' => '公開設定',
+         'files' => 'ファイル', 'jobs' => '作業の履歴', 'settings' => '設定'];
 ?>
 <div class="row">
   <h1><?= $name ?></h1>
   <?= match ((string) $s['state']) {
-        'healthy'   => '<span class="tag t-ok">healthy</span>',
-        'unhealthy' => '<span class="tag t-err">unhealthy</span>',
-        default     => '<span class="tag t-mut">unknown</span>',
+        'healthy'   => '<span class="tag t-ok">正常</span>',
+        'unhealthy' => '<span class="tag t-err">異常</span>',
+        default     => '<span class="tag t-mut">未確認</span>',
     } ?>
   <span class="spacer"></span>
   <form method="post" action="/services/<?= $name ?>/health"><?= Csrf::field() ?>
-    <button class="btn">ヘルスチェック</button></form>
+    <button class="btn">いま動作を確認する</button></form>
   <?php if (Auth::can('operator')): ?>
-    <a class="btn p" href="/deploy?service=<?= $name ?>">デプロイ</a>
+    <a class="btn p" href="/deploy?service=<?= $name ?>">新しいバージョンを公開</a>
   <?php endif; ?>
 </div>
-<div class="sub mono"><?= View::e($s['domain']) ?> ·
-  <?= View::e($wwwRoot . '/' . $s['name']) ?>/current<?= $current ? ' → releases/' . View::e($current['tag']) : ' (未デプロイ)' ?></div>
+<div class="sub"><span class="mono"><?= View::e($s['domain']) ?></span> ·
+  <?= $current
+        ? '公開中のバージョン: <span class="mono">' . View::e($current['label'] ?: $current['tag']) . '</span>'
+        : 'まだ一度も公開されていません' ?>
+  <span class="muted mono" style="font-size:11px">(<?= View::e($wwwRoot . '/' . $s['name']) ?>/current)</span></div>
 
 <div class="tabs">
   <?php foreach ($tabs as $k => $label): ?>
@@ -34,89 +38,94 @@ $tabs = ['overview' => '概要', 'releases' => 'リリース', 'vhost' => 'Apach
 </div>
 
 <?php if (!empty($agentErr)): ?>
-  <div class="note err flash">agent: <?= View::e($agentErr) ?></div>
+  <div class="note err flash">サーバー側の作業プログラムでエラーが起きました: <?= View::e($agentErr) ?></div>
 <?php endif; ?>
 
 <?php if ($tab === 'overview'): ?>
   <div class="f2">
-    <div class="card"><div class="card-h">サービス情報</div><div class="card-b">
+    <div class="card"><div class="card-h">このサイトの設定</div><div class="card-b">
       <dl class="kv">
-        <dt>ドメイン</dt><dd class="mono"><?= View::e($s['domain']) ?></dd>
-        <dt>DocumentRoot</dt><dd class="mono">current/<?= View::e($s['docroot']) ?></dd>
-        <dt>ランタイム</dt><dd class="mono"><?= View::e($s['runtime']) ?><?= $s['runtime'] !== 'static'
-              ? ' (/run/php/' . View::e($s['runtime']) . '.sock)' : '' ?></dd>
-        <dt>ヘルス</dt><dd class="mono">GET <?= View::e($s['health_path']) ?> → <?= (int) $s['health_status'] ?>
-            <span class="muted"><?= View::e((string) ($s['checked_at'] ?? '未確認')) ?></span></dd>
-        <dt>TLS</dt><dd><?= $s['tls'] ? '有効' : 'なし' ?></dd>
-        <dt>保持リリース</dt><dd><?= (int) $s['keep_releases'] ?></dd>
-        <dt>shared</dt><dd class="mono"><?= View::e($s['shared_paths']) ?></dd>
-        <dt>after_deploy</dt><dd class="mono"><?= nl2br(View::e($s['hooks'] ?: '—')) ?></dd>
+        <dt>公開アドレス</dt><dd class="mono"><?= View::e($s['domain']) ?></dd>
+        <dt>公開するフォルダ</dt><dd class="mono">current/<?= View::e($s['docroot']) ?></dd>
+        <dt>実行環境</dt><dd><?= View::e(Labels::runtime((string) $s['runtime'])) ?></dd>
+        <dt>動作確認</dt><dd><span class="mono"><?= View::e($s['health_path']) ?></span> を開いて
+            <span class="mono"><?= (int) $s['health_status'] ?></span> が返れば正常
+            <div class="muted">最終チェック: <?= View::e((string) ($s['checked_at'] ?? 'まだ確認していません')) ?></div></dd>
+        <dt>常時 SSL (https)</dt><dd><?= $s['tls'] ? 'あり' : 'なし' ?></dd>
+        <dt>残す過去バージョン</dt><dd><?= (int) $s['keep_releases'] ?> 件</dd>
+        <dt>引き継ぐファイル</dt><dd class="mono"><?= View::e($s['shared_paths']) ?></dd>
+        <dt>公開後に自動実行</dt><dd class="mono"><?= nl2br(View::e($s['hooks'] ?: '—')) ?></dd>
       </dl>
     </div></div>
-    <div class="card"><div class="card-h">最近のジョブ</div><table>
+    <div class="card"><div class="card-h">最近おこなった作業</div><table>
       <tbody>
       <?php foreach (array_slice($jobs, 0, 8) as $j): ?>
         <tr>
-          <td><a href="/jobs/<?= (int) $j['id'] ?>">#<?= (int) $j['id'] ?></a> <span class="mono"><?= View::e($j['type']) ?></span></td>
+          <td><a href="/jobs/<?= (int) $j['id'] ?>">#<?= (int) $j['id'] ?></a> <?= View::e(Labels::jobType((string) $j['type'])) ?></td>
           <td class="mono muted"><?= View::e($j['started_at']) ?></td>
           <td><?= match ((string) $j['state']) {
                 'succeeded' => '<span class="tag t-ok">成功</span>',
                 'failed'    => '<span class="tag t-err">失敗</span>',
                 'running'   => '<span class="tag t-warn">実行中</span>',
-                default     => '<span class="tag t-mut">待機</span>' } ?></td>
+                default     => '<span class="tag t-mut">待機中</span>' } ?></td>
         </tr>
       <?php endforeach; ?>
-      <?php if (!$jobs): ?><tr><td class="muted" style="padding:16px">まだジョブがありません</td></tr><?php endif; ?>
+      <?php if (!$jobs): ?><tr><td class="muted" style="padding:16px">まだ作業の記録はありません</td></tr><?php endif; ?>
       </tbody>
     </table></div>
   </div>
 
 <?php elseif ($tab === 'releases'): ?>
+  <div class="sub">これまでに公開したバージョンの一覧です。問題が起きたときは、ここから以前のバージョンに戻せます。</div>
   <div class="card"><table>
-    <thead><tr><th>リリース</th><th>ラベル</th><th>ソース</th><th>サイズ</th><th>実行者</th><th>状態</th><th></th></tr></thead>
+    <thead><tr><th>バージョン名</th><th>公開日時 (識別子)</th><th>取得元</th><th>サイズ</th><th>公開した人</th><th>状態</th><th></th></tr></thead>
     <tbody>
     <?php foreach ($releases as $r): ?>
       <tr>
-        <td class="mono"><?= View::e($r['tag']) ?></td>
-        <td><?= View::e($r['label']) ?></td>
+        <td><b><?= View::e($r['label'] ?: '(名前なし)') ?></b></td>
+        <td class="mono muted"><?= View::e($r['tag']) ?></td>
         <td class="mono muted"><?= View::e(mb_strimwidth((string) $r['source'], 0, 40, '…')) ?></td>
         <td class="mono"><?= $r['size'] ? number_format($r['size'] / 1048576, 1) . ' MB' : '—' ?></td>
         <td><?= View::e($r['deployed_by']) ?></td>
         <td><?= match ((string) $r['state']) {
-              'current'  => '<span class="tag t-ok">current</span>',
+              'current'  => '<span class="tag t-ok">公開中</span>',
               'failed'   => '<span class="tag t-err">失敗</span>',
-              default    => '<span class="tag t-mut">保持</span>' } ?></td>
+              default    => '<span class="tag t-mut">保管中</span>' } ?></td>
         <td>
           <?php if ($r['state'] !== 'current' && $r['state'] !== 'failed' && Auth::can('operator')): ?>
             <form method="post" action="/services/<?= $name ?>/rollback"
-                  onsubmit="return confirm('<?= View::e($r['tag']) ?> に切り替えます。よろしいですか?')">
+                  onsubmit="return confirm('公開中のバージョンを「<?= View::e($r['label'] ?: $r['tag']) ?>」に戻します。よろしいですか?')">
               <?= Csrf::field() ?>
               <input type="hidden" name="tag" value="<?= View::e($r['tag']) ?>">
-              <button class="btn sm">このリリースに戻す</button>
+              <button class="btn sm">このバージョンに戻す</button>
             </form>
           <?php endif; ?>
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$releases): ?><tr><td colspan="7" class="muted">リリースがありません</td></tr><?php endif; ?>
+    <?php if (!$releases): ?><tr><td colspan="7" class="muted">まだ公開したバージョンがありません</td></tr><?php endif; ?>
     </tbody>
   </table></div>
 
 <?php elseif ($tab === 'vhost'): ?>
+  <div class="sub">このサイトをどのアドレスで公開するかという、Web サーバー (Apache) 側の設定です。
+    設定タブの内容から自動で作られるので、ふだんは「反映する」を押すだけで大丈夫です。</div>
   <div class="note" style="margin-bottom:12px">
-    適用時は <span class="mono">a2ensite → apachectl configtest → graceful</span> の順に実行し、
-    configtest が失敗した場合は自動で元の設定に戻します。
+    反映するときは、まず設定内容に誤りがないか検査してから切り替えます。
+    検査に失敗した場合は自動で元の設定に戻すため、サイトが止まることはありません。
     <?php if (!empty($live) && empty($managed)): ?>
-      <br><b>この vhost は pjas-ctrl 管理外です</b> (管理ヘッダがありません)。適用すると内容が置き換わります。
+      <br><b>現在の設定はこの管理画面の管理下にありません。</b>反映すると、いまの設定内容は置き換わります。
     <?php endif; ?>
   </div>
   <div class="f2">
-    <div class="card"><div class="card-h">生成される設定
+    <div class="card"><div class="card-h">これから反映される設定
       <span class="spacer"></span><span class="mono muted"><?= View::e('/etc/apache2/sites-available/pjas-' . $s['name'] . '.conf') ?></span></div>
       <div class="card-b"><pre><?= View::e($rendered) ?></pre></div>
     </div>
-    <div class="card"><div class="card-h">現行との差分
-      <?= trim($live) === trim($rendered) ? '<span class="tag t-ok">差分なし</span>' : '<span class="tag t-warn">未適用の変更あり</span>' ?></div>
+    <div class="card"><div class="card-h">いまの設定との違い
+      <?= trim($live) === trim($rendered)
+            ? '<span class="tag t-ok">違いはありません</span>'
+            : '<span class="tag t-warn">まだ反映していない変更があります</span>' ?></div>
       <div class="card-b"><pre class="diff"><?php foreach ($diff as [$sign, $line]):
           $cls = $sign === '+' ? 'add' : ($sign === '-' ? 'del' : 'ctx'); ?><span class="<?= $cls ?>"><?= View::e($sign . ' ' . $line) ?></span>
 <?php endforeach; ?></pre></div>
@@ -125,20 +134,20 @@ $tabs = ['overview' => '概要', 'releases' => 'リリース', 'vhost' => 'Apach
   <?php if (Auth::can('owner')): ?>
     <div class="row" style="margin-top:16px">
       <form method="post" action="/services/<?= $name ?>/tls"><?= Csrf::field() ?>
-        <button class="btn">証明書を取得 / 更新 (certbot)</button></form>
+        <button class="btn">https 用の証明書を取得・更新する</button></form>
       <span class="spacer"></span>
       <form method="post" action="/services/<?= $name ?>/vhost"
-            onsubmit="return confirm('vhost を適用し Apache を graceful リロードします。よろしいですか?')">
-        <?= Csrf::field() ?><button class="btn p">適用する</button></form>
+            onsubmit="return confirm('この設定を反映します。サイトを止めずに切り替わります。よろしいですか?')">
+        <?= Csrf::field() ?><button class="btn p">反映する</button></form>
     </div>
   <?php endif; ?>
 
 <?php elseif ($tab === 'files'): ?>
   <div class="card">
     <div class="card-h"><?= View::e($wwwRoot . '/' . $s['name'] . '/' . ($listing['path'] ?? '')) ?>
-      <span class="spacer"></span><span class="muted" style="font-size:12px">releases/ は読み取り専用</span></div>
+      <span class="spacer"></span><span class="muted" style="font-size:12px">公開済みバージョンのファイルは閲覧のみ (変更できません)</span></div>
     <table>
-      <thead><tr><th>名前</th><th>種別</th><th>サイズ</th><th>権限</th><th>更新</th></tr></thead>
+      <thead><tr><th>名前</th><th>種類</th><th>サイズ (バイト)</th><th>アクセス権</th><th>更新日時</th></tr></thead>
       <tbody>
       <?php if (!empty($listing['path'])): ?>
         <tr><td><a href="/services/<?= $name ?>?tab=files&path=<?= urlencode(dirname((string) $listing['path']) === '.' ? '' : dirname((string) $listing['path'])) ?>">..</a></td>
@@ -155,26 +164,26 @@ $tabs = ['overview' => '概要', 'releases' => 'リリース', 'vhost' => 'Apach
               📄 <?= View::e($e['name']) ?>
             <?php endif; ?>
           </td>
-          <td class="muted"><?= View::e($e['type']) ?></td>
+          <td class="muted"><?= View::e(Labels::entryType((string) $e['type'])) ?></td>
           <td class="mono"><?= isset($e['size']) ? number_format((int) $e['size']) : '' ?></td>
           <td class="mono muted"><?= View::e((string) ($e['mode'] ?? '')) ?> <?= View::e((string) ($e['owner'] ?? '')) ?></td>
           <td class="mono muted"><?= View::e((string) ($e['mtime'] ?? '')) ?></td>
         </tr>
       <?php endforeach; ?>
-      <?php if (empty($listing['entries'])): ?><tr><td colspan="5" class="muted">項目がありません</td></tr><?php endif; ?>
+      <?php if (empty($listing['entries'])): ?><tr><td colspan="5" class="muted">このフォルダは空です</td></tr><?php endif; ?>
       </tbody>
     </table>
   </div>
 
 <?php elseif ($tab === 'jobs'): ?>
   <div class="card"><table>
-    <thead><tr><th>#</th><th>種別</th><th>詳細</th><th>実行者</th><th>開始</th><th>終了</th><th>結果</th></tr></thead>
+    <thead><tr><th>#</th><th>作業</th><th>内容</th><th>実行した人</th><th>開始</th><th>終了</th><th>結果</th></tr></thead>
     <tbody>
     <?php foreach ($jobs as $j): ?>
       <tr>
         <td><a href="/jobs/<?= (int) $j['id'] ?>">#<?= (int) $j['id'] ?></a></td>
-        <td class="mono"><?= View::e($j['type']) ?></td>
-        <td class="mono muted"><?= View::e(mb_strimwidth((string) $j['detail'], 0, 60, '…')) ?></td>
+        <td><?= View::e(Labels::jobType((string) $j['type'])) ?></td>
+        <td class="muted"><?= View::e(mb_strimwidth((string) $j['detail'], 0, 60, '…')) ?></td>
         <td><?= View::e($j['actor']) ?></td>
         <td class="mono"><?= View::e($j['started_at']) ?></td>
         <td class="mono"><?= View::e((string) ($j['finished_at'] ?? '')) ?></td>
@@ -182,45 +191,86 @@ $tabs = ['overview' => '概要', 'releases' => 'リリース', 'vhost' => 'Apach
               'succeeded' => '<span class="tag t-ok">成功</span>',
               'failed'    => '<span class="tag t-err">失敗</span>',
               'running'   => '<span class="tag t-warn">実行中</span>',
-              default     => '<span class="tag t-mut">待機</span>' } ?></td>
+              default     => '<span class="tag t-mut">待機中</span>' } ?></td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$jobs): ?><tr><td colspan="7" class="muted">ジョブがありません</td></tr><?php endif; ?>
+    <?php if (!$jobs): ?><tr><td colspan="7" class="muted">まだ作業の記録はありません</td></tr><?php endif; ?>
     </tbody>
   </table></div>
 
 <?php elseif ($tab === 'settings'): ?>
+  <div class="sub">このサイトの設定です。公開アドレスや公開フォルダを変えたときは、保存したあと
+    「公開設定」タブで反映してください。</div>
   <?php if (!Auth::can('owner')): ?>
-    <div class="note">設定の変更には owner 権限が必要です。</div>
+    <div class="note">設定を変更できるのは owner 権限の利用者だけです。内容の確認のみできます。</div>
   <?php endif; ?>
   <form method="post" action="/services/<?= $name ?>/settings">
     <?= Csrf::field() ?>
-    <div class="f2">
-      <div class="card"><div class="card-h">基本</div><div class="card-b">
-        <div class="field"><label>ドメイン</label><input name="domain" value="<?= View::e($s['domain']) ?>"></div>
-        <div class="field"><label>ランタイム</label><select name="runtime">
-          <?php foreach (ServiceRepo::RUNTIMES as $rt): ?>
-            <option <?= $s['runtime'] === $rt ? 'selected' : '' ?>><?= View::e($rt) ?></option>
-          <?php endforeach; ?></select></div>
-        <div class="field"><label>DocumentRoot</label><input name="docroot" value="<?= View::e($s['docroot']) ?>"></div>
-        <div class="field"><label>AllowOverride</label><select name="allow_override">
-          <?php foreach (['None', 'FileInfo', 'All'] as $ao): ?>
-            <option <?= $s['allow_override'] === $ao ? 'selected' : '' ?>><?= $ao ?></option>
-          <?php endforeach; ?></select></div>
-        <div class="field"><label class="inline"><input type="checkbox" name="tls" <?= $s['tls'] ? 'checked' : '' ?>> TLS を使う</label></div>
-      </div></div>
-      <div class="card"><div class="card-h">運用</div><div class="card-b">
-        <div class="field"><label>ヘルスチェックパス</label><input name="health_path" value="<?= View::e($s['health_path']) ?>"></div>
-        <div class="field"><label>期待ステータス</label><input name="health_status" type="number" value="<?= (int) $s['health_status'] ?>"></div>
-        <div class="field"><label>保持リリース数</label><input name="keep_releases" type="number" value="<?= (int) $s['keep_releases'] ?>"></div>
-        <div class="field"><label>shared パス</label><textarea name="shared_paths" rows="2"><?= View::e($s['shared_paths']) ?></textarea></div>
-      </div></div>
-    </div>
-    <div class="card" style="margin-top:14px"><div class="card-h">フック / 追加ディレクティブ</div><div class="card-b"><div class="f2">
-      <div class="field"><label>after_deploy</label><textarea name="hooks" rows="4" class="mono"><?= View::e($s['hooks']) ?></textarea></div>
-      <div class="field"><label>vhost 追加ディレクティブ (許可: <?= View::e(implode(', ', VhostRenderer::ALLOWED_DIRECTIVES)) ?>)</label>
-        <textarea name="extra_conf" rows="4" class="mono"><?= View::e($s['extra_conf']) ?></textarea></div>
-    </div></div></div>
+    <div class="card step"><div class="card-h">基本</div><div class="card-b">
+      <div class="field"><label>公開アドレス (ドメイン)</label>
+        <input name="domain" value="<?= View::e($s['domain']) ?>">
+        <div class="hint">利用者がブラウザで開くアドレスです。変更後は「公開設定」タブで反映が必要です。</div></div>
+
+      <div class="field"><label>実行環境</label><select name="runtime">
+        <?php foreach (ServiceRepo::RUNTIMES as $rt): ?>
+          <option value="<?= View::e($rt) ?>" <?= $s['runtime'] === $rt ? 'selected' : '' ?>>
+            <?= View::e(Labels::runtime($rt)) ?></option>
+        <?php endforeach; ?></select>
+        <div class="hint">PHP で動くサイトかどうかを選びます。HTML や画像だけのサイトは「静的ファイルのみ」です。</div></div>
+
+      <div class="field"><label>公開するフォルダ</label>
+        <input name="docroot" value="<?= View::e($s['docroot']) ?>">
+        <div class="hint">アップロードしたファイルのうち、実際にブラウザへ公開する場所です
+          (多くの PHP アプリでは <span class="mono">public</span>)。</div></div>
+
+      <div class="field"><label>フォルダごとの設定ファイル (.htaccess) の扱い</label><select name="allow_override">
+        <?php
+        $aoLabels = [
+            'None'     => '使わない (推奨・いちばん安全)',
+            'FileInfo' => 'URL の書き換えだけ許可する',
+            'All'      => 'すべて許可する',
+        ];
+        foreach ($aoLabels as $ao => $aoLabel): ?>
+          <option value="<?= $ao ?>" <?= $s['allow_override'] === $ao ? 'selected' : '' ?>>
+            <?= $aoLabel ?> (<?= $ao ?>)</option>
+        <?php endforeach; ?></select>
+        <div class="hint">WordPress など、URL の書き換えルールが必要なアプリでは「URL の書き換えだけ許可する」を選びます。</div></div>
+
+      <div class="field"><label class="inline"><input type="checkbox" name="tls" <?= $s['tls'] ? 'checked' : '' ?>>
+        https で公開する (常時 SSL)</label>
+        <div class="hint">先に「公開設定」タブで証明書を取得してからオンにしてください。</div></div>
+    </div></div>
+
+    <div class="card step"><div class="card-h">動作確認とバージョン管理</div><div class="card-b">
+      <div class="field"><label>動作確認に使うページ</label>
+        <input name="health_path" value="<?= View::e($s['health_path']) ?>">
+        <div class="hint">公開のたびに、このページを開いてサイトが正常に動いているか自動で確認します。</div></div>
+
+      <div class="field"><label>正常とみなす応答コード</label>
+        <input name="health_status" type="number" value="<?= (int) $s['health_status'] ?>">
+        <div class="hint">通常は <span class="mono">200</span>（正常）のままで大丈夫です。</div></div>
+
+      <div class="field"><label>残しておく過去バージョンの数</label>
+        <input name="keep_releases" type="number" value="<?= (int) $s['keep_releases'] ?>">
+        <div class="hint">多いほど古い状態に戻せますが、その分ディスクを使います。</div></div>
+
+      <div class="field"><label>バージョンをまたいで引き継ぐファイル・フォルダ</label>
+        <textarea name="shared_paths" rows="2"><?= View::e($s['shared_paths']) ?></textarea>
+        <div class="hint">設定ファイルや利用者がアップロードした画像など、公開のたびに消えては困るものを指定します
+          (カンマまたは改行区切り)。</div></div>
+    </div></div>
+
+    <div class="card step"><div class="card-h">詳細設定（分からなければそのままで大丈夫です）</div><div class="card-b">
+      <div class="field"><label>公開のあとに自動実行する処理</label>
+        <textarea name="hooks" rows="4" class="mono"><?= View::e($s['hooks']) ?></textarea>
+        <div class="hint">1 行に 1 つずつ書きます。安全のため、あらかじめ許可されたものだけが実行できます。</div></div>
+
+      <div class="field"><label>Apache 設定に追加する行（上級者向け）</label>
+        <textarea name="extra_conf" rows="4" class="mono"><?= View::e($s['extra_conf']) ?></textarea>
+        <div class="hint">通常は空欄のままで構いません。使える項目:
+          <span class="mono"><?= View::e(implode(', ', VhostRenderer::ALLOWED_DIRECTIVES)) ?></span></div></div>
+    </div></div>
+
     <?php if (Auth::can('owner')): ?>
       <div class="row" style="margin-top:16px"><span class="spacer"></span><button class="btn p">保存する</button></div>
     <?php endif; ?>

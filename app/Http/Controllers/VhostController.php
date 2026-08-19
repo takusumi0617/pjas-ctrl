@@ -30,7 +30,7 @@ final class VhostController
             Db::run("UPDATE jobs SET state='failed', detail=?, finished_at=datetime('now') WHERE id=?",
                 [$e->getMessage(), $job]);
             Audit::log($actor, 'apache.vhost.apply', $s['name'], [], 'failed');
-            View::redirect('/services/' . $s['name'] . '?tab=vhost', 'vhost 適用に失敗しました: ' . $e->getMessage(), 'err');
+            View::redirect('/services/' . $s['name'] . '?tab=vhost', '公開設定の反映に失敗しました: ' . $e->getMessage(), 'err');
         }
 
         Db::run("UPDATE jobs SET state='succeeded', detail=?, finished_at=datetime('now') WHERE id=?",
@@ -39,7 +39,7 @@ final class VhostController
             [$s['id'], (string) ($r['hash'] ?? ''), $actor]);
         Audit::log($actor, 'apache.vhost.apply', $s['name'], ['hash' => $r['hash'] ?? '']);
 
-        View::redirect('/services/' . $s['name'] . '?tab=vhost', 'vhost を適用し、Apache を graceful リロードしました');
+        View::redirect('/services/' . $s['name'] . '?tab=vhost', '公開設定を反映しました。サイトは止まらずに切り替わっています');
     }
 
     public function tls(array $a): void
@@ -54,6 +54,6 @@ final class VhostController
         }
         Audit::log($actor, 'tls.issue', $s['name'], ['expires' => $r['expires'] ?? '']);
         View::redirect('/services/' . $s['name'] . '?tab=vhost',
-            '証明書を取得しました。TLS を有効にして vhost を再適用してください。');
+            '証明書を取得しました。「設定」タブで https をオンにしてから、公開設定を反映してください。');
     }
 }

@@ -37,16 +37,16 @@ final class Deployer
     public static function fromUpload(array $service, array $file, array $opts, string $actor): int
     {
         if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-            throw new ValidationException(['アップロードに失敗しました (code ' . ($file['error'] ?? '?') . ')']);
+            throw new ValidationException(['ファイルのアップロードに失敗しました (エラーコード ' . ($file['error'] ?? '?') . ')']);
         }
         if ($file['size'] > (int) Config::get('max_upload')) {
-            throw new ValidationException(['ファイルサイズが上限を超えています']);
+            throw new ValidationException(['ファイルの大きさが上限を超えています']);
         }
         if (!preg_match(self::ARCHIVE_RE, (string) $file['name'])) {
-            throw new ValidationException(['.zip / .tar.gz / .tgz のみ受け付けます']);
+            throw new ValidationException(['.zip / .tar.gz / .tgz の圧縮ファイルだけアップロードできます']);
         }
         if (!is_uploaded_file($file['tmp_name'])) {
-            throw new ValidationException(['不正なアップロードです']);
+            throw new ValidationException(['アップロードされたファイルを受け取れませんでした']);
         }
 
         $dir = rtrim((string) Config::get('upload_dir'), '/');
@@ -89,7 +89,7 @@ final class Deployer
     public static function fromGit(array $service, string $ref, array $opts, string $actor): int
     {
         if (!preg_match('#^[A-Za-z0-9._/-]{1,100}$#', $ref)) {
-            throw new ValidationException(['git ref の形式が不正です']);
+            throw new ValidationException(['ブランチ名 / タグ名 / コミットの書き方が正しくありません']);
         }
         $job = JobRepo::create((int) $service['id'], 'deploy', $actor, 'git:' . $ref);
         AgentClient::call('deploy.start', [
@@ -107,7 +107,7 @@ final class Deployer
     public static function rollback(array $service, string $tag, string $actor): int
     {
         if (ReleaseRepo::find((int) $service['id'], $tag) === null) {
-            throw new ValidationException(['そのリリースは存在しません']);
+            throw new ValidationException(['指定されたバージョンが見つかりません']);
         }
         $job = JobRepo::create((int) $service['id'], 'rollback', $actor, $tag);
         AgentClient::call('deploy.rollback', [

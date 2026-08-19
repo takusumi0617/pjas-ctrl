@@ -39,7 +39,7 @@ final class DeployController
             View::redirect('/deploy?service=' . urlencode($s['name']), $e->getMessage(), 'err');
         }
 
-        View::redirect('/jobs/' . $job, 'デプロイを開始しました');
+        View::redirect('/jobs/' . $job, '公開を開始しました。進み具合はこの画面で確認できます');
     }
 
     public function rollback(array $a): void
@@ -50,6 +50,6 @@ final class DeployController
         } catch (ValidationException|AgentException $e) {
             View::redirect('/services/' . $s['name'] . '?tab=releases', $e->getMessage(), 'err');
         }
-        View::redirect('/jobs/' . $job, 'ロールバックを開始しました');
+        View::redirect('/jobs/' . $job, '前のバージョンへの切り替えを開始しました');
     }
 }

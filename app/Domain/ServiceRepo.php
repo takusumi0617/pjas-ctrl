@@ -39,29 +39,29 @@ final class ServiceRepo
 
         $out['name'] = trim((string) ($in['name'] ?? ''));
         if (!preg_match(self::NAME_RE, $out['name'])) {
-            $err[] = 'サービス名は英小文字・数字・ハイフン (32文字以内、先頭は英数字) です';
+            $err[] = 'サイト名は半角の小文字英字・数字・ハイフンで、32 文字以内にしてください (先頭は英字か数字)';
         }
         if ($isNew && self::find($out['name']) !== null) {
-            $err[] = "サービス名 {$out['name']} は既に存在します";
+            $err[] = "サイト名 {$out['name']} はすでに使われています";
         }
 
         $out['domain'] = strtolower(trim((string) ($in['domain'] ?? '')));
         if (!preg_match(self::DOMAIN_RE, $out['domain'])) {
-            $err[] = 'ドメイン名の形式が不正です';
+            $err[] = '公開アドレス (ドメイン) の形式が正しくありません。例: billing.example.com';
         }
 
         $out['runtime'] = (string) ($in['runtime'] ?? 'php8.3-fpm');
         if (!in_array($out['runtime'], self::RUNTIMES, true)) {
-            $err[] = 'ランタイムが不正です';
+            $err[] = '実行環境の選択が正しくありません';
         }
 
         // docroot はリリース内の相対パスのみ。.. や絶対パスを拒否。
         $out['docroot'] = trim((string) ($in['docroot'] ?? 'public'), '/');
         if ($out['docroot'] !== '' && !preg_match('#^[A-Za-z0-9._/-]+$#', $out['docroot'])) {
-            $err[] = 'DocumentRoot に使えない文字が含まれています';
+            $err[] = '公開するフォルダに使えない文字が含まれています';
         }
         if (str_contains($out['docroot'], '..')) {
-            $err[] = 'DocumentRoot に .. は使えません';
+            $err[] = '公開するフォルダに .. は使えません';
         }
 
         $out['health_path']    = '/' . ltrim((string) ($in['health_path'] ?? '/healthz'), '/');
@@ -73,14 +73,14 @@ final class ServiceRepo
 
         $extra = (string) ($in['extra_conf'] ?? '');
         foreach (VhostRenderer::rejectedDirectives($extra) as $bad) {
-            $err[] = "追加ディレクティブに使えない指定があります: {$bad}";
+            $err[] = "Apache 設定に追加できない指定が含まれています: {$bad}";
         }
         $out['extra_conf'] = $extra;
 
         $shared = array_filter(array_map('trim', preg_split('/[\r\n,]+/', (string) ($in['shared_paths'] ?? ''))));
         foreach ($shared as $p) {
             if (str_starts_with($p, '/') || str_contains($p, '..')) {
-                $err[] = "shared パスが不正です: {$p}";
+                $err[] = "引き継ぐファイル・フォルダの指定が正しくありません (先頭の / と .. は使えません): {$p}";
             }
         }
         $out['shared_paths'] = implode(',', $shared);
@@ -88,7 +88,7 @@ final class ServiceRepo
         $hooks = array_filter(array_map('trim', explode("\n", (string) ($in['hooks'] ?? ''))));
         foreach ($hooks as $h) {
             if (!Hooks::isAllowed($h)) {
-                $err[] = "許可されていないフックコマンドです: {$h}";
+                $err[] = "公開後に自動実行できない処理が含まれています: {$h}";
             }
         }
         $out['hooks'] = implode("\n", $hooks);
