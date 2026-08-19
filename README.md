@@ -36,6 +36,9 @@ tests/             web と agent の vhost 生成一致テスト
 
 ## デプロイの流れ
 
+初回デプロイでは、すでに `/var/www/<name>` にあるファイルを 1 つのリリースとして引き継ぎ、
+`current` をそこへ向けてから新リリースの処理に入る (既存サイトを消さず、切り戻し先にする)。
+
 `releases/<timestamp>` へ展開 → shared リンク → フック → `php -l` / `apachectl configtest`
 → `current` シンボリックリンクを原子的に張り替え → reload → ヘルスチェック
 → 失敗時は直前リリースへ自動復帰 → 保持数を超えたリリースを削除。
@@ -56,6 +59,7 @@ sudo -u www-data bin/pjasctl vhost billing --apply    # 適用
 
 ```bash
 php tests/vhost_parity.php
+php tests/adopt_plan.php
 ```
 
 画面で承認した vhost と agent が実際に書き出す vhost が一致することを確認する。

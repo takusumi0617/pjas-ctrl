@@ -79,6 +79,11 @@ final class JobRepo
             [$state, $detail, in_array($state, ['succeeded', 'failed'], true) ? ($st['finished_at'] ?? date('Y-m-d H:i:s')) : null, $id]
         );
 
+        // 初回デプロイで既存ファイルを引き継いだ場合、そのリリースも履歴に載せる
+        // (切り戻し先として選べるようにするため。release より先に入れて順序を保つ)
+        if (!empty($st['adopted']) && $job['service_id']) {
+            ReleaseRepo::syncFromAgent((int) $job['service_id'], $st['adopted'], (string) $job['actor']);
+        }
         if (!empty($st['release']) && $job['service_id']) {
             ReleaseRepo::syncFromAgent((int) $job['service_id'], $st['release'], (string) $job['actor']);
         }
