@@ -91,3 +91,21 @@ label.inline{display:flex;gap:8px;align-items:center;color:var(--fg);font-size:1
   .main{padding:16px}
   .f2,.kv{grid-template-columns:1fr}
 }
+
+/* 手順形式のフォーム (新規デプロイ) */
+.step{margin-bottom:14px}
+.step-n{width:20px;height:20px;border-radius:999px;background:var(--accent);color:#fff;
+  font-size:12px;display:grid;place-items:center;flex:none}
+.hint{color:var(--muted);font-size:12px;margin-top:6px;line-height:1.55}
+label.inline + .hint{margin-left:24px}
+.flow{list-style:none;counter-reset:flow;margin:0;padding:0}
+.flow li{counter-increment:flow;position:relative;padding:0 0 14px 30px;border-left:2px solid var(--line);
+  margin-left:9px}
+.flow li:last-child{border-left-color:transparent;padding-bottom:0}
+.flow li::before{content:counter(flow);position:absolute;left:-10px;top:0;width:18px;height:18px;
+  border-radius:999px;background:var(--panel-2);border:1px solid var(--line);color:var(--muted);
+  font-size:11px;display:grid;place-items:center}
+.flow li b{display:block;font-size:13px;font-weight:600}
+.flow li span{display:block;color:var(--muted);font-size:12px;line-height:1.55}
+.tech{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.tech summary{color:var(--muted);font-size:12px;cursor:pointer}
