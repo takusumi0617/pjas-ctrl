@@ -119,8 +119,16 @@ sudo -u www-data php bin/pjasctl logs <job-id>
 - 許可リストを広げて任意コマンドをフックに通す（権限分離の前提が崩れる）
 - 失敗を握りつぶして「成功しました」と報告する
 
+## 既存サイトが `/var/www/<name>` に既にある場合
+
+稼働中のサイトを後から取り込むときは、登録 → デプロイ → vhost 反映の順番を間違えると
+403 になったり、DB だけ移行済みでファイルが古いまま、という食い違いが起きる。
+特に `current` という名前の実ディレクトリがあると初回デプロイが必ず失敗する。
+この状況に当たったら、作業前に `references/migration.md` を読むこと。
+
 ## 参照
 
+- `references/migration.md` — 稼働中サイトの取り込み手順と、そのとき起きること
 - `references/pipeline.md` — デプロイ 8 段階の詳細と、どこで失敗すると何が起きるか
 - `references/troubleshooting.md` — 症状別の切り分け手順
 - `references/allowlists.md` — after_deploy フックと vhost 追加ディレクティブの許可リスト
