@@ -134,6 +134,9 @@ sudo -u www-data php bin/pjasctl logs <job-id>
 sudo -u www-data php bin/pjasctl adopt <service>
 ```
 
+導入時にサイトが複数ある場合は、画面の「サイト一覧 → サーバーから一括登録」で
+未登録フォルダをまとめて登録・取り込みできる（CLI には一括登録は無い）。
+
 同じ公開アドレスを使っている管理外の Apache 設定 (`billing.conf` など) も、
 反映時に自動で無効化される（失敗すれば元に戻る）。
 

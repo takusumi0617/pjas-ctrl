@@ -56,6 +56,76 @@ final class ServiceController
         View::redirect('/services/' . $v['name'], "サイト {$v['name']} を登録しました。続けて「公開設定」タブで設定を反映してください。");
     }
 
+    /** 一括登録: www_root を調べて、まだ登録されていないディレクトリを一覧にする */
+    public function importForm(): void
+    {
+        $data = ['title' => 'サイトの一括登録', 'found' => [], 'root' => '', 'agentErr' => null, 'results' => []];
+        try {
+            $r = AgentClient::call('service.scan', [
+                'known' => array_column(ServiceRepo::all(), 'name'),
+            ], Auth::actor());
+            $data['root']  = (string) ($r['root'] ?? '');
+            $data['found'] = (array) ($r['services'] ?? []);
+        } catch (AgentException $e) {
+            $data['agentErr'] = $e->getMessage();
+        }
+        View::render('service_import', $data);
+    }
+
+    /**
+     * 選ばれた行だけを登録する。1 件の失敗で全体を止めず、結果を行ごとに返す
+     * (10 件登録して 1 件だけ名前が不正、というときに残り 9 件を無駄にしないため)。
+     */
+    public function import(): void
+    {
+        $actor    = Auth::actor();
+        $selected = (array) ($_POST['pick'] ?? []);
+        $rows     = (array) ($_POST['row'] ?? []);
+        $adopt    = !empty($_POST['adopt']);
+        $results  = [];
+
+        foreach ($selected as $name) {
+            $in = (array) ($rows[$name] ?? []);
+            $in['name'] = (string) $name;
+
+            try {
+                $v = ServiceRepo::validate($in, true);
+                AgentClient::call('service.create', [
+                    'service' => [
+                        'name'   => $v['name'],
+                        'shared' => array_values(array_filter(explode(',', $v['shared_paths']))),
+                    ],
+                ], $actor);
+                ServiceRepo::create($v);
+                Audit::log($actor, 'service.create', $v['name'], ['domain' => $v['domain'], 'via' => 'import']);
+
+                $note = '登録しました';
+                if ($adopt) {
+                    $s = ServiceRepo::findOrFail($v['name']);
+                    $job = Deployer::adopt($s, $actor);
+                    $note .= " / 既存ファイルの取り込みを開始しました (作業 #{$job})";
+                }
+                $results[] = ['name' => $name, 'ok' => true, 'note' => $note];
+            } catch (ValidationException $e) {
+                $results[] = ['name' => $name, 'ok' => false, 'note' => implode(' / ', $e->errors)];
+            } catch (AgentException|\RuntimeException $e) {
+                $results[] = ['name' => $name, 'ok' => false, 'note' => $e->getMessage()];
+            }
+        }
+
+        $ok = count(array_filter($results, static fn(array $r): bool => $r['ok']));
+        View::render('service_import', [
+            'title'    => 'サイトの一括登録',
+            'root'     => '',
+            'found'    => [],
+            'agentErr' => null,
+            'results'  => $results,
+            'summary'  => count($results) === 0
+                ? '登録するサイトが選ばれていません'
+                : "{$ok} / " . count($results) . ' 件を登録しました',
+        ]);
+    }
+
     public function show(array $a): void
     {
         $s   = ServiceRepo::findOrFail($a['name']);

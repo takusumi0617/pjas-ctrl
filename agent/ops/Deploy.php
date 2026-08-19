@@ -11,6 +11,9 @@ use Pjas\Agentd\Spec;
 
 final class Deploy
 {
+    /** よくある公開フォルダ名。引き継ぎで畳まず、公開フォルダの推測にも使う */
+    public const DOCROOT_NAMES = ['public', 'web', 'htdocs', 'public_html', 'dist'];
+
     public function __construct(
         private array $cfg,
         private Paths $paths,
@@ -416,8 +419,12 @@ final class Deploy
         }
         sort($entries);
 
+        // 中身がひとつのディレクトリだけなら、その中をリリース直下として扱う。
+        // ただし public/ のような「公開フォルダそのもの」の名前は畳まない
+        // (既存 vhost の DocumentRoot が /var/www/<name>/public を指しているとき、
+        //  畳むと docroot の設定と実際の構成がずれるため)
         $flatten = null;
-        if (count($entries) === 1) {
+        if (count($entries) === 1 && !in_array($entries[0], self::DOCROOT_NAMES, true)) {
             $only = $base . '/' . $entries[0];
             if (is_dir($only) && !is_link($only)) {
                 $flatten = $entries[0];

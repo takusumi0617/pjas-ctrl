@@ -83,12 +83,18 @@ build($base, ['releases' => 'dir', 'shared' => 'dir', 'current/index.php' => 'fi
 check('current が実ディレクトリなら引き継ぐ', Deploy::adoptPlan($base),
       ['entries' => ['README.md', 'current'], 'flatten' => null, 'current_link' => null]);
 
+// 4b. 中身が public/ だけなら畳まない (既存 vhost の DocumentRoot とずれるため)
+$base = $root . '/docroot-only';
+build($base, ['releases' => 'dir', 'shared' => 'dir', 'public/index.php' => 'file']);
+check('公開フォルダ名の単一ディレクトリは平坦化しない', Deploy::adoptPlan($base),
+      ['entries' => ['public'], 'flatten' => null, 'current_link' => null]);
+
 // 5. current がサービス内を指すリンク: リンクは外し、指し先は引き継ぐ
 $base = $root . '/linkinside';
 build($base, ['releases' => 'dir', 'shared' => 'dir', 'htdocs/index.php' => 'file']);
 symlink($base . '/htdocs', $base . '/current');
 check('サービス内を指す current リンクは外す', Deploy::adoptPlan($base),
-      ['entries' => ['htdocs'], 'flatten' => 'htdocs', 'current_link' => 'inside']);
+      ['entries' => ['htdocs'], 'flatten' => null, 'current_link' => 'inside']);   // htdocs は公開フォルダ名なので畳まない
 
 // 6. current が外を指すリンク: 判断できないので呼び出し側で中断させる
 $base = $root . '/linkoutside';

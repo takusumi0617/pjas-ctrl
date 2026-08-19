@@ -41,6 +41,8 @@ tests/             web と agent の vhost 生成一致テスト
 `current` をそこへ向けてから新リリースの処理に入る (既存サイトを消さず、切り戻し先にする)。
 新しいファイルをまだ用意していない場合は `pjasctl adopt <service>` (画面では
 「既存ファイルを取り込む」) で、引き継ぎだけを単独で実行できる。
+導入時にサイトが複数ある場合は、画面の「サイト一覧 → サーバーから一括登録」で
+`www_root` 配下の未登録フォルダを一覧にし、まとめて登録・取り込みできる。
 
 `releases/<timestamp>` へ展開 → shared リンク → フック → `php -l` / `apachectl configtest`
 → `current` シンボリックリンクを原子的に張り替え → reload → ヘルスチェック
@@ -65,6 +67,7 @@ sudo -u www-data bin/pjasctl vhost billing --apply    # 適用
 php tests/vhost_parity.php
 php tests/adopt_plan.php
 php tests/vhost_conflicts.php
+php tests/scan_services.php
 ```
 
 画面で承認した vhost と agent が実際に書き出す vhost が一致することを確認する。

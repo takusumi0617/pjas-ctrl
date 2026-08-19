@@ -62,6 +62,7 @@ $tls     = new Tls($cfg, $paths);
 /** op 登録表。ここに無いものは実行できない。 */
 $registry = [
     'ping'            => static fn(array $p): array => ['pong' => true, 'version' => '1.0.0'],
+    'service.scan'    => [$service, 'scan'],
     'service.create'  => [$service, 'create'],
     'service.destroy' => [$service, 'destroy'],
     'deploy.start'    => [$deploy, 'start'],
