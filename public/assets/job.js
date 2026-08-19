@@ -10,7 +10,7 @@ if (meta.dataset.state === 'succeeded' || meta.dataset.state === 'failed') {
 } else {
   log.textContent = '';                       // SSE が先頭から再送するので一旦クリア
   const es = new EventSource('/jobs/' + id + '/stream');
-  streamState.textContent = '追従中…';
+  streamState.textContent = '実行中の内容を表示しています…';
 
   es.onmessage = (e) => {
     log.textContent += e.data + '\n';
@@ -25,10 +25,10 @@ if (meta.dataset.state === 'succeeded' || meta.dataset.state === 'failed') {
   });
   es.addEventListener('timeout', () => {
     es.close();
-    streamState.textContent = 'タイムアウト (再読み込みしてください)';
+    streamState.textContent = '表示が止まりました。ページを再読み込みしてください';
   });
   es.onerror = () => {
-    streamState.textContent = '切断されました';
+    streamState.textContent = '接続が切れました。ページを再読み込みしてください';
     es.close();
   };
 }

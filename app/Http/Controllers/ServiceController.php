@@ -53,7 +53,7 @@ final class ServiceController
 
         ServiceRepo::create($v);
         Audit::log($actor, 'service.create', $v['name'], ['domain' => $v['domain']]);
-        View::redirect('/services/' . $v['name'], "サービス {$v['name']} を作成しました。続けて vhost を適用してください。");
+        View::redirect('/services/' . $v['name'], "サイト {$v['name']} を登録しました。続けて「公開設定」タブで設定を反映してください。");
     }
 
     public function show(array $a): void
@@ -120,7 +120,7 @@ final class ServiceController
         ServiceRepo::update($s['name'], $v);
         Audit::log(Auth::actor(), 'service.update', $s['name'], $v);
         View::redirect('/services/' . $s['name'] . '?tab=settings',
-            '設定を保存しました。vhost に関わる変更は「Apache 設定」タブで適用してください。');
+            '設定を保存しました。公開アドレスなどを変更した場合は「公開設定」タブで反映してください。');
     }
 
     public function health(array $a): void
