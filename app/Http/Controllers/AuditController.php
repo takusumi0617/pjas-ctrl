@@ -27,7 +27,7 @@ final class AuditController
         $sql .= ' ORDER BY id DESC LIMIT 200';
 
         View::render('audit', [
-            'title'  => '監査ログ',
+            'title'  => '操作の記録',
             'rows'   => Db::all($sql, $args),
             'q'      => $q,
             'action' => $action,

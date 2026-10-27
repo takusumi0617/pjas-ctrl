@@ -8,12 +8,22 @@ use Pjas\Support\Labels;
 
 <form method="get" action="/audit" class="row" style="margin-bottom:12px">
   <input name="q" value="<?= View::e($q) ?>" placeholder="ユーザー名 / サイト名で探す" style="max-width:260px">
-  <input name="action" value="<?= View::e($action) ?>" placeholder="操作の種類 (例: service.deploy)" style="max-width:240px">
+  <select name="action" style="max-width:260px">
+    <option value="">すべての操作</option>
+    <?php foreach ([
+        'auth.login', 'auth.logout', 'service.create', 'service.update', 'service.deploy',
+        'service.rollback', 'service.health', 'apache.vhost.apply', 'tls.issue',
+    ] as $actionId): ?>
+      <option value="<?= View::e($actionId) ?>" <?= $action === $actionId ? 'selected' : '' ?>>
+        <?= View::e(Labels::action($actionId)) ?>
+      </option>
+    <?php endforeach; ?>
+  </select>
   <button class="btn">絞り込む</button>
 </form>
 
 <div class="card"><table>
-  <thead><tr><th>日時</th><th>実行した人</th><th>操作</th><th>対象のサイト</th><th>詳細</th><th>結果</th><th>接続元 IP</th></tr></thead>
+  <thead><tr><th>日時</th><th>実行した人</th><th>操作</th><th>対象のサイト</th><th>詳細</th><th>結果</th><th>接続元のアドレス</th></tr></thead>
   <tbody>
   <?php foreach ($rows as $r): ?>
     <tr>

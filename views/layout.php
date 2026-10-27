@@ -4,6 +4,7 @@ use Pjas\Http\Auth;
 use Pjas\Http\Csrf;
 use Pjas\Http\View;
 use Pjas\Support\Config;
+use Pjas\Support\Labels;
 
 $u     = Auth::user();
 $flash = View::flash();
@@ -20,9 +21,9 @@ $on    = static fn(string $p): string => str_starts_with($path, $p) && ($p !== '
 <body>
 <div class="app">
   <aside class="side">
-    <a class="brand" href="/"><span class="dot">PJ</span><span>pjas-ctrl<small>control plane</small></span></a>
-    <div class="sep">運用</div>
-    <a class="nav<?= $path === '/' ? ' on' : '' ?>" href="/">▤ ダッシュボード</a>
+    <a class="brand" href="/"><span class="dot">PJ</span><span>pjas-ctrl<small>サイト管理</small></span></a>
+    <div class="sep">サイト管理</div>
+    <a class="nav<?= $path === '/' ? ' on' : '' ?>" href="/">▤ ホーム</a>
     <a class="nav<?= $on('/services') ?>" href="/services">▣ サイト一覧</a>
     <?php if (Auth::can('operator')): ?>
       <a class="nav<?= $on('/deploy') ?>" href="/deploy">↥ 新しいバージョンを公開</a>
@@ -30,7 +31,7 @@ $on    = static fn(string $p): string => str_starts_with($path, $p) && ($p !== '
       <a class="nav<?= $on('/audit') ?>" href="/audit">☰ 操作の記録</a>
     <?php endif; ?>
     <div class="foot">
-      <?= View::e($u['email'] ?? '') ?> <span class="tag t-mut"><?= View::e($u['role'] ?? '') ?></span><br>
+      <?= View::e($u['email'] ?? '') ?> <span class="tag t-mut"><?= View::e(Labels::role((string) ($u['role'] ?? ''))) ?></span><br>
       公開機能: <?= AgentClient::alive()
         ? '<span class="tag t-ok">利用できます</span>'
         : '<span class="tag t-err">利用できません</span>' ?>

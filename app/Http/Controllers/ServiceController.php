@@ -20,12 +20,12 @@ final class ServiceController
 {
     public function index(): void
     {
-        View::render('services', ['title' => 'サービス', 'services' => ServiceRepo::all()]);
+        View::render('services', ['title' => 'サイト一覧', 'services' => ServiceRepo::all()]);
     }
 
     public function newForm(): void
     {
-        View::render('service_new', ['title' => 'サービス登録', 'errors' => [], 'in' => []]);
+        View::render('service_new', ['title' => 'サイト登録', 'errors' => [], 'in' => []]);
     }
 
     public function create(): void
@@ -33,7 +33,7 @@ final class ServiceController
         try {
             $v = ServiceRepo::validate($_POST, true);
         } catch (ValidationException $e) {
-            View::render('service_new', ['title' => 'サービス登録', 'errors' => $e->errors, 'in' => $_POST]);
+            View::render('service_new', ['title' => 'サイト登録', 'errors' => $e->errors, 'in' => $_POST]);
             return;
         }
 
@@ -47,7 +47,7 @@ final class ServiceController
                 ],
             ], $actor);
         } catch (AgentException $e) {
-            View::render('service_new', ['title' => 'サービス登録', 'errors' => [$e->getMessage()], 'in' => $_POST]);
+            View::render('service_new', ['title' => 'サイト登録', 'errors' => [$e->getMessage()], 'in' => $_POST]);
             return;
         }
 
@@ -201,7 +201,8 @@ final class ServiceController
         try {
             $r = AgentClient::call('health.check', ['service' => Deployer::spec($s)], Auth::actor());
             ServiceRepo::setState((int) $s['id'], !empty($r['ok']) ? 'healthy' : 'unhealthy');
-            $msg = sprintf('%s%s → HTTP %s', $s['domain'], $s['health_path'], $r['status'] ?? '?');
+            $msg = sprintf('%s%s の確認結果: %s', $s['domain'], $s['health_path'], !empty($r['ok']) ? '正常' : '確認が必要')
+                . '（応答番号 ' . ($r['status'] ?? '?') . '）';
             View::redirect('/services/' . $s['name'], $msg, !empty($r['ok']) ? 'ok' : 'err');
         } catch (AgentException $e) {
             View::redirect('/services/' . $s['name'], $e->getMessage(), 'err');

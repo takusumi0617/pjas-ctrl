@@ -58,11 +58,11 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
       <dl class="kv">
         <dt>公開アドレス</dt><dd class="mono"><?= View::e($s['domain']) ?></dd>
         <dt>公開するフォルダ</dt><dd class="mono">current/<?= View::e($s['docroot']) ?></dd>
-        <dt>実行環境</dt><dd><?= View::e(Labels::runtime((string) $s['runtime'])) ?></dd>
+        <dt>サイトの種類</dt><dd><?= View::e(Labels::runtime((string) $s['runtime'])) ?></dd>
         <dt>動作確認</dt><dd><span class="mono"><?= View::e($s['health_path']) ?></span> を開いて
             <span class="mono"><?= (int) $s['health_status'] ?></span> が返れば正常
             <div class="muted">最終チェック: <?= View::e((string) ($s['checked_at'] ?? 'まだ確認していません')) ?></div></dd>
-        <dt>常時 SSL (https)</dt><dd><?= $s['tls'] ? 'あり' : 'なし' ?></dd>
+        <dt>通信の暗号化</dt><dd><?= $s['tls'] ? 'https を使用' : '使用しない' ?></dd>
         <dt>残す過去バージョン</dt><dd><?= (int) $s['keep_releases'] ?> 件</dd>
         <dt>引き継ぐファイル</dt><dd class="mono"><?= View::e($s['shared_paths']) ?></dd>
         <dt>公開後に自動実行</dt><dd class="mono"><?= nl2br(View::e($s['hooks'] ?: '—')) ?></dd>
@@ -133,11 +133,11 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
     <?php endif; ?>
   </div>
   <div class="f2">
-    <div class="card"><div class="card-h">これから反映される設定
+    <div class="card"><div class="card-h">これから使うサーバー設定（詳しい人向け）
       <span class="spacer"></span><span class="mono muted"><?= View::e('/etc/apache2/sites-available/pjas-' . $s['name'] . '.conf') ?></span></div>
       <div class="card-b"><pre><?= View::e($rendered) ?></pre></div>
     </div>
-    <div class="card"><div class="card-h">いまの設定との違い
+    <div class="card"><div class="card-h">現在との変更点（詳しい人向け）
       <?= trim($live) === trim($rendered)
             ? '<span class="tag t-ok">違いはありません</span>'
             : '<span class="tag t-warn">まだ反映していない変更があります</span>' ?></div>
@@ -149,7 +149,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
   <?php if (Auth::can('owner')): ?>
     <div class="row" style="margin-top:16px">
       <form method="post" action="/services/<?= $name ?>/tls"><?= Csrf::field() ?>
-        <button class="btn">https 用の証明書を取得・更新する</button></form>
+        <button class="btn">安全な通信に必要な証明書を用意する</button></form>
       <span class="spacer"></span>
       <form method="post" action="/services/<?= $name ?>/vhost"
             onsubmit="return confirm('この設定を反映します。サイトを止めずに切り替わります。よろしいですか?')">
@@ -162,7 +162,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
     <div class="card-h"><?= View::e($wwwRoot . '/' . $s['name'] . '/' . ($listing['path'] ?? '')) ?>
       <span class="spacer"></span><span class="muted" style="font-size:12px">公開済みバージョンのファイルは閲覧のみ (変更できません)</span></div>
     <table>
-      <thead><tr><th>名前</th><th>種類</th><th>サイズ (バイト)</th><th>アクセス権</th><th>更新日時</th></tr></thead>
+      <thead><tr><th>名前</th><th>種類</th><th>サイズ (バイト)</th><th>変更できる人</th><th>更新日時</th></tr></thead>
       <tbody>
       <?php if (!empty($listing['path'])): ?>
         <tr><td><a href="/services/<?= $name ?>?tab=files&path=<?= urlencode(dirname((string) $listing['path']) === '.' ? '' : dirname((string) $listing['path'])) ?>">..</a></td>
@@ -217,16 +217,16 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
   <div class="sub">このサイトの設定です。公開アドレスや公開フォルダを変えたときは、保存したあと
     「公開設定」タブで反映してください。</div>
   <?php if (!Auth::can('owner')): ?>
-    <div class="note">設定を変更できるのは owner 権限の利用者だけです。内容の確認のみできます。</div>
+    <div class="note">設定を変更できるのは「すべて管理できる」権限の利用者だけです。現在は内容の確認のみできます。</div>
   <?php endif; ?>
   <form method="post" action="/services/<?= $name ?>/settings">
     <?= Csrf::field() ?>
     <div class="card step"><div class="card-h">基本</div><div class="card-b">
-      <div class="field"><label>公開アドレス (ドメイン)</label>
+      <div class="field"><label>ブラウザで開くアドレス</label>
         <input name="domain" value="<?= View::e($s['domain']) ?>">
         <div class="hint">利用者がブラウザで開くアドレスです。変更後は「公開設定」タブで反映が必要です。</div></div>
 
-      <div class="field"><label>実行環境</label><select name="runtime">
+      <div class="field"><label>サイトの種類</label><select name="runtime">
         <?php foreach (ServiceRepo::RUNTIMES as $rt): ?>
           <option value="<?= View::e($rt) ?>" <?= $s['runtime'] === $rt ? 'selected' : '' ?>>
             <?= View::e(Labels::runtime($rt)) ?></option>
@@ -252,7 +252,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
         <div class="hint">WordPress など、URL の書き換えルールが必要なアプリでは「URL の書き換えだけ許可する」を選びます。</div></div>
 
       <div class="field"><label class="inline"><input type="checkbox" name="tls" <?= $s['tls'] ? 'checked' : '' ?>>
-        https で公開する (常時 SSL)</label>
+        通信を暗号化して公開する（https）</label>
         <div class="hint">先に「公開設定」タブで証明書を取得してからオンにしてください。</div></div>
     </div></div>
 
@@ -261,7 +261,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
         <input name="health_path" value="<?= View::e($s['health_path']) ?>">
         <div class="hint">公開のたびに、このページを開いてサイトが正常に動いているか自動で確認します。</div></div>
 
-      <div class="field"><label>正常とみなす応答コード</label>
+      <div class="field"><label>正常なときに返る番号</label>
         <input name="health_status" type="number" value="<?= (int) $s['health_status'] ?>">
         <div class="hint">通常は <span class="mono">200</span>（正常）のままで大丈夫です。</div></div>
 

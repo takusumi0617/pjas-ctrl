@@ -15,7 +15,7 @@ final class DeployController
     public function form(): void
     {
         View::render('deploy', [
-            'title'    => '新規デプロイ',
+            'title'    => '新しいバージョンを公開',
             'services' => ServiceRepo::all(),
             'selected' => (string) ($_GET['service'] ?? ''),
         ]);

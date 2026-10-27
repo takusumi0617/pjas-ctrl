@@ -26,7 +26,7 @@ final class ServiceRepo
     {
         $s = self::find($name);
         if ($s === null) {
-            throw new \RuntimeException("サービスがありません: {$name}");
+            throw new \RuntimeException("サイトが見つかりません: {$name}");
         }
         return $s;
     }
@@ -47,12 +47,12 @@ final class ServiceRepo
 
         $out['domain'] = strtolower(trim((string) ($in['domain'] ?? '')));
         if (!preg_match(self::DOMAIN_RE, $out['domain'])) {
-            $err[] = '公開アドレス (ドメイン) の形式が正しくありません。例: billing.example.com';
+            $err[] = 'ブラウザで開くアドレスの形式が正しくありません。例: billing.example.com';
         }
 
         $out['runtime'] = (string) ($in['runtime'] ?? 'php8.3-fpm');
         if (!in_array($out['runtime'], self::RUNTIMES, true)) {
-            $err[] = '実行環境の選択が正しくありません';
+            $err[] = 'サイトの種類を正しく選んでください';
         }
 
         // docroot はリリース内の相対パスのみ。.. や絶対パスを拒否。

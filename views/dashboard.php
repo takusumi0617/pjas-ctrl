@@ -11,11 +11,11 @@ $jobTag = static function (string $s): string {
     return '<span class="tag ' . $cls . '">' . Labels::jobState($s) . '</span>';
 };
 ?>
-<h1>ダッシュボード</h1>
+<h1>ホーム</h1>
 <div class="sub">この画面で管理しているサイトは <?= (int) $counts['total'] ?> 件です</div>
 
 <?php if (!$agentOk): ?>
-  <div class="note err flash">サーバー側の作業プログラムに接続できないため、いまは公開 (デプロイ) や
+  <div class="note err flash">公開作業を行う機能に接続できないため、いまは新しいバージョンの公開や
     公開設定の変更ができません。サーバー管理者に連絡してください。
     <br><span class="muted">確認コマンド: <span class="mono">systemctl status pjas-agentd</span></span></div>
 <?php endif; ?>
@@ -30,7 +30,7 @@ $jobTag = static function (string $s): string {
 <div class="card" style="margin-bottom:18px">
   <div class="card-h">サイトの状態<span class="spacer"></span><a class="btn sm" href="/services">すべて表示</a></div>
   <table>
-    <thead><tr><th>サイト</th><th>公開アドレス</th><th>実行環境</th><th>状態</th><th>最終チェック</th></tr></thead>
+    <thead><tr><th>サイト</th><th>ブラウザで開くアドレス</th><th>サイトの種類</th><th>状態</th><th>最後に確認した日時</th></tr></thead>
     <tbody>
     <?php foreach (array_slice($services, 0, 8) as $s): ?>
       <tr>

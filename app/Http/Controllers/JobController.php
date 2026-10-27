@@ -14,14 +14,14 @@ final class JobController
         $job = JobRepo::sync((int) $a['id']);
         if ($job === null) {
             http_response_code(404);
-            View::render('error', ['title' => '404', 'message' => 'ジョブが見つかりません']);
+            View::render('error', ['title' => '見つかりません', 'message' => '指定された作業の記録が見つかりません']);
             return;
         }
         $svc = $job['service_id']
             ? Db::one('SELECT name FROM services WHERE id = ?', [$job['service_id']])['name'] ?? ''
             : '';
         View::render('job', [
-            'title'   => "ジョブ #{$job['id']}",
+            'title'   => "作業 #{$job['id']}",
             'job'     => $job,
             'service' => $svc,
             'log'     => JobRepo::log((int) $job['id']),

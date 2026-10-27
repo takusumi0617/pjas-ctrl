@@ -2,7 +2,7 @@
 use Pjas\Http\Csrf;
 use Pjas\Http\View;
 ?>
-<h1>新規デプロイ</h1>
+<h1>新しいバージョンを公開</h1>
 <div class="sub">新しいバージョンのファイルを公開します。公開先はいったん別の場所に用意してから最後に切り替えるので、
 途中で失敗してもいまのサイトは止まりません。</div>
 
@@ -13,7 +13,7 @@ use Pjas\Http\View;
     <div class="card-h"><span class="step-n">1</span>どのサイトを更新しますか</div>
     <div class="card-b">
       <div class="field">
-        <label>サイト (サービス)</label>
+        <label>公開先のサイト</label>
         <select name="service" required>
           <?php foreach ($services as $s): ?>
             <option value="<?= View::e($s['name']) ?>" <?= $selected === $s['name'] ? 'selected' : '' ?>>
@@ -21,7 +21,7 @@ use Pjas\Http\View;
             </option>
           <?php endforeach; ?>
         </select>
-        <div class="hint">更新したいサイトを選びます。ここに無い場合は先に「サービス」から追加してください。</div>
+        <div class="hint">更新したいサイトを選びます。ここに無い場合は先に「サイト一覧」から登録してください。</div>
       </div>
     </div>
   </div>
@@ -33,7 +33,7 @@ use Pjas\Http\View;
         <label>ファイルの取得元</label>
         <select name="source" id="source">
           <option value="upload">パソコンから圧縮ファイルをアップロードする (.zip / .tar.gz)</option>
-          <option value="git">Git から取得する (ブランチ・タグ・コミットを指定)</option>
+          <option value="git">登録済みのソースコード管理から取得する（Git）</option>
         </select>
         <div class="hint">迷ったら「アップロード」を選んでください。</div>
       </div>
@@ -46,10 +46,11 @@ use Pjas\Http\View;
       </div>
 
       <div class="field" id="f-git" hidden>
-        <label>取得する場所 (ブランチ名 / タグ名 / コミット)</label>
+        <label>取得するバージョン</label>
         <input name="git_ref" placeholder="main">
         <div class="hint">例: <span class="mono">main</span>、<span class="mono">v1.8.2</span>。
-          取得元のリポジトリは管理者が登録済みのものに固定されています。</div>
+          「main」などの開発ライン名、または「v1.8.2」などのバージョン名を入力します。
+          取得元はサーバー管理者があらかじめ登録した場所に限られます。</div>
       </div>
 
       <div class="field">
@@ -81,7 +82,7 @@ use Pjas\Http\View;
   <div class="card step">
     <div class="card-h"><span class="step-n">4</span>内容を確認して実行</div>
     <div class="card-b">
-      <p class="muted" style="margin:0 0 12px">「デプロイ実行」を押すと、次の順番で自動的に進みます。
+      <p class="muted" style="margin:0 0 12px">「公開を開始」を押すと、次の順番で自動的に進みます。
         進み具合は次の画面でそのまま確認できます。</p>
       <ol class="flow">
         <li><b>ファイルを安全チェックする</b><span>種類・サイズを確認し、不正なファイルが混じっていないか調べます</span></li>
@@ -115,7 +116,7 @@ use Pjas\Http\View;
     </div>
   </div>
 
-  <div class="row" style="margin-top:16px"><span class="spacer"></span><button class="btn p">デプロイ実行</button></div>
+  <div class="row" style="margin-top:16px"><span class="spacer"></span><button class="btn p">公開を開始</button></div>
 </form>
 
 <script src="/assets/deploy.js" defer></script>

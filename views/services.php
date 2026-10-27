@@ -14,7 +14,7 @@ use Pjas\Support\Labels;
 
 <div class="card">
   <table>
-    <thead><tr><th>サイト</th><th>公開アドレス</th><th>実行環境</th><th>公開中のバージョン</th><th>常時 SSL (https)</th><th>状態</th></tr></thead>
+    <thead><tr><th>サイト</th><th>ブラウザで開くアドレス</th><th>サイトの種類</th><th>公開中のバージョン</th><th>通信の暗号化</th><th>状態</th></tr></thead>
     <tbody>
     <?php foreach ($services as $s):
         $cur = ReleaseRepo::current((int) $s['id']); ?>
@@ -24,7 +24,7 @@ use Pjas\Support\Labels;
         <td class="mono"><?= View::e($s['domain']) ?></td>
         <td><?= View::e(Labels::runtime((string) $s['runtime'])) ?></td>
         <td class="mono"><?= View::e($cur ? ($cur['label'] ?: $cur['tag']) : '—') ?></td>
-        <td><?= $s['tls'] ? '<span class="tag t-ok">あり</span>' : '<span class="tag t-mut">なし</span>' ?></td>
+        <td><?= $s['tls'] ? '<span class="tag t-ok">https を使用</span>' : '<span class="tag t-mut">使用しない</span>' ?></td>
         <td><?= match ((string) $s['state']) {
                 'healthy'   => '<span class="tag t-ok">正常</span>',
                 'unhealthy' => '<span class="tag t-err">異常</span>',

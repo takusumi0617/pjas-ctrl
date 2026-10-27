@@ -61,8 +61,19 @@ final class Labels
     public static function runtime(string $v): string
     {
         return $v === 'static'
-            ? 'HTML など静的ファイルのみ (static)'
-            : 'PHP ' . str_replace(['php', '-fpm'], '', $v) . ' (' . $v . ')';
+            ? 'HTML・画像だけのサイト'
+            : 'PHP を使うサイト（PHP ' . str_replace(['php', '-fpm'], '', $v) . '）';
+    }
+
+    /** 利用者の権限 */
+    public static function role(string $v): string
+    {
+        return match ($v) {
+            'owner'    => 'すべて管理できる',
+            'operator' => '公開作業ができる',
+            'viewer'   => '見るだけ',
+            default    => $v,
+        };
     }
 
     /** 監査ログの操作名 */
@@ -73,7 +84,7 @@ final class Labels
             'auth.logout'        => 'ログアウト',
             'service.create'     => 'サイトの登録',
             'service.update'     => 'サイト設定の変更',
-            'service.deploy'     => '公開 (デプロイ)',
+            'service.deploy'     => '新しいバージョンを公開',
             'service.rollback'   => '前のバージョンに戻す',
             'service.adopt'      => '既存ファイルの取り込み',
             'service.health'     => '動作確認',

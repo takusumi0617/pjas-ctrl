@@ -29,7 +29,7 @@ final class DashboardController
         ];
 
         View::render('dashboard', [
-            'title'    => 'ダッシュボード',
+            'title'    => 'ホーム',
             'services' => $services,
             'jobs'     => $jobs,
             'counts'   => $counts,

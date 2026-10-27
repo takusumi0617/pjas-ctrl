@@ -26,11 +26,11 @@ $v = static fn(string $k, string $d = '') => View::e((string) ($in[$k] ?? $d));
         <div class="hint">管理画面と保存先フォルダに使う名前です（半角英数字）。
           <b>あとから変更できません</b>ので、分かりやすい名前を付けてください。</div></div>
 
-      <div class="field"><label>公開アドレス (ドメイン)</label>
+      <div class="field"><label>ブラウザで開くアドレス</label>
         <input name="domain" value="<?= $v('domain') ?>" placeholder="billing.example.com" required>
-        <div class="hint">利用者がブラウザで開くアドレスです。事前にこのサーバーを指すよう DNS の設定が必要です。</div></div>
+        <div class="hint">例: <span class="mono">billing.example.com</span>。このアドレスからサーバーへつながるように、事前にドメイン名（DNS）の設定が必要です。</div></div>
 
-      <div class="field"><label>実行環境</label>
+      <div class="field"><label>サイトの種類</label>
         <select name="runtime">
           <?php foreach (ServiceRepo::RUNTIMES as $rt): ?>
             <option value="<?= View::e($rt) ?>" <?= ($in['runtime'] ?? 'php8.3-fpm') === $rt ? 'selected' : '' ?>>
@@ -45,8 +45,8 @@ $v = static fn(string $k, string $d = '') => View::e((string) ($in[$k] ?? $d));
           多くの PHP アプリでは <span class="mono">public</span> のままで大丈夫です。全体を公開する場合は空欄にします。</div></div>
 
       <div class="field"><label class="inline"><input type="checkbox" name="tls" <?= !empty($in['tls']) ? 'checked' : '' ?>>
-        https で公開する (常時 SSL)</label>
-        <div class="hint">証明書がまだ無い場合は、いったんオフのまま登録し、
+        通信を暗号化して公開する（https）</label>
+        <div class="hint">安全な通信に必要な証明書がまだ無い場合は、いったんオフのまま登録し、
           サイト画面の「公開設定」から証明書を取得してからオンにしてください。</div></div>
     </div>
   </div>
@@ -59,7 +59,7 @@ $v = static fn(string $k, string $d = '') => View::e((string) ($in[$k] ?? $d));
         <div class="hint">公開のたびに、このページを開いてサイトが正常に動いているかを自動で確認します。
           専用のページが無ければ <span class="mono">/</span> でも構いません。</div></div>
 
-      <div class="field"><label>正常とみなす応答コード</label>
+      <div class="field"><label>正常なときに返る番号</label>
         <input name="health_status" type="number" value="<?= $v('health_status', '200') ?>">
         <div class="hint">上のページを開いたときに返ってくるはずの番号です。通常は <span class="mono">200</span>（正常）のままで大丈夫です。</div></div>
 
