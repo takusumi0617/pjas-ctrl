@@ -28,7 +28,7 @@ return [
     // git デプロイを使う場合のみ。サービス名 => リポジトリ URL の固定表。
     // ここに無いサービスは git デプロイを拒否する。
     'git_repos'     => [
-        // 'billing' => 'git@github.com:example/billing.git',
+        'pjas-memo' => 'https://github.com/takusumi0617/pjas-memo.git',
     ],
 
     'hook_timeout'   => 300,
