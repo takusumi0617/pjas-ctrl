@@ -33,7 +33,7 @@ $v = static fn(string $k, string $d = '') => View::e((string) ($in[$k] ?? $d));
       <div class="field"><label>サイトの種類</label>
         <select name="runtime">
           <?php foreach (ServiceRepo::RUNTIMES as $rt): ?>
-            <option value="<?= View::e($rt) ?>" <?= ($in['runtime'] ?? 'php8.3-fpm') === $rt ? 'selected' : '' ?>>
+            <option value="<?= View::e($rt) ?>" <?= ($in['runtime'] ?? 'php8.4-fpm') === $rt ? 'selected' : '' ?>>
               <?= View::e(Labels::runtime($rt)) ?></option>
           <?php endforeach; ?>
         </select>

@@ -23,7 +23,7 @@
 ```
                  ┌─────────────────────────────┐
    運用者 ──────▶│  pjas-ctrl Web UI (ctrl.pjas.example)
-                 │  PHP 8.3 / セッション + RBAC │
+                 │  PHP 8.4 / セッション + RBAC │
                  └──────────────┬──────────────┘
                                 │ HTTP(S) 内部 API
                  ┌──────────────▼──────────────┐
@@ -75,7 +75,7 @@
 ```yaml
 name: billing
 domain: billing.pjas.example
-runtime: php8.3-fpm          # php8.3-fpm | static
+runtime: php8.4-fpm          # php8.4-fpm | static
 docroot: public              # リリース内の DocumentRoot
 shared:
   - .env

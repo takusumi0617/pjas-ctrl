@@ -9,17 +9,18 @@ final class ServiceRepo
 {
     public const NAME_RE   = '/^[a-z0-9][a-z0-9-]{0,31}$/';
     public const DOMAIN_RE = '/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i';
-    public const RUNTIMES  = ['php8.3-fpm', 'php8.2-fpm', 'php8.1-fpm', 'static'];
+    public const RUNTIMES  = ['php8.4-fpm', 'php8.3-fpm', 'php8.2-fpm', 'php8.1-fpm', 'static'];
 
     /** @return array<int,array<string,mixed>> */
     public static function all(): array
     {
-        return Db::all('SELECT * FROM services ORDER BY name');
+        return array_map(self::withSafeDefaults(...), Db::all('SELECT * FROM services ORDER BY name'));
     }
 
     public static function find(string $name): ?array
     {
-        return Db::one('SELECT * FROM services WHERE name = ?', [$name]);
+        $service = Db::one('SELECT * FROM services WHERE name = ?', [$name]);
+        return $service === null ? null : self::withSafeDefaults($service);
     }
 
     public static function findOrFail(string $name): array
@@ -50,7 +51,7 @@ final class ServiceRepo
             $err[] = 'ブラウザで開くアドレスの形式が正しくありません。例: billing.example.com';
         }
 
-        $out['runtime'] = (string) ($in['runtime'] ?? 'php8.3-fpm');
+        $out['runtime'] = (string) ($in['runtime'] ?? 'php8.4-fpm');
         if (!in_array($out['runtime'], self::RUNTIMES, true)) {
             $err[] = 'サイトの種類を正しく選んでください';
         }
@@ -67,8 +68,9 @@ final class ServiceRepo
         $out['health_path']    = '/' . ltrim((string) ($in['health_path'] ?? '/healthz'), '/');
         $out['health_status']  = max(100, min(599, (int) ($in['health_status'] ?? 200)));
         $out['keep_releases']  = max(1, min(50, (int) ($in['keep_releases'] ?? 5)));
-        $out['allow_override'] = in_array($in['allow_override'] ?? 'None', ['None', 'FileInfo', 'All'], true)
-            ? (string) $in['allow_override'] : 'None';
+        $allowOverride = (string) ($in['allow_override'] ?? 'None');
+        $out['allow_override'] = in_array($allowOverride, ['None', 'FileInfo', 'All'], true)
+            ? $allowOverride : 'None';
         $out['tls']            = !empty($in['tls']) ? 1 : 0;
 
         $extra = (string) ($in['extra_conf'] ?? '');
@@ -126,5 +128,14 @@ final class ServiceRepo
     public static function setState(int $id, string $state): void
     {
         Db::run("UPDATE services SET state = ?, checked_at = datetime('now') WHERE id = ?", [$state, $id]);
+    }
+
+    /** 過去の不正な保存値をroot側へ渡さない。次回の設定保存時にDBも正常化される。 */
+    private static function withSafeDefaults(array $service): array
+    {
+        if (!in_array($service['allow_override'] ?? null, ['None', 'FileInfo', 'All'], true)) {
+            $service['allow_override'] = 'None';
+        }
+        return $service;
     }
 }

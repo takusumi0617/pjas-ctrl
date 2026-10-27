@@ -118,7 +118,7 @@ final class Service
         $dir = $plan['flatten'] !== null ? $base . '/' . $plan['flatten'] : $base;
         $r = Proc::run(['/usr/bin/find', $dir, '-maxdepth', '3', '-name', '*.php', '-type', 'f',
                         '-not', '-path', '*/vendor/*', '-print', '-quit'], null, 20);
-        return trim($r['out']) !== '' ? 'php8.3-fpm' : 'static';
+        return trim($r['out']) !== '' ? 'php8.4-fpm' : 'static';
     }
 
     /** 既存の Apache 設定から、このディレクトリを公開しているドメインを拾う。 */

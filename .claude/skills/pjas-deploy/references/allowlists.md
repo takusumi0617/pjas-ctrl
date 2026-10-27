@@ -39,7 +39,7 @@ vhost の骨格はテンプレート生成に任せる設計になっている�
 ## 実行環境 (`ServiceRepo::RUNTIMES`)
 
 ```
-php8.3-fpm, php8.2-fpm, php8.1-fpm, static
+php8.4-fpm, php8.3-fpm, php8.2-fpm, php8.1-fpm, static
 ```
 
 ## git デプロイ

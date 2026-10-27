@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS services (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   name           TEXT NOT NULL UNIQUE,            -- = /var/www/<name>
   domain         TEXT NOT NULL,
-  runtime        TEXT NOT NULL DEFAULT 'php8.3-fpm', -- php*-fpm | static
+  runtime        TEXT NOT NULL DEFAULT 'php8.4-fpm', -- php*-fpm | static
   docroot        TEXT NOT NULL DEFAULT 'public',
   health_path    TEXT NOT NULL DEFAULT '/healthz',
   health_status  INTEGER NOT NULL DEFAULT 200,

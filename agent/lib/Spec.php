@@ -11,7 +11,7 @@ namespace Pjas\Agentd;
  */
 final class Spec
 {
-    public const RUNTIMES = ['php8.3-fpm', 'php8.2-fpm', 'php8.1-fpm', 'static'];
+    public const RUNTIMES = ['php8.4-fpm', 'php8.3-fpm', 'php8.2-fpm', 'php8.1-fpm', 'static'];
 
     public const ALLOWED_DIRECTIVES = [
         'Header', 'RequestHeader', 'Redirect', 'RedirectMatch',
@@ -111,7 +111,7 @@ final class Spec
         if (!is_array($s)) {
             throw new OpException('service パラメータがありません');
         }
-        $runtime = (string) ($s['runtime'] ?? 'php8.3-fpm');
+        $runtime = (string) ($s['runtime'] ?? 'php8.4-fpm');
         if (!in_array($runtime, self::RUNTIMES, true)) {
             throw new OpException("ランタイムが不正です: {$runtime}");
         }

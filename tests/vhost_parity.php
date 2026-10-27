@@ -24,7 +24,7 @@ use Pjas\Agentd\Spec;
 use Pjas\Domain\VhostRenderer;
 
 $cases = [
-    ['name' => 'billing', 'domain' => 'billing.example.com', 'runtime' => 'php8.3-fpm',
+    ['name' => 'billing', 'domain' => 'billing.example.com', 'runtime' => 'php8.4-fpm',
      'docroot' => 'public', 'allow_override' => 'FileInfo', 'extra_conf' => 'Header always set X-Frame-Options DENY',
      'tls' => 1],
     ['name' => 'docs', 'domain' => 'docs.example.com', 'runtime' => 'static',

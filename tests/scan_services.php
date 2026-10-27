@@ -83,7 +83,7 @@ function check(string $label, mixed $got, mixed $want): void
 check('登録済みとシンボリックリンクを除いた候補が並ぶ', array_keys($by),
       ['Legacy.Site', 'billing', 'docs', 'empty', 'managed', 'nested']);
 
-check('PHP アプリは php8.3-fpm と推測する', $by['billing']['runtime'], 'php8.3-fpm');
+check('PHP アプリは php8.4-fpm と推測する', $by['billing']['runtime'], 'php8.4-fpm');
 check('公開フォルダに public を見つける', $by['billing']['docroot'], 'public');
 check('既存 vhost から公開アドレスを拾う (大小文字と末尾ドットは正規化)',
       $by['billing']['domain'], 'billing.example.com');

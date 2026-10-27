@@ -2,10 +2,16 @@
 
 ## 1. 必要パッケージ
 
+Ubuntu 24.04 で PHP 8.4 を使う場合は、PHP パッケージ用 PPA を追加する。
+
 ```bash
-sudo apt install apache2 php8.3-fpm php8.3-cli php8.3-sqlite3 unzip curl util-linux certbot git
+sudo apt update
+sudo apt install -y software-properties-common ca-certificates
+sudo add-apt-repository -y ppa:ondrej/php
+sudo apt update
+sudo apt install apache2 php8.4-fpm php8.4-cli php8.4-sqlite3 php8.4-mbstring unzip curl util-linux certbot git
 sudo a2enmod rewrite proxy_fcgi setenvif ssl headers
-sudo a2enconf php8.3-fpm
+sudo a2enconf php8.4-fpm
 ```
 
 ## 2. 配置とユーザー
@@ -65,7 +71,7 @@ sudo a2ensite pjas-ctrl && sudo apachectl configtest && sudo systemctl reload ap
 php-fpm 側の推奨設定 (アップロードと SSE のため):
 
 ```ini
-; /etc/php/8.3/fpm/conf.d/99-pjas-ctrl.ini
+; /etc/php/8.4/fpm/conf.d/99-pjas-ctrl.ini
 upload_max_filesize = 512M
 post_max_size = 520M
 max_execution_time = 0        ; SSE ストリーム用 (fastcgi_read_timeout も伸ばす)
