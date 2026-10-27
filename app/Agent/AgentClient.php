@@ -16,14 +16,13 @@ final class AgentClient
     /** agent 側 Registry と一致する許可 op。ここに無い op は送信前に落とす。 */
     public const OPS = [
         'ping',
-        'service.create', 'service.destroy',
-        'deploy.start', 'deploy.rollback',
+        'service.scan', 'service.create', 'service.destroy',
+        'deploy.start', 'deploy.rollback', 'deploy.adopt',
         'apache.render', 'apache.apply', 'apache.reload',
         'fpm.reload',
         'tls.issue', 'tls.renew',
         'fs.list', 'fs.read', 'fs.write',
         'health.check',
-        'job.status',
     ];
 
     /**
