@@ -42,6 +42,18 @@ final class DeployController
         View::redirect('/jobs/' . $job, '公開を開始しました。進み具合はこの画面で確認できます');
     }
 
+    /** 既存ファイルの取り込み (導入時の移行用。新しいアーカイブは要らない) */
+    public function adopt(array $a): void
+    {
+        $s = ServiceRepo::findOrFail($a['name']);
+        try {
+            $job = Deployer::adopt($s, Auth::actor());
+        } catch (ValidationException|AgentException $e) {
+            View::redirect('/services/' . $s['name'], $e->getMessage(), 'err');
+        }
+        View::redirect('/jobs/' . $job, '既存ファイルの取り込みを開始しました');
+    }
+
     public function rollback(array $a): void
     {
         $s = ServiceRepo::findOrFail($a['name']);

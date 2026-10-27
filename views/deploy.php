@@ -94,9 +94,14 @@ use Pjas\Http\View;
         <li><b>古いバージョンを片づける</b><span>設定した数だけ残して、それより古いものを削除します</span></li>
       </ol>
 
+      <p class="hint" style="margin:12px 0 0">初めてこのサイトを公開する場合で、すでにサーバーにファイルが置かれているときは、
+        その中身を「引き継ぎ」というひとつのバージョンとして自動的に取り込みます。既存のファイルは削除されず、
+        うまくいかなかったときはそのバージョンに戻せます。</p>
+
       <details class="tech">
         <summary>技術的な内容を表示</summary>
         <ol class="muted" style="font-size:13px;padding-left:20px;margin:8px 0 0">
+          <li>初回のみ: 既存ファイルを releases/&lt;tag-1s&gt; へ引き継ぎ、current を張って自動ロールバック先にする</li>
           <li>アーカイブ検疫 (サイズ / 拡張子 / パストラバーサル / SHA-256)</li>
           <li>releases/&lt;timestamp&gt; へ展開・所有者と権限の設定</li>
           <li>shared のリンク (.env, storage など)</li>

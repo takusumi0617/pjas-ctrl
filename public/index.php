@@ -25,6 +25,8 @@ $r->get('/', [new DashboardController(), 'index']);
 $svc = new ServiceController();
 $r->get('/services', [$svc, 'index']);
 $r->get('/services/new', [$svc, 'newForm'], 'owner');
+$r->get('/services/import', [$svc, 'importForm'], 'owner');
+$r->post('/services/import', [$svc, 'import'], 'owner');
 $r->post('/services', [$svc, 'create'], 'owner');
 $r->get('/services/{name}', [$svc, 'show']);
 $r->post('/services/{name}/settings', [$svc, 'updateSettings'], 'owner');
@@ -34,6 +36,7 @@ $dep = new DeployController();
 $r->get('/deploy', [$dep, 'form'], 'operator');
 $r->post('/deploy', [$dep, 'deploy'], 'operator');
 $r->post('/services/{name}/rollback', [$dep, 'rollback'], 'operator');
+$r->post('/services/{name}/adopt', [$dep, 'adopt'], 'operator');
 
 $vh = new VhostController();
 $r->post('/services/{name}/vhost', [$vh, 'apply'], 'owner');

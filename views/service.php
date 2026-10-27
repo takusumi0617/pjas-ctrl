@@ -42,6 +42,17 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
 <?php endif; ?>
 
 <?php if ($tab === 'overview'): ?>
+  <?php if ($current === null && Auth::can('operator')): ?>
+    <div class="note" style="margin-bottom:14px">
+      このサイトはまだ管理下のバージョンを持っていません。
+      すでにサーバーにファイルが置かれている場合は、それをそのまま最初のバージョンとして取り込めます
+      （新しくファイルを用意する必要はありません）。
+      <form method="post" action="/services/<?= $name ?>/adopt" style="margin-top:8px"
+            onsubmit="return confirm('いま置かれているファイルを最初のバージョンとして取り込みます。よろしいですか?')">
+        <?= Csrf::field() ?><button class="btn">既存ファイルを取り込む</button>
+      </form>
+    </div>
+  <?php endif; ?>
   <div class="f2">
     <div class="card"><div class="card-h">このサイトの設定</div><div class="card-b">
       <dl class="kv">
@@ -115,6 +126,10 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
     検査に失敗した場合は自動で元の設定に戻すため、サイトが止まることはありません。
     <?php if (!empty($live) && empty($managed)): ?>
       <br><b>現在の設定はこの管理画面の管理下にありません。</b>反映すると、いまの設定内容は置き換わります。
+    <?php endif; ?>
+    <?php if (!empty($conflicts)): ?>
+      <br>同じ公開アドレスを使っている古い設定が有効になっています。反映時に自動で無効化します:
+      <span class="mono"><?= View::e(implode(', ', $conflicts)) ?></span>
     <?php endif; ?>
   </div>
   <div class="f2">

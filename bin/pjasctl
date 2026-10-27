@@ -8,6 +8,7 @@ declare(strict_types=1);
  *   pjasctl services
  *   pjasctl status <service>
  *   pjasctl deploy <service> <archive.zip|tar.gz> [--label v1.2.3] [--no-rollback]
+ *   pjasctl adopt <service>                  既存ファイルをそのまま最初のリリースにする
  *   pjasctl rollback <service> <tag>
  *   pjasctl vhost <service> [--apply]
  *   pjasctl logs <job-id>
@@ -93,6 +94,11 @@ try {
             Audit::log($actor, 'service.deploy', $s['name'], ['job' => $job, 'source' => 'cli']);
             exit(tail($job));
 
+        case 'adopt':
+            $s   = ServiceRepo::findOrFail((string) ($argv[0] ?? ''));
+            $job = Deployer::adopt($s, $actor);
+            exit(tail($job));
+
         case 'rollback':
             $s   = ServiceRepo::findOrFail((string) ($argv[0] ?? ''));
             $job = Deployer::rollback($s, (string) ($argv[1] ?? ''), $actor);
@@ -104,12 +110,18 @@ try {
                 $r = AgentClient::call('apache.apply', ['service' => Deployer::spec($s)], $actor);
                 Audit::log($actor, 'apache.vhost.apply', $s['name'], ['hash' => $r['hash'] ?? '']);
                 echo "適用しました: {$r['path']} ({$r['configtest']})\n";
+                foreach ((array) ($r['disabled'] ?? []) as $old) {
+                    echo "同じアドレスの古い設定を無効化しました: {$old}\n";
+                }
             } else {
                 $p = AgentClient::call('apache.render', ['service' => Deployer::spec($s)], $actor);
                 foreach (VhostRenderer::diff((string) $p['current'], (string) $p['rendered']) as [$sign, $line]) {
                     if ($sign !== ' ') {
                         echo $sign . ' ' . $line . "\n";
                     }
+                }
+                foreach ((array) ($p['conflicts'] ?? []) as $old) {
+                    echo "! 同じアドレスの管理外設定が有効です (--apply 時に無効化します): {$old}\n";
                 }
             }
             break;

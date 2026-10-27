@@ -33,8 +33,16 @@ tests/             web と agent の vhost 生成一致テスト
 - 送れるのは登録済み op 名 + パラメータのみ。**任意コマンド文字列も設定ファイル本文も送れない**
 - agent は受け取った値を `agent/lib/Spec.php` で再検証する。web 側の検証は UX のためのもので、権限判断はしない
 - after_deploy フックと vhost 追加ディレクティブは許可リスト方式
+- vhost 適用時、同じ ServerName を持つ管理外の有効サイトは自動で無効化する (失敗時は元に戻す)
 
 ## デプロイの流れ
+
+初回デプロイでは、すでに `/var/www/<name>` にあるファイルを 1 つのリリースとして引き継ぎ、
+`current` をそこへ向けてから新リリースの処理に入る (既存サイトを消さず、切り戻し先にする)。
+新しいファイルをまだ用意していない場合は `pjasctl adopt <service>` (画面では
+「既存ファイルを取り込む」) で、引き継ぎだけを単独で実行できる。
+導入時にサイトが複数ある場合は、画面の「サイト一覧 → サーバーから一括登録」で
+`www_root` 配下の未登録フォルダを一覧にし、まとめて登録・取り込みできる。
 
 `releases/<timestamp>` へ展開 → shared リンク → フック → `php -l` / `apachectl configtest`
 → `current` シンボリックリンクを原子的に張り替え → reload → ヘルスチェック
@@ -47,6 +55,7 @@ tests/             web と agent の vhost 生成一致テスト
 ```bash
 sudo -u www-data bin/pjasctl services
 sudo -u www-data bin/pjasctl deploy billing ./billing-1.8.2.zip --label v1.8.2
+sudo -u www-data bin/pjasctl adopt billing            # 既存ファイルをそのまま管理下に置く
 sudo -u www-data bin/pjasctl rollback billing 20260814-183012
 sudo -u www-data bin/pjasctl vhost billing            # 差分表示
 sudo -u www-data bin/pjasctl vhost billing --apply    # 適用
@@ -56,6 +65,9 @@ sudo -u www-data bin/pjasctl vhost billing --apply    # 適用
 
 ```bash
 php tests/vhost_parity.php
+php tests/adopt_plan.php
+php tests/vhost_conflicts.php
+php tests/scan_services.php
 ```
 
 画面で承認した vhost と agent が実際に書き出す vhost が一致することを確認する。

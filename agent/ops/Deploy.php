@@ -11,6 +11,9 @@ use Pjas\Agentd\Spec;
 
 final class Deploy
 {
+    /** よくある公開フォルダ名。引き継ぎで畳まず、公開フォルダの推測にも使う */
+    public const DOCROOT_NAMES = ['public', 'web', 'htdocs', 'public_html', 'dist'];
+
     public function __construct(
         private array $cfg,
         private Paths $paths,
@@ -93,6 +96,64 @@ final class Deploy
         return ['job_id' => $jobId, 'pid' => $pid];
     }
 
+    /**
+     * デプロイを伴わない取り込み。いま /var/www/<name> にあるファイルをそのまま
+     * ひとつのリリースにして current を張る。導入時の移行用で、新しいアーカイブを
+     * 用意しなくても既存サイトを管理下に置ける。
+     */
+    public function adopt(array $params): array
+    {
+        $jobId = (int) ($params['job_id'] ?? 0);
+        if ($jobId <= 0) {
+            throw new OpException('job_id がありません');
+        }
+        $spec = Spec::service($params['service'] ?? null);
+        $name = $spec['name'];
+
+        if ($this->paths->currentTag($name) !== null) {
+            throw new OpException('すでに管理下のリリースが公開されています。取り込みは初回のみ行えます');
+        }
+
+        $pid = pcntl_fork();
+        if ($pid < 0) {
+            throw new OpException('取り込みプロセスを起動できません');
+        }
+        if ($pid === 0) {
+            posix_setsid();
+            $log = new JobLog($jobId, (string) $this->cfg['job_dir']);
+            try {
+                $log->line("adopt {$name}: " . $this->paths->base($name) . ' の中身を取り込みます');
+
+                $tag = date('Ymd-His');
+                if (is_dir($this->paths->release($name, $tag))) {
+                    $tag = $this->adoptTag($name, $tag);
+                }
+                $adopted = $this->adoptExisting($name, $tag, $log);
+                if ($adopted === null) {
+                    throw new OpException(
+                        '取り込めるファイルがありません。'
+                        . '公開したいファイルを置いてから実行するか、通常のデプロイを使ってください'
+                    );
+                }
+
+                $this->switchCurrent($name, $adopted['tag'], $log);
+                $log->set('adopted', ['tag' => $adopted['tag'], 'state' => 'current'] + $adopted['release']);
+
+                // 公開設定を反映する前でも実行できる操作なので、ヘルスチェックは
+                // 結果をログに残すだけにする (この時点の NG は「まだ反映していない」の
+                // 意味にしかならず、サイトの状態として記録すると誤解を招くため)。
+                if (!$this->health->poll($spec, fn($m) => $log->line($m))) {
+                    $log->line('まだ応答がありません。「公開設定」を反映すると配信が切り替わります');
+                }
+                $log->finish('succeeded', "既存ファイルを releases/{$adopted['tag']} として取り込みました");
+            } catch (\Throwable $e) {
+                $log->finish('failed', $e->getMessage());
+            }
+            exit(0);
+        }
+        return ['job_id' => $jobId, 'pid' => $pid];
+    }
+
     // ---------------------------------------------------------------- 本体
 
     private function run(int $jobId, array $spec, array $source, array $opts): void
@@ -102,6 +163,7 @@ final class Deploy
         $log  = new JobLog($jobId, (string) $this->cfg['job_dir']);
         $prev = $this->paths->currentTag($name);
         $relDir = $this->paths->release($name, $tag);
+        $adopted = null;
 
         $log->line("deploy {$name} tag={$tag} source={$source['type']} 直前=" . ($prev ?? 'なし'));
 
@@ -109,6 +171,18 @@ final class Deploy
             if ($opts['maintenance']) {
                 touch($this->paths->shared($name) . '/maintenance.on');
                 $log->line('メンテナンスモード ON (shared/maintenance.on)');
+            }
+
+            // [0.5] 初回デプロイなら、既にディレクトリにあるファイルを 1 リリースとして引き継ぐ
+            if ($prev === null) {
+                $adopted = $this->adoptExisting($name, $this->adoptTag($name, $tag), $log);
+                if ($adopted !== null) {
+                    // current を取り込んだリリースへ向けておくと、この後どこで失敗しても
+                    // 管理下のパス (current/<docroot>) で既存サイトが配信され続ける。
+                    $this->switchCurrent($name, $adopted['tag'], $log);
+                    $prev = $adopted['tag'];
+                    $log->line("引き継ぎ完了: releases/{$adopted['tag']} (自動ロールバック先になります)");
+                }
             }
 
             // [1-3] 取り込み・検疫・展開
@@ -169,8 +243,8 @@ final class Deploy
                 throw new OpException('ヘルスチェックに失敗しました (自動ロールバックは無効)');
             }
 
-            // [10] 掃除
-            $pruned = $this->prune($name, $spec['keep_releases'], $log);
+            // [10] 掃除 (この回に引き継いだリリースは切り戻し先として残す)
+            $pruned = $this->prune($name, $spec['keep_releases'], $log, $adopted['tag'] ?? null);
 
             $log->set('release', [
                 'tag'    => $tag,
@@ -184,6 +258,11 @@ final class Deploy
             $log->finish('succeeded', "current → {$tag}");
         } catch (\Throwable $e) {
             @unlink($this->paths->shared($name) . '/maintenance.on');
+            // 引き継いだリリースが公開されたまま終わる場合は、その事実を web に伝える
+            // (引き継ぎ分は既存サイトそのものなので、失敗しても消してはいけない)
+            if ($adopted !== null && $this->paths->currentTag($name) === $adopted['tag']) {
+                $log->set('adopted', ['tag' => $adopted['tag'], 'state' => 'current'] + $adopted['release']);
+            }
             // 切替前に落ちた場合は展開済みディレクトリを片付ける
             if ($this->paths->currentTag($name) !== $tag && is_dir($relDir)) {
                 Proc::run(['/bin/rm', '-rf', '--', $relDir], null, 120);
@@ -307,6 +386,131 @@ final class Deploy
         }
     }
 
+    // ------------------------------------------------------- 既存サイトの引き継ぎ
+
+    /**
+     * 引き継ぎ対象の判定。ファイルを触らないのでテストから直接呼べる。
+     *
+     * releases/ と shared/ は管理用なので対象外。それ以外の中身 (index.php,
+     * public/, .htaccess など既存サイトのファイル) を 1 つのリリースとして扱う。
+     * アーカイブ展開と同じく、単一トップディレクトリならその中身をリリース直下に置く
+     * (/var/www/billing/billing-app/... のような一段深い構成をそのまま救うため)。
+     *
+     * @return array{entries:array<int,string>,flatten:?string,current_link:?string}
+     */
+    public static function adoptPlan(string $base): array
+    {
+        $entries = [];
+        $link    = null;
+
+        foreach (array_diff(scandir($base) ?: [], ['.', '..']) as $e) {
+            $path = $base . '/' . $e;
+            if ($e === 'releases' || $e === 'shared' || str_starts_with($e, '.current-')) {
+                continue;
+            }
+            if ($e === 'current' && is_link($path)) {
+                $target = realpath($path);
+                $root   = realpath($base);
+                $link   = $target === false ? 'dangling'
+                    : (str_starts_with($target . '/', $root . '/') ? 'inside' : 'outside');
+                continue;
+            }
+            $entries[] = $e;
+        }
+        sort($entries);
+
+        // 中身がひとつのディレクトリだけなら、その中をリリース直下として扱う。
+        // ただし public/ のような「公開フォルダそのもの」の名前は畳まない
+        // (既存 vhost の DocumentRoot が /var/www/<name>/public を指しているとき、
+        //  畳むと docroot の設定と実際の構成がずれるため)
+        $flatten = null;
+        if (count($entries) === 1 && !in_array($entries[0], self::DOCROOT_NAMES, true)) {
+            $only = $base . '/' . $entries[0];
+            if (is_dir($only) && !is_link($only)) {
+                $flatten = $entries[0];
+            }
+        }
+
+        return ['entries' => $entries, 'flatten' => $flatten, 'current_link' => $link];
+    }
+
+    /**
+     * 初回デプロイ時、/var/www/<name> に既に置かれているファイルを releases/<tag>
+     * として引き継ぐ。既存サイトを消さずに、切り戻し先と履歴に載せるための処理。
+     * 引き継ぐものが無ければ null を返す。
+     *
+     * @return array{tag:string,count:int,release:array<string,mixed>}|null
+     */
+    private function adoptExisting(string $name, string $tag, JobLog $log): ?array
+    {
+        $base = $this->paths->base($name);
+        $plan = self::adoptPlan($base);
+
+        // current がサービスの外を指している場合、何を公開しているのか agent 側では
+        // 判断できない。黙って壊すより、止めて運用者に判断してもらう。
+        if ($plan['current_link'] === 'outside') {
+            throw new OpException(
+                'current がサービスディレクトリの外を指すシンボリックリンクです。'
+                . '手動で退避してから再実行してください: ' . $this->paths->current($name)
+            );
+        }
+        if ($plan['current_link'] !== null) {
+            @unlink($this->paths->current($name));
+            $log->line('既存の current シンボリックリンクを外しました');
+        }
+        if (!$plan['entries']) {
+            return null;
+        }
+
+        $dir = $this->paths->release($name, $tag);
+        if (!mkdir($dir, 0755, true) && !is_dir($dir)) {
+            throw new OpException("引き継ぎ先を作成できません: {$dir}");
+        }
+        $log->line('既存ファイル ' . count($plan['entries']) . " 件を releases/{$tag} として引き継ぎます");
+
+        foreach ($plan['entries'] as $e) {
+            if (!rename($base . '/' . $e, $dir . '/' . $e)) {
+                throw new OpException("引き継ぎに失敗しました: {$e}");
+            }
+        }
+
+        if ($plan['flatten'] !== null) {
+            $inner = $dir . '/' . $plan['flatten'];
+            foreach (array_diff(scandir($inner) ?: [], ['.', '..']) as $f) {
+                if (!rename($inner . '/' . $f, $dir . '/' . $f)) {
+                    throw new OpException("引き継ぎに失敗しました: {$plan['flatten']}/{$f}");
+                }
+            }
+            @rmdir($inner);
+            $log->line("単一トップディレクトリ {$plan['flatten']}/ をリリース直下として扱います");
+        }
+
+        $this->normalizePerms($dir, $log);
+
+        $release = [
+            'label'  => '引き継ぎ (既存ファイル)',
+            'source' => 'adopt:existing',
+            'sha256' => '',
+            'size'   => 0,
+        ];
+        $log->set('adopted', ['tag' => $tag, 'state' => 'archived'] + $release);
+
+        return ['tag' => $tag, 'count' => count($plan['entries']), 'release' => $release];
+    }
+
+    /** 引き継ぎ用のタグ。今回のリリースより古い時刻にして履歴の順序を保つ。 */
+    private function adoptTag(string $name, string $newTag): string
+    {
+        $t = \DateTimeImmutable::createFromFormat('Ymd-His', $newTag) ?: new \DateTimeImmutable();
+        for ($i = 1; $i <= 120; $i++) {
+            $cand = $t->modify("-{$i} second")->format('Ymd-His');
+            if (!is_dir($this->paths->release($name, $cand))) {
+                return $cand;
+            }
+        }
+        throw new OpException('引き継ぎ用のリリースタグを決められませんでした');
+    }
+
     // ---------------------------------------------------------------- 配置
 
     private function linkShared(string $name, array $spec, string $relDir, JobLog $log): void
@@ -411,13 +615,13 @@ final class Deploy
     }
 
     /** @return array<int,string> 削除したタグ */
-    private function prune(string $name, int $keep, JobLog $log): array
+    private function prune(string $name, int $keep, JobLog $log, ?string $protect = null): array
     {
         $tags    = $this->paths->releaseTags($name);
         $current = $this->paths->currentTag($name);
         $pruned  = [];
         foreach (array_slice($tags, $keep) as $old) {
-            if ($old === $current) {
+            if ($old === $current || $old === $protect) {
                 continue;
             }
             Proc::run(['/bin/rm', '-rf', '--', $this->paths->release($name, $old)], null, 120);
