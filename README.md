@@ -68,6 +68,7 @@ sudo -u www-data bin/pjasctl vhost billing --apply    # 適用
 php tests/agent_ops_parity.php
 php tests/service_defaults.php
 php tests/scheduled_tasks.php
+php tests/proc_exit_codes.php
 php tests/vhost_parity.php
 php tests/adopt_plan.php
 php tests/vhost_conflicts.php

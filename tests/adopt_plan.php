@@ -21,6 +21,10 @@ require PJAS_ROOT . '/agent/ops/Health.php';
 require PJAS_ROOT . '/agent/ops/Deploy.php';
 
 use Pjas\Agentd\Ops\Deploy;
+use Pjas\Agentd\Ops\Health;
+use Pjas\Agentd\Ops\Vhost;
+use Pjas\Agentd\JobLog;
+use Pjas\Agentd\Paths;
 
 $root = sys_get_temp_dir() . '/pjas-adopt-' . bin2hex(random_bytes(4));
 $fail = 0;
@@ -110,6 +114,25 @@ symlink($base . '/releases/20260101-000000', $base . '/current');
 symlink($base . '/releases/20260101-000000', $base . '/.current-abcd1234');
 check('壊れた current と一時リンクは対象外', Deploy::adoptPlan($base),
       ['entries' => ['index.php'], 'flatten' => null, 'current_link' => 'dangling']);
+
+// 8. ファイル移動後に権限調整で止まった取り込みは、最新リリースから再開する
+$base = $root . '/interrupted';
+build($base, ['releases/20261027-165741/index.php' => 'file', 'shared' => 'dir']);
+$paths = new Paths($root);
+$cfg = [
+    'web_user' => posix_getpwuid(posix_geteuid())['name'],
+    'web_group' => posix_getgrgid(posix_getegid())['name'],
+    'job_dir' => $root . '/jobs',
+    'apache_sites' => $root . '/sites',
+    'health_retries' => 1,
+    'health_wait' => 0,
+];
+$deploy = new Deploy($cfg, $paths, new Vhost($cfg, $paths), new Health($cfg));
+$method = new ReflectionMethod($deploy, 'adoptExisting');
+$res = $method->invoke($deploy, 'interrupted', '20261027-170000', new JobLog(999, $cfg['job_dir']));
+check('中断した取り込みを既存リリースから再開する',
+      ['entries' => [$res['tag'] ?? ''], 'flatten' => null, 'current_link' => null],
+      ['entries' => ['20261027-165741'], 'flatten' => null, 'current_link' => null]);
 
 exec('rm -rf ' . escapeshellarg($root));
 

@@ -12,6 +12,11 @@ final class Proc
     /** @param array<int,string> $argv @return array{code:int,out:string,err:string} */
     public static function run(array $argv, ?string $cwd = null, int $timeout = 120, ?string $user = null, array $env = []): array
     {
+        // agent の SIGCHLD ハンドラが proc_open の子まで先に回収すると、成功時でも
+        // exitcode=-1 になる。実行中だけ通知を保留し、proc_get_status で確実に回収する。
+        $oldMask = [];
+        pcntl_sigprocmask(SIG_BLOCK, [SIGCHLD], $oldMask);
+        try {
         if ($user !== null) {
             // 非特権ユーザーで実行する (フックなど)
             $argv = array_merge(['/usr/bin/setpriv', '--reuid', $user, '--regid', $user, '--init-groups', '--'], $argv);
@@ -47,6 +52,9 @@ final class Proc
                 return ['code' => 124, 'out' => $out, 'err' => $err . "\n(timeout {$timeout}s)"];
             }
             usleep(50_000);
+        }
+        } finally {
+            pcntl_sigprocmask(SIG_SETMASK, $oldMask);
         }
     }
 

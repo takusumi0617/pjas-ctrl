@@ -459,6 +459,26 @@ final class Deploy
             $log->line('既存の current シンボリックリンクを外しました');
         }
         if (!$plan['entries']) {
+            // ファイル移動後、権限調整などで中断した場合は releases 内に実体だけが残る。
+            // 再実行時に最新の未接続リリースを引き継ぎとして復旧する。
+            $tags = $this->paths->releaseTags($name);
+            if ($this->paths->currentTag($name) === null && $tags) {
+                $resumeTag = $tags[0];
+                $resumeDir = $this->paths->release($name, $resumeTag);
+                $resumeEntries = array_values(array_diff(scandir($resumeDir) ?: [], ['.', '..']));
+                if ($resumeEntries) {
+                    $log->line("中断した取り込み releases/{$resumeTag} を再開します");
+                    $this->normalizePerms($resumeDir, $log);
+                    $release = [
+                        'label'  => '引き継ぎ (既存ファイル)',
+                        'source' => 'adopt:existing',
+                        'sha256' => '',
+                        'size'   => 0,
+                    ];
+                    $log->set('adopted', ['tag' => $resumeTag, 'state' => 'archived'] + $release);
+                    return ['tag' => $resumeTag, 'count' => count($resumeEntries), 'release' => $release];
+                }
+            }
             return null;
         }
 
