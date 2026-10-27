@@ -28,6 +28,9 @@ $on    = static fn(string $p): string => str_starts_with($path, $p) && ($p !== '
     <?php if (Auth::can('operator')): ?>
       <a class="nav<?= $on('/deploy') ?>" href="/deploy">↥ 新しいバージョンを公開</a>
       <div class="sep">管理</div>
+      <?php if (Auth::can('owner')): ?>
+        <a class="nav<?= $on('/scheduled-tasks') ?>" href="/scheduled-tasks">◷ 定期処理</a>
+      <?php endif; ?>
       <a class="nav<?= $on('/audit') ?>" href="/audit">☰ 操作の記録</a>
     <?php endif; ?>
     <div class="foot">

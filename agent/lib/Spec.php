@@ -70,6 +70,42 @@ final class Spec
         return $v;
     }
 
+    public static function taskId(mixed $v): int
+    {
+        $id = filter_var($v, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($id === false) {
+            throw new OpException('定期処理IDが不正です');
+        }
+        return (int) $id;
+    }
+
+    public static function cronSchedule(mixed $v): string
+    {
+        $v = is_string($v) ? trim($v) : '';
+        if (in_array($v, ['@hourly', '@daily', '@weekly', '@monthly', '@yearly'], true)) {
+            return $v;
+        }
+        $fields = preg_split('/\s+/', $v) ?: [];
+        if (count($fields) !== 5) {
+            throw new OpException('実行時刻は5項目で指定してください');
+        }
+        foreach ($fields as $field) {
+            if (!preg_match('/^[0-9A-Za-z*\/,\-]+$/', $field)) {
+                throw new OpException('実行時刻に使えない文字があります');
+            }
+        }
+        return implode(' ', $fields);
+    }
+
+    public static function cronCommand(mixed $v): string
+    {
+        $v = is_string($v) ? trim($v) : '';
+        if ($v === '' || strlen($v) > 4000 || str_contains($v, "\0")) {
+            throw new OpException('定期処理のコマンドが不正です');
+        }
+        return str_replace("\r\n", "\n", $v);
+    }
+
     public static function hook(string $cmd): array
     {
         $cmd = trim($cmd);

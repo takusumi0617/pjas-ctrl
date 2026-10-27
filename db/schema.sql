@@ -63,6 +63,18 @@ CREATE TABLE IF NOT EXISTS vhosts (
   applied_by    TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS scheduled_tasks (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  service_id  INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  schedule    TEXT NOT NULL,
+  command     TEXT NOT NULL,
+  enabled     INTEGER NOT NULL DEFAULT 1,
+  created_by  TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS api_tokens (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   name         TEXT NOT NULL,
@@ -86,3 +98,4 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_jobs_service ON jobs(service_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_rel_service  ON releases(service_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_at     ON audit_log(id DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_service ON scheduled_tasks(service_id, id);

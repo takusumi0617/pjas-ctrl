@@ -9,9 +9,10 @@ sudo apt update
 sudo apt install -y software-properties-common ca-certificates
 sudo add-apt-repository -y ppa:ondrej/php
 sudo apt update
-sudo apt install apache2 php8.4-fpm php8.4-cli php8.4-sqlite3 php8.4-mbstring unzip curl util-linux certbot git
+sudo apt install apache2 php8.4-fpm php8.4-cli php8.4-sqlite3 php8.4-mbstring unzip curl util-linux cron certbot git
 sudo a2enmod rewrite proxy_fcgi setenvif ssl headers
 sudo a2enconf php8.4-fpm
+sudo systemctl enable --now cron
 ```
 
 ## 2. 配置とユーザー
@@ -93,3 +94,5 @@ max_execution_time = 0        ; SSE ストリーム用 (fastcgi_read_timeout も
 - **既存サービスの取り込み**: 先に `releases/<tag>/` へ現物を移し `current` を張ってから
   pjas-ctrl に登録すると、以降のデプロイとロールバックが揃う
 - **agent が落ちている場合**: 画面は閲覧できるが、デプロイと Apache 操作はすべて拒否される
+- **定期処理**: コード更新後に `sudo -u www-data php8.4 bin/pjas-migrate` でDBを更新する。
+  定期処理は `/etc/cron.d/pjas-task-*`、実行内容は `/var/lib/pjas/cron/`、ログは `/var/log/pjas/cron/` に保存される

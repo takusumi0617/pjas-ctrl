@@ -23,6 +23,7 @@ final class AgentClient
         'tls.issue', 'tls.renew',
         'fs.list', 'fs.read', 'fs.write',
         'health.check',
+        'cron.apply', 'cron.delete',
     ];
 
     /**

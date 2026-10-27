@@ -20,6 +20,7 @@ agent/             pjas-agentd (root)。特権操作の唯一の実行者
   ops/             Service, Deploy, Vhost, Fs, Tls, Health
 views/             画面 (PHP テンプレート)
 bin/pjas-init      DB 初期化と owner ユーザー作成
+bin/pjas-migrate   既存 DB への追加テーブル適用
 bin/pjasctl        CLI (CI から利用)
 db/schema.sql      SQLite スキーマ
 systemd/           pjas-agentd.service と管理画面用 Apache 設定
@@ -66,6 +67,7 @@ sudo -u www-data bin/pjasctl vhost billing --apply    # 適用
 ```bash
 php tests/agent_ops_parity.php
 php tests/service_defaults.php
+php tests/scheduled_tasks.php
 php tests/vhost_parity.php
 php tests/adopt_plan.php
 php tests/vhost_conflicts.php

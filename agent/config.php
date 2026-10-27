@@ -8,6 +8,9 @@ return [
     'www_root'      => '/var/www',
     'upload_dir'    => '/var/lib/pjas/uploads',   // web が置いた検疫前アーカイブ。ここ以外は読まない
     'job_dir'       => '/var/log/pjas/jobs',
+    'cron_dir'      => '/etc/cron.d',
+    'cron_script_dir' => '/var/lib/pjas/cron',
+    'cron_log_dir'  => '/var/log/pjas/cron',
 
     'web_user'      => 'www-data',
     'web_group'     => 'www-data',

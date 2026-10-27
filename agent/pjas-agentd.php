@@ -18,6 +18,7 @@ use Pjas\Agentd\Ops\Deploy;
 use Pjas\Agentd\Ops\Fs;
 use Pjas\Agentd\Ops\Health;
 use Pjas\Agentd\Ops\Service;
+use Pjas\Agentd\Ops\ScheduledTask;
 use Pjas\Agentd\Ops\Tls;
 use Pjas\Agentd\Ops\Vhost;
 
@@ -58,6 +59,7 @@ $deploy  = new Deploy($cfg, $paths, $vhost, $health);
 $service = new Service($cfg, $paths);
 $fs      = new Fs($cfg, $paths);
 $tls     = new Tls($cfg, $paths);
+$cron    = new ScheduledTask($cfg, $paths);
 
 /** op 登録表。ここに無いものは実行できない。 */
 $registry = [
@@ -84,6 +86,8 @@ $registry = [
     'fs.read'         => [$fs, 'read'],
     'fs.write'        => [$fs, 'write'],
     'health.check'    => [$health, 'check'],
+    'cron.apply'      => [$cron, 'apply'],
+    'cron.delete'     => [$cron, 'delete'],
 ];
 
 // ---------------------------------------------------------------- ソケット

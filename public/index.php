@@ -9,6 +9,7 @@ use Pjas\Http\Controllers\DashboardController;
 use Pjas\Http\Controllers\DeployController;
 use Pjas\Http\Controllers\JobController;
 use Pjas\Http\Controllers\ServiceController;
+use Pjas\Http\Controllers\ScheduledTaskController;
 use Pjas\Http\Controllers\VhostController;
 use Pjas\Http\Router;
 use Pjas\Http\View;
@@ -47,6 +48,12 @@ $r->get('/jobs/{id}', [$job, 'show']);
 $r->get('/jobs/{id}/stream', [$job, 'stream']);
 
 $r->get('/audit', [new AuditController(), 'index'], 'operator');
+
+$scheduled = new ScheduledTaskController();
+$r->get('/scheduled-tasks', [$scheduled, 'index'], 'owner');
+$r->post('/scheduled-tasks', [$scheduled, 'create'], 'owner');
+$r->post('/scheduled-tasks/{id}', [$scheduled, 'update'], 'owner');
+$r->post('/scheduled-tasks/{id}/delete', [$scheduled, 'delete'], 'owner');
 
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $path = rtrim($path, '/') ?: '/';

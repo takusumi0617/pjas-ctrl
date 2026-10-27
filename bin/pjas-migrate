@@ -1,0 +1,13 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+/** 既存環境へ追加のDBテーブルや索引を適用する。 */
+
+require dirname(__DIR__) . '/app/bootstrap.php';
+
+use Pjas\Support\Config;
+use Pjas\Support\Db;
+
+Db::migrate(PJAS_ROOT . '/db/schema.sql');
+echo 'スキーマを適用しました: ' . Config::get('db') . "\n";
