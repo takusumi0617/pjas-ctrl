@@ -9,7 +9,7 @@ sudo apt update
 sudo apt install -y software-properties-common ca-certificates
 sudo add-apt-repository -y ppa:ondrej/php
 sudo apt update
-sudo apt install apache2 php8.4-fpm php8.4-cli php8.4-sqlite3 php8.4-mbstring unzip curl util-linux cron certbot git
+sudo apt install apache2 php8.4-fpm php8.4-cli php8.4-sqlite3 php8.4-mbstring unzip curl util-linux cron git
 sudo a2enmod rewrite proxy_fcgi setenvif ssl headers
 sudo a2enconf php8.4-fpm
 sudo systemctl enable --now cron
@@ -36,7 +36,7 @@ sudo chmod -R go-w /opt/pjas-ctrl
 sudo cp /opt/pjas-ctrl/config.php.example /opt/pjas-ctrl/config.php
 sudo chown root:www-data /opt/pjas-ctrl/config.php && sudo chmod 640 /opt/pjas-ctrl/config.php
 sudo editor /opt/pjas-ctrl/config.php        # db / socket / www_root を環境に合わせる
-sudo editor /opt/pjas-ctrl/agent/config.php  # certbot_email, git_repos, web_user を設定
+sudo editor /opt/pjas-ctrl/agent/config.php  # Cloudflare 証明書、git_repos、web_user を設定
 ```
 
 `config.php` (web) と `agent/config.php` (agent) の `www_root` / `upload_dir` / `job_dir` /
@@ -59,7 +59,22 @@ systemctl status pjas-agentd
 sudo journalctl -u pjas-agentd -f     # op ごとのログはここに出る
 ```
 
-## 6. 管理画面の vhost
+## 6. Cloudflare Origin CA 証明書と管理画面の vhost
+
+全サイト共通のワイルドカード証明書と秘密鍵を次へ配置する。
+
+```text
+/etc/ssl/cloudflare/memo.takusumi.work.pem
+/etc/ssl/cloudflare/memo.takusumi.work.key
+```
+
+秘密鍵は root のみ読めるようにする。
+
+```bash
+sudo chown root:root /etc/ssl/cloudflare/memo.takusumi.work.{pem,key}
+sudo chmod 644 /etc/ssl/cloudflare/memo.takusumi.work.pem
+sudo chmod 600 /etc/ssl/cloudflare/memo.takusumi.work.key
+```
 
 ```bash
 sudo cp systemd/pjas-ctrl.apache.conf /etc/apache2/sites-available/pjas-ctrl.conf
@@ -88,8 +103,7 @@ max_execution_time = 0        ; SSE ストリーム用 (fastcgi_read_timeout も
 
 ## 8. 運用メモ
 
-- **証明書更新**: certbot の systemd タイマーに任せ、更新後に `apachectl graceful` する
-  deploy hook を `/etc/letsencrypt/renewal-hooks/deploy/` に置く
+- **証明書更新**: Cloudflare Origin CA 証明書を差し替えた後に `sudo apachectl graceful` を実行する
 - **バックアップ**: `/var/lib/pjas/pjas.db` (状態と監査ログ) と各サービスの `shared/`
 - **既存サービスの取り込み**: 先に `releases/<tag>/` へ現物を移し `current` を張ってから
   pjas-ctrl に登録すると、以降のデプロイとロールバックが揃う

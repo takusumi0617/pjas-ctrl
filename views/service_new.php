@@ -46,8 +46,7 @@ $v = static fn(string $k, string $d = '') => View::e((string) ($in[$k] ?? $d));
 
       <div class="field"><label class="inline"><input type="checkbox" name="tls" <?= !empty($in['tls']) ? 'checked' : '' ?>>
         通信を暗号化して公開する（https）</label>
-        <div class="hint">安全な通信に必要な証明書がまだ無い場合は、いったんオフのまま登録し、
-          サイト画面の「公開設定」から証明書を取得してからオンにしてください。</div></div>
+        <div class="hint">Cloudflare Origin CA の共通ワイルドカード証明書を使用します。</div></div>
     </div>
   </div>
 

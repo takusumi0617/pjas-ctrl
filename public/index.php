@@ -41,7 +41,6 @@ $r->post('/services/{name}/adopt', [$dep, 'adopt'], 'operator');
 
 $vh = new VhostController();
 $r->post('/services/{name}/vhost', [$vh, 'apply'], 'owner');
-$r->post('/services/{name}/tls', [$vh, 'tls'], 'owner');
 
 $job = new JobController();
 $r->get('/jobs/{id}', [$job, 'show']);

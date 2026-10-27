@@ -38,7 +38,7 @@
                  │ releases    │ │ ・vhost 生成/a2ensite    │
                  │ jobs        │ │ ・apachectl configtest   │
                  │ audit       │ │ ・systemctl reload       │
-                 └─────────────┘ │ ・certbot 発行/更新      │
+                 └─────────────┘ │ ・共通 TLS 証明書の適用  │
                                  └──────┬──────────────────┘
                                         │
                     /var/www/<subdomain>/{releases,shared,current}
@@ -129,8 +129,8 @@ keep_releases: 5
     ErrorLog  /var/log/apache2/{{ name }}-error.log
     CustomLog /var/log/apache2/{{ name }}-access.log combined
     SSLEngine on
-    SSLCertificateFile    /etc/letsencrypt/live/{{ domain }}/fullchain.pem
-    SSLCertificateKeyFile /etc/letsencrypt/live/{{ domain }}/privkey.pem
+    SSLCertificateFile    /etc/ssl/cloudflare/memo.takusumi.work.pem
+    SSLCertificateKeyFile /etc/ssl/cloudflare/memo.takusumi.work.key
 </VirtualHost>
 ```
 
@@ -138,7 +138,7 @@ keep_releases: 5
 成功なら `graceful` / 失敗なら旧ファイルへ復元**。
 生成ファイルには `# managed by pjas-ctrl — do not edit` ヘッダを入れ、手編集を検出したら警告。
 
-TLS は certbot（`--apache` ではなく `certonly --webroot`）で取得し、更新は cron + 監視。
+TLS は全サイト共通の Cloudflare Origin CA ワイルドカード証明書を使用する。
 
 ---
 
@@ -171,7 +171,6 @@ GET  /services/{name}?tab=…        viewer   詳細（overview/releases/vhost/f
 POST /services/{name}/settings     owner    設定更新
 POST /services/{name}/health       viewer   ヘルスチェック実行
 POST /services/{name}/vhost        owner    vhost 適用（configtest → graceful）
-POST /services/{name}/tls          owner    certbot で証明書取得
 POST /services/{name}/rollback     operator ロールバック
 
 GET  /deploy                       operator デプロイ画面
@@ -184,7 +183,7 @@ GET  /audit                        operator 監査ログ
 エージェント RPC の op は `AgentClient::OPS` と agent の登録表が唯一の入口:
 `service.create` / `service.destroy` / `deploy.start` / `deploy.rollback` /
 `apache.render` / `apache.apply` / `apache.reload` / `fpm.reload` /
-`tls.issue` / `tls.renew` / `fs.list` / `fs.read` / `fs.write` / `health.check` / `ping`。
+`fs.list` / `fs.read` / `fs.write` / `health.check` / `cron.apply` / `cron.delete` / `ping`。
 
 ---
 
@@ -229,7 +228,7 @@ pjas-ctrl/
 
 実装済み: サービス登録・設定、ZIP / tar.gz アップロードと git ref からのデプロイ、
 releases/current 切替とロールバック、vhost 生成と差分承認・configtest・graceful、
-ジョブログ SSE、ヘルスチェックと自動ロールバック、リリース掃除、TLS（certbot webroot）、
+ジョブログ SSE、ヘルスチェックと自動ロールバック、リリース掃除、Cloudflare Origin CA 証明書、
 ファイルブラウザ、監査ログ、RBAC、CSRF、CLI (`pjasctl`)。
 
 未実装（次の段）: TOTP 二要素認証、API トークン認証での外部 API、shared/.env の画面編集、

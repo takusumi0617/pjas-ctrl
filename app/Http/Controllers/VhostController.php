@@ -48,18 +48,4 @@ final class VhostController
         View::redirect('/services/' . $s['name'] . '?tab=vhost', $msg);
     }
 
-    public function tls(array $a): void
-    {
-        $s     = ServiceRepo::findOrFail($a['name']);
-        $actor = Auth::actor();
-        try {
-            $r = \Pjas\Agent\AgentClient::call('tls.issue', ['service' => Deployer::spec($s)], $actor);
-        } catch (AgentException $e) {
-            Audit::log($actor, 'tls.issue', $s['name'], [], 'failed');
-            View::redirect('/services/' . $s['name'] . '?tab=vhost', '証明書の取得に失敗しました: ' . $e->getMessage(), 'err');
-        }
-        Audit::log($actor, 'tls.issue', $s['name'], ['expires' => $r['expires'] ?? '']);
-        View::redirect('/services/' . $s['name'] . '?tab=vhost',
-            '証明書を取得しました。「設定」タブで https をオンにしてから、公開設定を反映してください。');
-    }
 }

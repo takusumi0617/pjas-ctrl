@@ -82,4 +82,4 @@ php tests/scan_services.php
 ## 要件
 
 PHP 8.1 以上 (pdo_sqlite, pcntl, posix)、Apache 2.4 (mod_rewrite, mod_proxy_fcgi, mod_ssl)、
-`unzip` / `tar` / `curl` / `setpriv`、任意で `certbot`、`git`。
+`unzip` / `tar` / `curl` / `setpriv`、`git`。

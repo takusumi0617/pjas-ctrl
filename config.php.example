@@ -17,6 +17,10 @@ return [
     // サービスの配置先 (agent 側 agent/config.php と一致させること)
     'www_root'      => '/var/www',
 
+    // 全サイトで共有する Cloudflare Origin CA ワイルドカード証明書
+    'tls_cert_file' => '/etc/ssl/cloudflare/memo.takusumi.work.pem',
+    'tls_key_file'  => '/etc/ssl/cloudflare/memo.takusumi.work.key',
+
     'max_upload'    => 512 * 1024 * 1024,
     'session_name'  => 'pjasctrl',
 

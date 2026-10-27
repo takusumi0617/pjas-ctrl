@@ -13,6 +13,9 @@ namespace Pjas\Domain;
  */
 final class VhostRenderer
 {
+    public const DEFAULT_TLS_CERT_FILE = '/etc/ssl/cloudflare/memo.takusumi.work.pem';
+    public const DEFAULT_TLS_KEY_FILE  = '/etc/ssl/cloudflare/memo.takusumi.work.key';
+
     /** 追加ディレクティブとして許可する先頭トークン */
     public const ALLOWED_DIRECTIVES = [
         'Header', 'RequestHeader', 'Redirect', 'RedirectMatch',
@@ -43,7 +46,12 @@ final class VhostRenderer
         return $bad;
     }
 
-    public static function render(array $s, string $wwwRoot = '/var/www'): string
+    public static function render(
+        array $s,
+        string $wwwRoot = '/var/www',
+        string $tlsCertFile = self::DEFAULT_TLS_CERT_FILE,
+        string $tlsKeyFile = self::DEFAULT_TLS_KEY_FILE,
+    ): string
     {
         $name    = $s['name'];
         $domain  = $s['domain'];
@@ -95,8 +103,8 @@ final class VhostRenderer
             $out .= "    ServerName {$domain}\n";
             $out .= $body;
             $out .= "    SSLEngine on\n";
-            $out .= "    SSLCertificateFile    /etc/letsencrypt/live/{$domain}/fullchain.pem\n";
-            $out .= "    SSLCertificateKeyFile /etc/letsencrypt/live/{$domain}/privkey.pem\n";
+            $out .= "    SSLCertificateFile    {$tlsCertFile}\n";
+            $out .= "    SSLCertificateKeyFile {$tlsKeyFile}\n";
             $out .= "</VirtualHost>\n";
         } else {
             $out .= "<VirtualHost *:80>\n";

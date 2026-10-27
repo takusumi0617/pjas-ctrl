@@ -20,7 +20,6 @@ final class AgentClient
         'deploy.start', 'deploy.rollback', 'deploy.adopt',
         'apache.render', 'apache.apply', 'apache.reload',
         'fpm.reload',
-        'tls.issue', 'tls.renew',
         'fs.list', 'fs.read', 'fs.write',
         'health.check',
         'cron.apply', 'cron.delete',

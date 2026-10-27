@@ -56,6 +56,20 @@ foreach ($cases as $c) {
     }
 }
 
+$tlsVhost = VhostRenderer::render($cases[0], '/var/www');
+foreach ([VhostRenderer::DEFAULT_TLS_CERT_FILE, VhostRenderer::DEFAULT_TLS_KEY_FILE] as $path) {
+    if (!str_contains($tlsVhost, $path)) {
+        $fail++;
+        echo "FAIL Cloudflare 証明書パスがありません: {$path}\n";
+    } else {
+        echo "ok   Cloudflare 証明書: {$path}\n";
+    }
+}
+if (str_contains($tlsVhost, '/etc/letsencrypt/')) {
+    $fail++;
+    echo "FAIL Let's Encrypt の証明書パスが残っています\n";
+}
+
 // 追加ディレクティブの許可リストが両者で一致していること
 if (VhostRenderer::ALLOWED_DIRECTIVES !== Spec::ALLOWED_DIRECTIVES) {
     $fail++;

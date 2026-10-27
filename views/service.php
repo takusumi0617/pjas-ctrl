@@ -148,8 +148,6 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
   </div>
   <?php if (Auth::can('owner')): ?>
     <div class="row" style="margin-top:16px">
-      <form method="post" action="/services/<?= $name ?>/tls"><?= Csrf::field() ?>
-        <button class="btn">安全な通信に必要な証明書を用意する</button></form>
       <span class="spacer"></span>
       <form method="post" action="/services/<?= $name ?>/vhost"
             onsubmit="return confirm('この設定を反映します。サイトを止めずに切り替わります。よろしいですか?')">
@@ -253,7 +251,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
 
       <div class="field"><label class="inline"><input type="checkbox" name="tls" <?= $s['tls'] ? 'checked' : '' ?>>
         通信を暗号化して公開する（https）</label>
-        <div class="hint">先に「公開設定」タブで証明書を取得してからオンにしてください。</div></div>
+        <div class="hint">Cloudflare Origin CA の共通ワイルドカード証明書を使用します。</div></div>
     </div></div>
 
     <div class="card step"><div class="card-h">動作確認とバージョン管理</div><div class="card-b">

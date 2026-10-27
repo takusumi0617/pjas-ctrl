@@ -8,6 +8,8 @@ return [
     'www_root'      => '/var/www',
     'upload_dir'    => '/var/lib/pjas/uploads',   // web が置いた検疫前アーカイブ。ここ以外は読まない
     'job_dir'       => '/var/log/pjas/jobs',
+    'tls_cert_file' => '/etc/ssl/cloudflare/memo.takusumi.work.pem',
+    'tls_key_file'  => '/etc/ssl/cloudflare/memo.takusumi.work.key',
     'cron_dir'      => '/etc/cron.d',
     'cron_script_dir' => '/var/lib/pjas/cron',
     'cron_log_dir'  => '/var/log/pjas/cron',
@@ -22,8 +24,6 @@ return [
     'a2ensite'      => '/usr/sbin/a2ensite',
     'a2dissite'     => '/usr/sbin/a2dissite',
     'systemctl'     => '/usr/bin/systemctl',
-    'certbot'       => '/usr/bin/certbot',
-    'certbot_email' => 'ops@example.com',
 
     // git デプロイを使う場合のみ。サービス名 => リポジトリ URL の固定表。
     // ここに無いサービスは git デプロイを拒否する。

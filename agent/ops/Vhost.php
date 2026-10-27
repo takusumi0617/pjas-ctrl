@@ -119,8 +119,10 @@ final class Vhost
             $out .= "    RewriteRule ^/?(.*)$ https://{$domain}/\$1 [R=301,L]\n</VirtualHost>\n\n";
             $out .= "<VirtualHost *:443>\n    ServerName {$domain}\n" . $body;
             $out .= "    SSLEngine on\n";
-            $out .= "    SSLCertificateFile    /etc/letsencrypt/live/{$domain}/fullchain.pem\n";
-            $out .= "    SSLCertificateKeyFile /etc/letsencrypt/live/{$domain}/privkey.pem\n";
+            $cert = (string) ($this->cfg['tls_cert_file'] ?? '/etc/ssl/cloudflare/memo.takusumi.work.pem');
+            $key  = (string) ($this->cfg['tls_key_file'] ?? '/etc/ssl/cloudflare/memo.takusumi.work.key');
+            $out .= "    SSLCertificateFile    {$cert}\n";
+            $out .= "    SSLCertificateKeyFile {$key}\n";
             $out .= "</VirtualHost>\n";
         } else {
             $out .= "<VirtualHost *:80>\n    ServerName {$domain}\n" . $body . "</VirtualHost>\n";

@@ -150,7 +150,12 @@ final class ServiceController
         ];
 
         if ($tab === 'vhost') {
-            $data['rendered'] = VhostRenderer::render($s, $data['wwwRoot']);
+            $data['rendered'] = VhostRenderer::render(
+                $s,
+                $data['wwwRoot'],
+                (string) Config::get('tls_cert_file', VhostRenderer::DEFAULT_TLS_CERT_FILE),
+                (string) Config::get('tls_key_file', VhostRenderer::DEFAULT_TLS_KEY_FILE),
+            );
             try {
                 $cur = AgentClient::call('apache.render', ['service' => Deployer::spec($s)], Auth::actor());
                 $data['live']    = (string) ($cur['current'] ?? '');
