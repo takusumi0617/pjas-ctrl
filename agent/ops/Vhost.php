@@ -229,8 +229,16 @@ final class Vhost
     private function updateMode(array $params): string
     {
         $mode = $params['update_mode'] ?? 'template';
-        if (!in_array($mode, ['errors', 'template'], true)) throw new OpException('更新する内容を選んでください');
+        if (!in_array($mode, ['auto', 'errors', 'template'], true)) throw new OpException('更新する内容を選んでください');
         return $mode;
+    }
+
+    private function resolvedMode(array $params, array $spec): string
+    {
+        $mode = $this->updateMode($params);
+        if ($mode !== 'auto') return $mode;
+        $path = $this->confPath($spec['name']);
+        return file_exists($path) || is_link($path) ? 'errors' : 'template';
     }
 
     private function currentForErrors(array $spec): string
@@ -242,6 +250,16 @@ final class Vhost
         $conf = (string) file_get_contents($path);
         if (!preg_match('/^[\t ]*<VirtualHost\s+[^>]+>[^\S\r\n]*\R/mi', $conf)) throw new OpException('更新するVirtualHostが見つかりません');
         return $conf;
+    }
+
+    private function creationError(array $params, array $spec): string
+    {
+        if ($this->updateMode($params) !== 'auto') return '';
+        $source = (string) ($params['migration_source'] ?? '');
+        foreach (self::conflictingSites($this->enabledDir(), $spec['domain'], $this->confPath($spec['name'])) as $site) {
+            if ($source !== $site . '.conf') return '同じアドレスを使う既存設定があります。現在の内容を失わないよう、既存設定の継承を確認してから反映してください。複数ファイルに分かれた設定は自動で置き換えません';
+        }
+        return '';
     }
 
     /** 現在のconfだけを入力とし、再生成・有効化・継承元の変更を行わない。 */
@@ -279,13 +297,14 @@ final class Vhost
         $path = $this->confPath($spec['name']);
         $cur  = is_file($path) ? (string) file_get_contents($path) : '';
 
-        if ($this->updateMode($params) === 'errors') {
-            $current = $cur === '' ? '' : $this->currentForErrors($spec);
+        if ($this->resolvedMode($params, $spec) === 'errors') {
+            $current = ($this->updateMode($params) === 'auto' || $cur !== '') ? $this->currentForErrors($spec) : '';
             $rendered = '';
             $previewError = '';
             try { $rendered = $current === '' ? '' : SiteErrors::decorate($current); }
             catch (\InvalidArgumentException $e) { $previewError = $e->getMessage(); }
             return ['rendered'=>$rendered, 'current'=>$current, 'preview_error'=>$previewError,
+                'resolved_mode'=>'errors', 'can_apply'=>$current !== '' && $previewError === '',
                 'current_hash'=>hash('sha256', $current), 'errors_available'=>$current !== '' && $previewError === '',
                 'managed'=>str_starts_with($current, self::MANAGED_HEADER), 'conflicts'=>[],
                 'inherited'=>is_file($this->inheritedPath($spec['name'])), 'migration_sources'=>[]];
@@ -300,7 +319,10 @@ final class Vhost
                 } catch (OpException $e) { /* 不一致・複合サイトは候補に含めない */ }
             }
         }
+        $creationError = $this->creationError($params, $spec);
         return [
+            'resolved_mode'=>'template', 'can_apply'=>$creationError === '', 'preview_error'=>$creationError,
+            'current_hash'=>hash('sha256', $cur),
             'migration_sources' => $sources,
             'migration_source' => $migration['source'] ?? '',
             'migration_hash' => $migration['hash'] ?? '',
@@ -318,7 +340,20 @@ final class Vhost
     {
         $lock = fopen($this->cfg['apache_sites'] . '/.pjas-vhost.lock', 'c');
         if (!$lock || !flock($lock, LOCK_EX)) throw new OpException('公開設定をロックできません');
-        try { return $this->updateMode($params) === 'errors' ? $this->applyErrors($params) : $this->applyUnlocked($params); }
+        try {
+            $spec = Spec::service($params['service'] ?? null);
+            $mode = $this->resolvedMode($params, $spec);
+            if ($this->updateMode($params) === 'auto') {
+                $current = $mode === 'errors' ? $this->currentForErrors($spec) : '';
+                if (!hash_equals(hash('sha256', $current), (string) ($params['current_hash'] ?? ''))) {
+                    throw new OpException('公開設定がプレビュー後に変更されています。画面を開き直して変更点を確認してください');
+                }
+                if ($mode === 'template' && ($error = $this->creationError($params, $spec)) !== '') throw new OpException($error);
+            }
+            $result = $mode === 'errors' ? $this->applyErrors($params) : $this->applyUnlocked($params);
+            $result['update_mode'] = $mode;
+            return $result;
+        }
         finally { flock($lock, LOCK_UN); fclose($lock); }
     }
 

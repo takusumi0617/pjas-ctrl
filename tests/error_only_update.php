@@ -40,8 +40,9 @@ $path=$v->confPath('chat');$snapshot=$dir.'/.pjas-inherited-chat.json';
 file_put_contents($snapshot,'old snapshot deliberately not read by errors mode');
 file_put_contents($path,$original);
 try {
-    $p=['service'=>$s,'update_mode'=>'errors'];
+    $p=['service'=>$s,'update_mode'=>'auto'];
     $preview=$v->preview($p);
+    check($preview['resolved_mode']==='errors' && $preview['can_apply'],'既存confがあれば統合ボタンは自動で部分更新を選ぶ');
     check(file_get_contents($path)===$original,'プレビューはconfを書き換えず継承元も読み込まない');
     check(str_replace(SiteErrors::directives(),'',$preview['rendered'])===$original,'80と443の独自設定が生成部分以外はバイト単位で一致');
     $v->apply($p+['current_hash'=>$preview['current_hash']]);
@@ -63,8 +64,28 @@ try {
     $brokenPreview=$v->preview($p);
     check(!$brokenPreview['errors_available'] && $brokenPreview['preview_error']!=='' && $brokenPreview['current']===$broken,'生成部分が不完全でも現在のconfを検査表示でき、反映は止める');
     unlink($path);
-    rejects(fn()=>$v->apply($p+['current_hash'=>hash('sha256','')]));
-    check(!$v->preview($p)['errors_available'],'confがない場合は雛形からの作成を案内');
+    // 既存設定を確認した後にファイルが消えても、全体作成へ切り替えない。
+    rejects(fn()=>$v->apply($p+['current_hash'=>hash('sha256',$broken)]));
+    check(!file_exists($path),'確認後にconfが消えた場合は再生成せず拒否');
+    unlink($dir.'/fail');
+    unlink($snapshot);
+    $initial=$v->preview($p);
+    check($initial['resolved_mode']==='template' && $initial['can_apply'],'confがない場合は初回作成をプレビュー');
+    file_put_contents($path,$original);
+    rejects(fn()=>$v->apply($p+['current_hash'=>$initial['current_hash']]));
+    check(file_get_contents($path)===$original,'初回プレビュー後にconfが作成されたら上書きせず拒否');
+    unlink($path);
+    $creator=new Vhost(array_replace($cfg,['a2ensite'=>$apache]),new Paths('/var/www'));
+    $creator->apply($p+['current_hash'=>$initial['current_hash']]);
+    check(str_contains(file_get_contents($path),'ErrorDocument 404'),'統合ボタンで初回の公開設定とエラーページを作成');
+    // 自サイトの設定がないときも、別ファイルの80/443を暗黙に置き換えない。
+    unlink($path); mkdir($dir.'/enabled');
+    file_put_contents($dir.'/enabled/legacy.conf',"<VirtualHost *:443>\nServerName chat.example.com\n</VirtualHost>\n");
+    $conflict=new Vhost(array_replace($cfg,['apache_sites_enabled'=>$dir.'/enabled']),new Paths('/var/www'));
+    check(!$conflict->preview($p)['can_apply'],'既存の別confがあれば継承確認前の新規作成を止める');
+    rejects(fn()=>$conflict->apply($p+['current_hash'=>hash('sha256','')]));
+    check(!file_exists($path),'既存の別confを無効化する生成処理には進まない');
+    unlink($dir.'/enabled/legacy.conf'); rmdir($dir.'/enabled');
 } finally {
     foreach (glob($dir.'/*') as $f) if (is_file($f)) unlink($f);
     foreach (glob($dir.'/.*') as $f) if (is_file($f)) unlink($f);

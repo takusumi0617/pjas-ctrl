@@ -40,7 +40,7 @@ final class VhostController
         try {
             $r = \Pjas\Agent\AgentClient::call('apache.apply', [
                 'job_id'  => $job,
-                'update_mode' => (string) ($_POST['update_mode'] ?? 'template'),
+                'update_mode' => 'auto',
                 'current_hash' => (string) ($_POST['current_hash'] ?? ''),
                 'migration_source' => (string) ($_POST['migration_source'] ?? ''),
                 'migration_hash' => (string) ($_POST['migration_hash'] ?? ''),
@@ -59,11 +59,11 @@ final class VhostController
             [$s['id'], (string) ($r['hash'] ?? ''), $actor]);
         $disabled = array_values((array) ($r['disabled'] ?? []));
         Audit::log($actor, 'apache.vhost.apply', $s['name'],
-            ['hash' => $r['hash'] ?? '', 'disabled' => $disabled, 'update_mode' => $_POST['update_mode'] ?? 'template']);
+            ['hash' => $r['hash'] ?? '', 'disabled' => $disabled, 'update_mode' => $r['update_mode'] ?? 'auto']);
 
-        $msg = ($_POST['update_mode'] ?? '') === 'errors'
+        $msg = ($r['update_mode'] ?? '') === 'errors'
             ? '標準エラーページだけ更新しました。現在のHTTP・HTTPSの独自設定は維持しています'
-            : '設定全体を最新の雛形で反映しました';
+            : '公開設定を新しく作成しました';
         if ($disabled) {
             $msg .= '。同じアドレスを使っていた古い設定を無効にしました: ' . implode(', ', $disabled);
         }
