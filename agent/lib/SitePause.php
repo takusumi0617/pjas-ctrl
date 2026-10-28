@@ -13,16 +13,34 @@ final class SitePause
     public function read(string $name): array
     {
         $path = $this->dir($name) . '/config.json';
-        if (is_file($path)) return json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
-        return ['enabled' => false, 'code' => 503, 'html' => '<!doctype html><html lang="ja"><meta charset="utf-8"><title>一時停止中</title><h1>ただいま一時停止しています</h1><p>しばらくしてからアクセスしてください。</p></html>'];
+        if (is_file($path)) {
+            $state = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+            if (!isset($state['page_mode'])) $state['page_mode'] = str_contains($state['html'], '<title>一時停止中</title><h1>ただいま一時停止しています</h1>') ? 'default' : 'custom';
+            return $state;
+        }
+        return ['enabled'=>false,'code'=>503,'page_mode'=>'default','html'=>self::defaultHtml(503)];
     }
+    public static function defaultHtml(int $code): string
+    {
+        [$title,$message] = match ($code) {
+            403 => ['アクセスできません','このページへのアクセスは現在制限されています。時間をおいて、もう一度お試しください。'],
+            404 => ['ページが見つかりません','お探しのページは現在ご利用いただけません。URLをご確認いただくか、時間をおいてもう一度お試しください。'],
+            410 => ['このページの公開は終了しました','お探しのページは公開を終了しているため、現在ご利用いただけません。'],
+            503 => ['ただいまメンテナンス中です','よりよいサービスをお届けするため、一時的に公開を停止しています。しばらくしてから、もう一度お越しください。'],
+            default => ['サイトは一時停止中です','このサイトは現在ご利用いただけません。時間をおいて、もう一度お試しください。'],
+        };
+        return strtr((string)file_get_contents(dirname(__DIR__).'/templates/default_pause.html'),['{{CODE}}'=>(string)$code,'{{TITLE}}'=>$title,'{{MESSAGE}}'=>$message]);
+    }
+
     public function validate(array $params): array
     {
         $code = filter_var($params['code'] ?? null, FILTER_VALIDATE_INT);
         if ($code === false || $code < 200 || $code > 599) throw new OpException('HTTPコードは200〜599の整数で入力してください');
-        $html = $params['html'] ?? null;
+        $mode = $params['page_mode'] ?? 'custom';
+        if (!in_array($mode,['default','custom'],true)) throw new OpException('停止ページの種類を選んでください');
+        $html = $mode === 'default' ? self::defaultHtml($code) : ($params['html'] ?? null);
         if (!is_string($html) || strlen($html) > 128 * 1024 || str_contains($html, "\0")) throw new OpException('HTMLは128KB以内で入力してください');
-        return ['enabled' => true, 'code' => $code, 'html' => $html];
+        return ['enabled' => true, 'code' => $code, 'html' => $html, 'page_mode'=>$mode];
     }
     public function write(string $name, array $state): void
     {

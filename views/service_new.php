@@ -5,31 +5,34 @@ use Pjas\Http\Csrf;
 use Pjas\Http\View;
 use Pjas\Support\Labels;
 
+$selectedSource = $in['source'] ?? (!empty($in['github_repo']) ? 'git' : 'upload');
 $v = static fn(string $k, string $d = '') => View::e((string) ($in[$k] ?? $d));
 ?>
 <h1>サイトを登録する</h1>
-<div class="sub">このサーバーで新しくサイトを管理できるようにします。ファイルの置き場所とバージョン管理用のフォルダが自動で作られます。
-  公開GitHubリポジトリを指定すると、登録と同時にファイルを取得し、初回公開まで実行します。</div>
+<div class="sub">GitHubまたは圧縮ファイルから、新しいサイトを登録します。公開アドレスと必要な設定を確認してから実行してください。</div>
 
 <?php if ($errors): ?>
   <div class="note err flash"><?php foreach ($errors as $e): ?>・<?= View::e($e) ?><br><?php endforeach; ?></div>
 <?php endif; ?>
 
-<div class="card"><div class="card-h">GitHubの .pjas から設定を読み込む</div><div class="card-b">
-<form method="post" action="/services/github-preview"><?= Csrf::field() ?>
-<div class="field"><label>公開GitHubリポジトリ</label><input name="github_repo" required value="<?= $v('github_repo') ?>" placeholder="所有者/リポジトリ"></div>
-<div class="field"><label>ブランチ・タグ（空欄なら既定ブランチ）</label><input name="github_ref" value="<?= $v('github_ref') ?>"></div>
-<button class="btn">設定を読み込んで確認する</button><div class="hint">この段階ではサイト登録やプログラムの実行はしません。</div></form>
-</div></div>
-<?php if (isset($manifest_preview)): ?><div class="note"><?= $manifest_preview['found'] ? '.pjasを読み込みました。下の設定を確認・修正してください。' : '.pjasはありません。通常どおり下の項目を入力して登録できます。' ?>
-確認したコミット: <?= View::e($manifest_preview['sha']) ?></div><?php endif; ?>
-<form method="post" action="/services">
+<?php if (isset($manifest_preview)): ?><div class="note"><?= $manifest_preview['found'] ? '.pjasを読み込みました。下の設定を確認・修正してください。' : '.pjasはありません。下の項目を入力して登録できます。' ?> 確認したコミット: <?= View::e($manifest_preview['sha']) ?></div><?php endif; ?>
+<form method="post" action="/services" enctype="multipart/form-data" id="registration-form">
   <?= Csrf::field() ?>
-
-  <div class="card step"><div class="card-h">GitHubから取得する（任意）</div><div class="card-b">
-    <div class="field"><label>公開GitHubリポジトリ</label><input name="github_repo" value="<?= $v('github_repo') ?>" placeholder="https://github.com/takusumi0617/pjas-chat"><div class="hint">所有者/リポジトリ の形式でも入力できます。公開リポジトリ専用です。空欄ならサイトの登録だけを行います。</div></div>
-    <div class="field"><label>取得するブランチ・タグ（任意）</label><input name="github_ref" value="<?= $v('github_ref') ?>" placeholder="空欄ならリポジトリの既定ブランチ"><div class="hint">例: main、v1.0.0。取得元は保存され、次回以降も「Git」から更新できます。</div></div>
-    <p class="hint">取得後に下の設定で公開します。公開フォルダ・動作確認ページ・必要な準備処理を確認してください。ビルドや初期設定が必要なアプリは、詳細設定の準備処理やアプリの導入手順に従ってください。</p>
+  <div class="card step"><div class="card-h">公開するファイルを選ぶ</div><div class="card-b">
+    <div class="field"><label for="source">ファイルの取得元</label><select name="source" id="source">
+      <option value="upload" <?= $selectedSource === 'upload' ? 'selected' : '' ?>>パソコンから圧縮ファイルをアップロードする (.zip / .tar.gz)</option>
+      <option value="git" <?= $selectedSource === 'git' ? 'selected' : '' ?>>公開GitHubリポジトリから取得する</option>
+    </select></div>
+    <fieldset id="f-upload" class="source-fields" <?= $selectedSource === 'git' ? 'hidden disabled' : '' ?>>
+      <div class="field"><label>アップロードするファイル</label><input type="file" name="archive" accept=".zip,.tar.gz,.tgz"><div class="hint">ファイルを選ぶと登録後に初回公開を行います。空欄ならサイトの登録だけを行います。</div></div>
+    </fieldset>
+    <fieldset id="f-git" class="source-fields" <?= $selectedSource !== 'git' ? 'hidden disabled' : '' ?>>
+      <div class="field"><label>公開GitHubリポジトリ</label><input name="github_repo" value="<?= $v('github_repo') ?>" placeholder="https://github.com/所有者/リポジトリ" <?= $selectedSource === 'git' ? 'required' : '' ?>></div>
+      <div class="field"><label>取得するブランチ・タグ（任意）</label><input name="github_ref" value="<?= $v('github_ref') ?>" placeholder="空欄ならリポジトリの既定ブランチ"></div>
+      <label class="inline"><input type="checkbox" name="read_manifest" id="read-manifest" value="1" <?= !empty($in['read_manifest']) ? 'checked' : '' ?>>.pjasから設定を読み込む</label>
+      <div class="hint">チェックした場合だけ、サイト名・Apache設定・デーモン・cronなどを読み込みます。</div>
+      <button class="btn" type="submit" id="manifest-load" formaction="/services/github-preview" formnovalidate <?= empty($in['read_manifest']) ? 'hidden disabled' : '' ?>>設定を読み込んで確認する</button>
+    </fieldset>
   </div></div>
 
   <div class="card step">
@@ -119,6 +122,7 @@ $v = static fn(string $k, string $d = '') => View::e((string) ($in[$k] ?? $d));
   </div>
 
   <?php if (!empty($in['manifest_token'])): ?>
+  <fieldset id="manifest-settings" class="source-fields" <?= $selectedSource !== 'git' || empty($in['read_manifest']) ? 'hidden disabled' : '' ?>>
   <div class="card"><div class="card-h">.pjas の設定と追加プログラム</div><div class="card-b">
   <input type="hidden" name="manifest_token" value="<?= $v('manifest_token') ?>">
   <div class="field"><label>読み込んだ設定（JSON・編集可能）</label><textarea name="manifest_json" rows="18" class="mono"><?= $v('manifest_json') ?></textarea></div>
@@ -127,9 +131,12 @@ $v = static fn(string $k, string $d = '') => View::e((string) ($in[$k] ?? $d));
   <p>Apache設定のサイト内パスは登録先のcurrentに、証明書は共通のCloudflare証明書に置き換えます。独自設定を含むため、内容を確認してください。</p>
   <label class="inline"><input type="checkbox" name="manifest_confirm" required value="1">.pjasとApache設定、追加するプログラムの内容を確認し、この設定で登録する</label>
   </div></div>
+  </fieldset>
   <?php endif; ?>
   <div class="row" style="margin-top:16px">
     <a class="btn" href="/services">キャンセル</a><span class="spacer"></span>
     <button class="btn p">この内容で登録する</button>
   </div>
 </form>
+
+<script src="/assets/registration.js" defer></script>

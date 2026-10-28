@@ -72,6 +72,7 @@ final class Deployer
                 'label'       => (string) ($opts['label'] ?? ''),
                 'auto_rollback' => !empty($opts['auto_rollback']),
                 'maintenance'   => !empty($opts['maintenance']),
+                'apply_vhost'   => !empty($opts['apply_vhost']),
             ], $actor);
         } catch (\Throwable $e) {
             @unlink($stage);

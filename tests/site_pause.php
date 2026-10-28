@@ -18,6 +18,10 @@ $v = new Vhost($cfg, new Paths($cfg['www_root']));
 $pause = new SitePause($cfg);
 try {
     rejects(fn() => $v->pause(['service' => $spec, 'action' => 'pause', 'code' => 404, 'html' => 'missing']));
+    $default = $pause->validate(['code'=>404,'page_mode'=>'default','html'=>'ignored']);
+    check($default['page_mode']==='default'&&str_contains($default['html'],'ページが見つかりません')&&str_contains($default['html'],'prefers-color-scheme'),'既定ページはコードに応じた案内とダークモードに対応');
+    check($pause->validate(['code'=>503,'page_mode'=>'custom','html'=>'<h1>独自ページ</h1>'])['html']==='<h1>独自ページ</h1>','独自HTMLは既定デザインで上書きしない');
+    rejects(fn()=>$pause->validate(['code'=>503,'page_mode'=>'invalid']));
     $normal = $v->render($spec);
     file_put_contents($v->confPath('chat'), $normal);
     foreach ([99, 199, 600, "404\nX-Test: value"] as $code) rejects(fn() => $pause->validate(['code' => $code, 'html' => 'x']));

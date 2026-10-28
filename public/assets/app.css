@@ -109,3 +109,23 @@ label.inline + .hint{margin-left:24px}
 .flow li span{display:block;color:var(--muted);font-size:12px;line-height:1.55}
 .tech{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
 .tech summary{color:var(--muted);font-size:12px;cursor:pointer}
+
+[hidden]{display:none!important}
+.source-fields{border:0;padding:0;margin:0;min-width:0}
+#manifest-load{margin-top:12px}
+.power-toggle{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--line);border-radius:99px;background:var(--panel);color:var(--fg);font:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+.power-toggle.is-live{color:var(--ok);border-color:var(--ok);background:var(--ok-soft)}
+.power-toggle.is-paused{color:var(--warn);background:var(--warn-soft)}
+.power-toggle:disabled{opacity:.5;cursor:not-allowed}
+.power-toggle:focus-visible,.dialog-close:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.power-track{width:28px;height:16px;border-radius:99px;background:var(--line);position:relative;margin-left:3px}
+.power-track::after{content:'';position:absolute;left:3px;top:3px;width:10px;height:10px;background:var(--panel);border-radius:50%}
+.is-live .power-track{background:var(--ok)}.is-live .power-track::after{left:15px}
+.pause-dialog{width:min(570px,calc(100vw - 32px));max-height:90vh;overflow:auto;border:1px solid var(--line);border-radius:20px;background:var(--panel);color:var(--fg);padding:26px;box-shadow:0 25px 100px #0003}
+.pause-dialog::backdrop{background:#0b14277a;backdrop-filter:blur(5px)}
+.dialog-heading{display:flex;justify-content:space-between;align-items:center;gap:16px}.dialog-heading h2{font-size:19px;letter-spacing:-.03em;margin:2px 0}.dialog-eyebrow{font-size:9px;letter-spacing:.15em;font-weight:650;color:var(--accent)}
+.dialog-close{border:0;background:var(--panel-2);border-radius:50%;width:32px;height:32px;color:var(--muted);font-size:23px;cursor:pointer;flex-shrink:0}
+.dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:22px}.resume-form{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px;border-top:1px solid var(--line);padding-top:18px}
+.default-page-note{display:flex;align-items:center;gap:14px;background:var(--accent-soft);border-radius:12px;padding:16px;margin-bottom:16px;font-size:12px}.default-page-note .hint{margin-top:3px}.page-icon{display:grid;place-items:center;width:38px;height:42px;border-radius:9px;background:var(--panel);color:var(--accent);font-size:25px;flex:none}
+
+.service-toolbar{flex-wrap:wrap}

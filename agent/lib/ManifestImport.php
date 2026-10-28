@@ -39,7 +39,7 @@ final class ManifestImport
         $r = Proc::run(GitRepositories::cloneArgs(['repo'=>$repo,'ref'=>$ref,'public_github'=>true], $dir), null, 600, null, GitRepositories::publicEnv());
         if ($r['code'] !== 0) { Proc::run(['/bin/rm','-rf','--',$dir]); throw new OpException('GitHubから取得できません: ' . trim($r['err'])); }
         $sha = trim(Proc::must(['/usr/bin/git','rev-parse','HEAD'], $dir));
-        file_put_contents($dir . '.json', json_encode(['repo'=>$repo,'sha'=>$sha], JSON_THROW_ON_ERROR));
+        file_put_contents($dir . '.json', json_encode(['repo'=>$repo,'sha'=>$sha,'ref'=>$ref], JSON_THROW_ON_ERROR));
         chmod($dir . '.json',0600);
         if (!is_file($dir . '/.pjas')) {
             Proc::run(['/bin/rm','-rf','--',$dir]); @unlink($dir . '.json');
@@ -60,6 +60,7 @@ final class ManifestImport
             $m = PjasManifest::parse((string)($params['json'] ?? ''));
             $original = PjasManifest::parse($this->file($dir,'.pjas'));
         } catch (\InvalidArgumentException $e) { throw new OpException($e->getMessage()); }
+        if (isset($origin['ref']) && GitHubRepository::ref((string)($params['ref'] ?? '')) !== $origin['ref']) throw new OpException('ブランチが読み込み時から変更されています。設定を再読み込みしてください');
         if (($m['apache']['file'] ?? '') !== ($original['apache']['file'] ?? '')) throw new OpException('Apache設定ファイルの変更には再読み込みが必要です');
         if (isset($m['apache'])) self::apache($this->file($dir,$m['apache']['file']),$m,$spec,$this->cfg['www_root']);
         foreach ($m['cron'] as $item) { Spec::cronSchedule($item['schedule']); Spec::cronCommand($item['command']); }

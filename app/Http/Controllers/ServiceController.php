@@ -8,6 +8,7 @@ use Pjas\Agent\AgentException;
 use Pjas\Domain\Deployer;
 use Pjas\Domain\GitHubRepository;
 use Pjas\Domain\PjasManifest;
+use Pjas\Domain\RegistrationSource;
 use Pjas\Domain\ScheduledTaskRepo;
 use Pjas\Domain\JobRepo;
 use Pjas\Domain\ReleaseRepo;
@@ -33,23 +34,29 @@ final class ServiceController
 
     public function githubPreview(): void
     {
-        $in = ['github_repo'=>(string)($_POST['github_repo'] ?? ''), 'github_ref'=>(string)($_POST['github_ref'] ?? '')];
+        $in = $_POST;
         try {
-            $r = AgentClient::call('github.inspect',['repo'=>$in['github_repo'],'ref'=>$in['github_ref']],Auth::actor());
+            $selection = RegistrationSource::read($in);
+            if (!$selection['manifest']) throw new \InvalidArgumentException('GitHubを選び「.pjasから設定を読み込む」にチェックしてください');
+            $r = AgentClient::call('github.inspect',['repo'=>$selection['repo'],'ref'=>$selection['ref']],Auth::actor());
             if ($r['found']) {
                 $in = array_replace($in,$r['defaults'],['manifest_token'=>$r['token'],'manifest_json'=>$r['json']]);
                 if ($in['domain'] === '' && preg_match('/^\s*ServerName\s+(\S+)/mi',$r['apache'],$host)) $in['domain'] = $host[1];
             }
             View::render('service_new',['title'=>'サイト登録','errors'=>[],'in'=>$in,'manifest_preview'=>$r]);
-        } catch (AgentException $e) {
+        } catch (AgentException|\InvalidArgumentException $e) {
             View::render('service_new',['title'=>'サイト登録','errors'=>[$e->getMessage()],'in'=>$in]);
         }
     }
 
     public function create(): void
     {
-        // 通常の登録ボタンから進んだ場合も、.pjasがあれば先に確認画面を出す。
-        if (!empty($_POST['github_repo']) && empty($_POST['manifest_token'])) {
+        try { $selection = RegistrationSource::read($_POST); }
+        catch (\InvalidArgumentException $e) {
+            View::render('service_new',['title'=>'サイト登録','errors'=>[$e->getMessage()],'in'=>$_POST]); return;
+        }
+        // チェックした場合だけ読み込み、取得元を切り替えたときは残ったtokenを無視する。
+        if ($selection['manifest'] && $selection['token'] === '') {
             try {
                 $r = AgentClient::call('github.inspect',['repo'=>(string)$_POST['github_repo'],'ref'=>(string)($_POST['github_ref'] ?? '')],Auth::actor());
                 if ($r['found']) {
@@ -65,11 +72,12 @@ final class ServiceController
         }
         try {
             $v = ServiceRepo::validate($_POST, true);
-            $repo = trim((string) ($_POST['github_repo'] ?? ''));
-            $ref = GitHubRepository::ref((string) ($_POST['github_ref'] ?? ''));
-            if ($repo !== '') $repo = GitHubRepository::normalize($repo);
+            $repo = $selection['repo'];
+            $ref = $selection['ref'];
+            $file = $_FILES['archive'] ?? ['error'=>UPLOAD_ERR_NO_FILE];
+            if ($selection['type'] === 'upload' && !in_array($file['error'] ?? -1,[UPLOAD_ERR_OK,UPLOAD_ERR_NO_FILE],true)) throw new ValidationException(['圧縮ファイルを受け取れませんでした。ファイルサイズなどを確認してください']);
             $manifest = null;
-            if (!empty($_POST['manifest_token'])) {
+            if ($selection['manifest'] && $selection['token'] !== '') {
                 if (empty($_POST['manifest_confirm'])) throw new ValidationException(['.pjasとApache設定を確認してチェックしてください']);
                 $manifest = PjasManifest::parse((string) ($_POST['manifest_json'] ?? ''));
             }
@@ -81,7 +89,7 @@ final class ServiceController
         $actor = Auth::actor();
         try {
             if ($manifest !== null) AgentClient::call('github.validate', ['service'=>Deployer::spec($v),
-                'token'=>(string)$_POST['manifest_token'],'json'=>(string)$_POST['manifest_json'],'repo'=>$repo],$actor);
+                'token'=>(string)$_POST['manifest_token'],'json'=>(string)$_POST['manifest_json'],'repo'=>$repo,'ref'=>$ref],$actor);
             // ディレクトリ雛形 (releases/ shared/ current) は agent が root で作る
             AgentClient::call('service.create', [
                 'github_repo' => $repo,
@@ -120,6 +128,15 @@ final class ServiceController
                 View::redirect('/services/' . $v['name'], 'サイトは登録済みですが、GitHubからの取得を開始できませんでした: ' . $e->getMessage(), 'err');
             }
             View::redirect('/jobs/' . $job, 'サイトを登録し、GitHubからの取得と初回公開を開始しました');
+        }
+        if ($selection['type'] === 'upload' && ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+            try {
+                $job = Deployer::fromUpload(ServiceRepo::findOrFail($v['name']),$file,
+                    ['label'=>'圧縮ファイルから初回公開','apply_vhost'=>true,'auto_rollback'=>true],$actor);
+            } catch (ValidationException|AgentException $e) {
+                View::redirect('/services/' . $v['name'],'サイトは登録済みですが初回公開に失敗しました: ' . $e->getMessage(),'err');
+            }
+            View::redirect('/jobs/' . $job,'サイトを登録し、圧縮ファイルから初回公開を開始しました');
         }
         View::redirect('/services/' . $v['name'], "サイト {$v['name']} を登録しました。続けて「公開設定」タブで設定を反映してください。");
     }

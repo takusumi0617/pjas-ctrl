@@ -11,7 +11,7 @@ $name = View::e($s['name']);
 $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' => '公開設定',
          'files' => 'ファイル', 'jobs' => '作業の履歴', 'settings' => '設定'];
 ?>
-<div class="row">
+<div class="row service-toolbar">
   <h1><?= $name ?></h1>
   <?= !empty($pause['enabled']) ? '<span class="tag t-warn">一時停止中</span>' : match ((string) $s['state']) {
         'healthy'   => '<span class="tag t-ok">正常</span>',
@@ -24,6 +24,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
   <?php if (Auth::can('operator')): ?>
     <a class="btn p" href="/deploy?service=<?= $name ?>">新しいバージョンを公開</a>
   <?php endif; ?>
+  <?php if (Auth::can('owner')): ?><button type="button" class="power-toggle <?= !empty($pause['enabled']) ? 'is-paused' : 'is-live' ?>" id="pause-toggle" role="switch" aria-checked="<?= !empty($pause['enabled']) ? 'false' : 'true' ?>" aria-label="サイトの公開状態を変更" aria-haspopup="dialog" aria-controls="pause-dialog" <?= empty($pause['can_pause']) ? 'disabled title="先に公開設定を反映してください"' : '' ?>><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v10M6 5a9 9 0 1 0 12 0"/></svg><span><?= !empty($pause['enabled']) ? '停止中' : '公開中' ?></span><span class="power-track" aria-hidden="true"></span></button><?php endif; ?>
 </div>
 <div class="sub"><span class="mono"><?= View::e($s['domain']) ?></span> ·
   <?= $current
@@ -44,78 +45,6 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
 <?php if (!empty($pause['enabled'])): ?><div class="note">このサイトは一時停止中です。HTTP <?= (int) $pause['code'] ?> と指定したHTMLを返しています。</div><?php endif; ?>
 
 <?php if ($tab === 'overview'): ?>
-  <?php if (Auth::can('owner')): ?>
-  <div class="card"><div class="card-h">サイトの一時停止・再開</div><div class="card-b">
-  <?php if (!empty($pauseErr)): ?><p><?= View::e($pauseErr) ?></p>
-  <?php elseif (empty($pause['can_pause'])): ?><p>先に「公開設定」を反映してください。既存の独自設定がある場合は、既存confを継承してから操作できます。</p>
-  <?php else: ?>
-  <form method="post" action="/services/<?= $name ?>/pause" onsubmit="return confirm('指定したHTTPコードとHTMLでサイトを一時停止します。続けますか？')">
-    <?= Csrf::field() ?><input type="hidden" name="action" value="pause">
-    <div class="field"><label for="pause-code">停止中に返すHTTPコード</label>
-      <?php
-      $codeGroups = [
-          '成功を表すコード' => [
-              200 => '正常に表示する', 201 => '作成が完了した', 202 => '処理を受け付けた',
-              203 => '別のサーバーを経由した情報を返す', 204 => '正常終了・本文なし',
-              205 => '正常終了・入力画面をリセット（本文なし）', 206 => 'データの一部を返す',
-              207 => '複数の処理結果を返す', 208 => '同じ結果を報告済み', 226 => '変更した部分のデータを返す',
-          ],
-          '転送・キャッシュに関するコード' => [
-              300 => '複数の移動先候補がある', 301 => '移動先へ恒久的に転送する',
-              302 => '別の場所へ一時的に転送する', 303 => '処理結果を別の場所で表示する',
-              304 => '前回から変更なし（本文なし）', 305 => '指定の中継サーバーを使う（現在は非推奨）',
-              307 => '送信方法を保ったまま一時的に転送する', 308 => '送信方法を保ったまま恒久的に転送する',
-          ],
-          'アクセス・リクエストに関するエラー' => [
-              400 => 'リクエストの内容が正しくない', 401 => 'ログインなどの認証が必要',
-              402 => '支払いが必要', 403 => 'アクセスを許可しない', 404 => 'ページが見つからない',
-              405 => 'この送信方法は使えない', 406 => '希望された形式では返せない',
-              407 => '中継サーバーでの認証が必要', 408 => 'リクエストの受信が時間切れ',
-              409 => '現在のデータと処理内容が競合している', 410 => 'ページは削除済み・今後も戻らない',
-              411 => '送信データの長さの指定が必要', 412 => '実行するための条件を満たしていない',
-              413 => '送信データが大きすぎる', 414 => 'URLが長すぎる', 415 => '未対応のデータ形式',
-              416 => '指定されたデータ範囲を返せない', 417 => '要求された条件に対応できない',
-              418 => 'ジョーク用のコード（私はティーポット）', 421 => '接続先のサーバーが違う',
-              422 => 'データの意味や内容を処理できない', 423 => '対象がロックされている',
-              424 => '関連する別の処理が失敗した', 425 => '再送の危険があるため処理を保留',
-              426 => '新しい通信方式への切り替えが必要', 428 => '実行条件の指定が必要',
-              429 => '短時間のアクセスが多すぎる', 431 => 'リクエストのヘッダーが大きすぎる',
-              451 => '法的な理由により表示できない',
-          ],
-          'サーバー側のエラー' => [
-              500 => 'サーバー内部で問題が発生した', 501 => 'この機能には対応していない',
-              502 => '接続先のサーバーから正常な応答がない', 503 => '一時停止・メンテナンス中（おすすめ）',
-              504 => '接続先のサーバーの応答が時間切れ', 505 => 'このHTTPのバージョンには対応していない',
-              506 => '返すデータ形式の選択設定に問題がある', 507 => '保存容量が不足している',
-              508 => '処理が繰り返し続けている', 510 => 'リクエストの追加拡張が必要（現在は廃止）',
-              511 => 'ネットワーク利用のための認証が必要',
-          ],
-      ];
-      $knownCodes = [];
-      foreach ($codeGroups as $codes) $knownCodes += $codes;
-      ?>
-      <select id="pause-code" name="code" required>
-        <?php foreach ($codeGroups as $group => $codes): ?>
-          <optgroup label="<?= View::e($group) ?>">
-          <?php foreach ($codes as $code => $meaning): ?>
-            <option value="<?= $code ?>" <?= (int) $pause['code'] === $code ? 'selected' : '' ?>><?= $code ?> — <?= View::e($meaning) ?></option>
-          <?php endforeach; ?>
-          </optgroup>
-        <?php endforeach; ?>
-        <?php if (!isset($knownCodes[(int) $pause['code']])): ?>
-          <option value="<?= (int) $pause['code'] ?>" selected><?= (int) $pause['code'] ?> — 標準では定義されていないコード（保存済み）</option>
-        <?php endif; ?>
-      </select>
-      <div class="hint">通常の一時停止には503、ページが存在しないように表示する場合は404を選びます。説明は各コードの通常の意味です。ここでは番号と入力HTMLを返し、ログイン要求や別URLへの転送処理は追加しません。204・205・304はHTML本文を表示しません。</div>
-    </div>
-    <div class="field"><label>停止中に表示するHTML</label><textarea name="html" rows="10" class="mono"><?= View::e($pause['html']) ?></textarea><div class="hint">HTMLをそのまま表示します。CSSやJavaScriptも記載できます。サイト内の画像・CSSも停止ページに切り替わるため、インラインまたは外部URLを使用してください。PHPコードは実行しません。</div></div>
-    <button class="btn"><?= !empty($pause['enabled']) ? '停止ページを更新する' : 'この内容で一時停止する' ?></button>
-  </form>
-  <?php if (!empty($pause['enabled'])): ?>
-  <form method="post" action="/services/<?= $name ?>/pause" style="margin-top:12px" onsubmit="return confirm('サイトの公開を再開しますか？')"><?= Csrf::field() ?><input type="hidden" name="action" value="resume"><button class="btn p">サイトを再開する</button></form>
-  <?php endif; ?>
-  <?php endif; ?></div></div>
-  <?php endif; ?>
   <?php if ($current === null && Auth::can('operator')): ?>
     <div class="note" style="margin-bottom:14px">
       このサイトはまだ管理下のバージョンを持っていません。
@@ -404,3 +333,8 @@ ProxyPassMatch ^/api(?:/.*)?$ unix:/run/php/php8.4-fpm.sock|fcgi://localhost{{si
 <?php endif; ?>
 
 <?php if (Auth::can('owner')): ?><p><a class="btn" href="/daemons">このサイトの常駐プログラムを管理</a></p><?php endif; ?>
+
+<?php if (Auth::can('owner') && !empty($pause['can_pause'])): ?>
+<?php require __DIR__ . '/partials/pause_dialog.php'; ?>
+<script src="/assets/site-pause.js" defer></script>
+<?php endif; ?>

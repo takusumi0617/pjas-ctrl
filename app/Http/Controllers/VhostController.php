@@ -20,7 +20,7 @@ final class VhostController
         $actor = Auth::actor();
         $action = (string) ($_POST['action'] ?? '');
         $params = ['service' => Deployer::spec($s), 'action' => $action,
-            'code' => $_POST['code'] ?? null, 'html' => (string) ($_POST['html'] ?? '')];
+            'code' => $_POST['code'] ?? null, 'page_mode'=>(string)($_POST['page_mode'] ?? 'custom'), 'html' => (string) ($_POST['html'] ?? '')];
         try { $result = \Pjas\Agent\AgentClient::call('apache.pause', $params, $actor); }
         catch (AgentException $e) {
             Audit::log($actor, 'service.pause', $s['name'], ['action' => $action], 'failed');
