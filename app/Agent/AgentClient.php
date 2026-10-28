@@ -23,7 +23,7 @@ final class AgentClient
         'fs.list', 'fs.read', 'fs.write',
         'health.check',
         'cron.apply', 'cron.delete',
-        'daemon.list', 'daemon.action',
+        'daemon.list', 'daemon.action', 'daemon.candidates', 'daemon.save',
     ];
 
     /**

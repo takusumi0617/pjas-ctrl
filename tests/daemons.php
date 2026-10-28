@@ -2,30 +2,60 @@
 declare(strict_types=1);
 require dirname(__DIR__) . '/agent/lib/Proc.php';
 require dirname(__DIR__) . '/agent/lib/OpException.php';
+require dirname(__DIR__) . '/agent/lib/Spec.php';
 require dirname(__DIR__) . '/agent/ops/Daemon.php';
 use Pjas\Agentd\Ops\Daemon;
 use Pjas\Agentd\OpException;
-$fake = tempnam(sys_get_temp_dir(), 'pjas-systemctl-');
+$dir = sys_get_temp_dir() . '/pjas-daemons-' . bin2hex(random_bytes(6));
+mkdir($dir); mkdir($dir . '/units'); mkdir($dir . '/site-a/current', 0755, true); mkdir($dir . '/site-b/current', 0755, true);
+$fake = $dir . '/systemctl';
 file_put_contents($fake, <<<'SH'
 #!/bin/sh
-if [ "$1" = show ]; then
-    printf 'LoadState=loaded\nActiveState=active\nSubState=running\nUnitFileState=enabled\n'
-elif [ "$1" = start ] && [ "$2" = -- ] && [ "$3" = worker.service ]; then
-    exit 0
-else
-    exit 1
-fi
+case "$1" in
+show) printf 'LoadState=loaded\nActiveState=active\nSubState=running\nUnitFileState=enabled\n';;
+list-unit-files) printf 'worker.service enabled\nunrelated.service disabled\npjas-agentd.service enabled\n';;
+start|stop|restart|daemon-reload) exit 0;;
+*) exit 1;;
+esac
 SH);
 chmod($fake, 0700);
+$cfg = ['systemctl' => $fake, 'www_root' => $dir, 'daemon_dir' => $dir . '/data', 'daemon_unit_dir' => $dir . '/units', 'web_user' => 'www-data', 'web_group' => 'www-data'];
+function check(bool $ok, string $message): void { if (!$ok) throw new RuntimeException($message); echo "ok {$message}\n"; }
+function rejects(callable $fn): void { try { $fn(); } catch (OpException) { return; } throw new RuntimeException('操作を拒否しませんでした'); }
 try {
-    $d = new Daemon(['systemctl' => $fake, 'managed_daemons' => ['worker.service' => '作業プログラム']]);
-    $rows = $d->listing([])['daemons'];
-    if ($rows[0]['state']['ActiveState'] !== 'active' || $rows[0]['label'] !== '作業プログラム') throw new RuntimeException('状態の読み取りに失敗');
-    $d->action(['unit' => 'worker.service', 'action' => 'start']);
-    foreach ([['unit' => 'other.service', 'action' => 'start'], ['unit' => 'worker.service', 'action' => 'enable'], ['unit' => '--all', 'action' => 'stop']] as $p) {
-        try { $d->action($p); } catch (OpException) { continue; }
-        throw new RuntimeException('未許可の操作を受け付けました');
-    }
-    try { $d->action(['unit' => 'worker.service', 'action' => 'restart']); throw new RuntimeException('失敗を無視しました'); } catch (OpException) {}
-    echo "ok 状態取得、起動、対象外・不正操作の拒否、コマンド失敗の伝達\n";
-} finally { unlink($fake); }
+    $d = new Daemon($cfg);
+    check($d->listing([])['daemons'] === [], '未関連付けのサービスは一覧に出ない');
+    rejects(fn() => $d->action(['service' => 'site-a', 'unit' => 'worker.service', 'action' => 'start']));
+    $d->save(['service' => 'site-a', 'unit' => 'worker.service', 'mode' => 'existing', 'label' => '既存作業']);
+    check($d->listing([])['daemons'][0]['state']['ActiveState'] === 'active', '関連付け済みサービスの状態取得');
+    $d->action(['service' => 'site-a', 'unit' => 'worker.service', 'action' => 'start']);
+    rejects(fn() => $d->action(['service' => 'site-b', 'unit' => 'worker.service', 'action' => 'stop']));
+    rejects(fn() => $d->action(['service' => 'site-a', 'unit' => 'unrelated.service', 'action' => 'stop']));
+    rejects(fn() => $d->save(['service' => 'site-b', 'unit' => 'worker.service', 'mode' => 'existing', 'label' => '重複']));
+    rejects(fn() => $d->save(['service' => 'site-a', 'unit' => 'pjas-agentd.service', 'mode' => 'existing', 'label' => '自身']));
+    rejects(fn() => $d->save(['service' => 'missing', 'mode' => 'new', 'label' => '存在しないサイト', 'command' => 'sleep 60']));
+    check(!in_array('worker.service', $d->candidates([])['units'], true), '関連付け済みは候補から除外');
+    $row = $d->save(['service' => 'site-a', 'mode' => 'new', 'label' => '新規作業', 'command' => 'exec /usr/bin/php8.4 worker.php']);
+    $unit = $row['unit'];
+    $body = file_get_contents($dir . '/units/' . $unit);
+    check(str_contains($body, 'User=www-data') && str_contains($body, '/site-a/current') && str_contains($body, 'Restart=on-failure'), '新規サービスはサイト内で非特権ユーザー実行');
+    $d->save(['service' => 'site-a', 'original_unit' => $unit, 'label' => '編集後', 'command' => 'exec sleep 120']);
+    check(str_contains(file_get_contents($dir . '/data/' . $unit . '.sh'), 'exec sleep 120'), '登録した実行内容を編集');
+    rejects(fn() => $d->save(['service' => 'site-b', 'original_unit' => $unit, 'label' => '他サイト', 'command' => 'exec sleep 1']));
+    rejects(fn() => $d->action(['service' => 'site-a', 'unit' => $unit, 'action' => 'enable']));
+    $d->save(['service' => 'site-a', 'original_unit' => 'worker.service', 'label' => '表示名だけ変更', 'command' => 'ignored']);
+    check(!file_exists($dir . '/units/worker.service'), '既存サービス定義は書き換えない');
+    check(count((new Daemon($cfg))->listing([])['daemons']) === 2, '関連付け台帳は再読み込み後も保持');
+    $d->save(['service' => 'site-a', 'target_service' => 'site-b', 'original_unit' => 'worker.service', 'label' => '移動']);
+    rejects(fn() => $d->action(['service' => 'site-a', 'unit' => 'worker.service', 'action' => 'start']));
+    $d->action(['service' => 'site-b', 'unit' => 'worker.service', 'action' => 'start']);
+    check(true, '関連付け先を編集すると以前のサイトからの操作を拒否');
+    // daemon-reload が失敗したら、実行内容とサービス定義を元へ戻す。
+    file_put_contents($fake, "#!/bin/sh\nexit 1\n");
+    rejects(fn() => $d->save(['service' => 'site-a', 'original_unit' => $unit, 'label' => '失敗', 'command' => 'exec sleep 999']));
+    check(str_contains(file_get_contents($dir . '/data/' . $unit . '.sh'), 'exec sleep 120'), '設定反映の失敗時は以前の実行内容へ復元');
+} finally {
+    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
+    foreach ($it as $file) { if ($file->isDir()) rmdir($file->getPathname()); else unlink($file->getPathname()); }
+    rmdir($dir);
+}

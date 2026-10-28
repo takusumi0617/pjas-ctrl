@@ -89,6 +89,7 @@ final class Labels
             'service.adopt'      => '既存ファイルの取り込み',
             'service.health'     => '動作確認',
             'apache.vhost.apply' => '公開設定の反映',
+            'daemon.save'        => '常駐プログラムの登録・編集',
             'daemon.action'      => '常駐プログラムの操作',
             'cron.create'        => '定期処理の登録',
             'cron.update'        => '定期処理の更新',

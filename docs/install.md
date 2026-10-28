@@ -113,17 +113,21 @@ max_execution_time = 0        ; SSE ストリーム用 (fastcgi_read_timeout も
 
 ## 常駐プログラムの管理
 
-管理者権限で「常駐プログラム」を開くと、登録された systemd サービスの状態確認・起動・停止・再起動ができます。操作は「操作の記録」に残ります。初期の対象は Apache、PHP 8.4、cron です。
+管理者権限で「常駐プログラム」を開き、サイトごとに新規作成・設定編集・起動・停止・再起動ができます。登録と操作は「操作の記録」に残ります。サイトの current フォルダが存在することが必要です。
 
-独自の常駐プログラムは、Ubuntu に systemd サービスとしてインストールした後、`agent/config.php` の `managed_daemons` に追加してください。
+- 新規作成: 表示名と実行内容を指定します。サイトの公開中フォルダで www-data 権限で実行し、異常終了時は再起動します。保存だけでは起動しません。編集した実行内容は次の起動・再起動から有効です。関連付け先のサイトも編集できます。
+- 既存プログラム: サーバーの systemd サービス一覧から選んでサイトへ関連付けます。実行設定と稼働状態は変更せず、表示名を編集できます。実行内容の編集はサーバーの元のサービス定義で行ってください。
+- 関連付けのないプログラムや別サイト名を指定した操作はエージェント側でも拒否します。1つのプログラムは1つのサイトへ関連付けます。pjas-agentd 自身は関連付け・操作できません。
 
-```php
-'managed_daemons' => [
-    'apache2.service' => 'サイトの公開（Apache）',
-    'php8.4-fpm.service' => 'PHP 8.4 の実行',
-    'cron.service' => '定期処理の実行',
-    'pjas-worker.service' => 'バックグラウンドの作業',
-],
+以前の managed_daemons 一覧は操作許可として使用しません。Apache・PHP・cron も、必要なサイトへの明示的な関連付けが完了するまでは操作できません。
+
+関連付け台帳は `/var/lib/pjas-daemons/registry.json`、新規サービスは `/etc/systemd/system/pjas-daemon-*.service` に保存します。台帳と実行スクリプトは root 所有で、バックアップ対象にしてください。自動起動の有効化は必要に応じてサーバーで `sudo systemctl enable 対象.service` を実行してください。公開バージョンの切り替え後、常駐プログラムを新バージョンへ切り替えるには再起動してください。
+
+既存環境の更新時は、systemd の書き込み許可も更新します。
+
+```bash
+sudo install -d -o root -g root -m 755 /var/lib/pjas-daemons
+sudo cp /opt/pjas-ctrl/systemd/pjas-agentd.service /etc/systemd/system/pjas-agentd.service
+sudo systemctl daemon-reload
+sudo systemctl restart pjas-agentd
 ```
-
-設定変更後に `sudo systemctl restart pjas-agentd` を実行します。登録されていないサービスは操作できません。pjas-agentd 自身の操作やサービス定義の作成・編集、自動起動設定の変更はこの画面の対象外です。Apache や PHP の停止・再起動中は管理画面にも影響します。

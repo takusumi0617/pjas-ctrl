@@ -13,7 +13,7 @@ use Pjas\Support\Labels;
     <?php foreach ([
         'auth.login', 'auth.logout', 'service.create', 'service.update', 'service.deploy',
         'service.rollback', 'service.health', 'apache.vhost.apply',
-        'cron.create', 'cron.update', 'cron.delete', 'daemon.action',
+        'cron.create', 'cron.update', 'cron.delete', 'daemon.action', 'daemon.save',
     ] as $actionId): ?>
       <option value="<?= View::e($actionId) ?>" <?= $action === $actionId ? 'selected' : '' ?>>
         <?= View::e(Labels::action($actionId)) ?>

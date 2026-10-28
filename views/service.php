@@ -289,3 +289,5 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
     <?php endif; ?>
   </form>
 <?php endif; ?>
+
+<?php if (Auth::can('owner')): ?><p><a class="btn" href="/daemons">このサイトの常駐プログラムを管理</a></p><?php endif; ?>
