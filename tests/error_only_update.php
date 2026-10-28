@@ -50,6 +50,12 @@ try {
     check($updated===$preview['rendered'],'プレビューと同じ内容を適用（a2ensite/a2dissiteは呼ばない）');
     check(file_get_contents($snapshot)==='old snapshot deliberately not read by errors mode','エラーページ更新で継承元を変更しない');
     check(SiteErrors::decorate($updated)===$updated,'繰り返しても生成部分が重複しない');
+    $historyRepo=$dir.'/.pjas-history/chat';
+    chmod($historyRepo,0755);
+    check(!$v->preview($p)['can_apply'],'Git履歴が安全に保存できなければ反映ボタンを出さない');
+    rejects(fn()=>$v->apply($p+['current_hash'=>hash('sha256',$updated)]));
+    check(file_get_contents($path)===$updated,'Git履歴の保存失敗時はconfを変更しない');
+    chmod($historyRepo,0700);
     $legacy=str_replace("    # end pjas-ctrl standard error pages\n",'',$updated);
     check(SiteErrors::decorate($legacy)===$updated,'旧版のマーカーにも対応し重複せず更新');
     rejects(fn()=>$v->apply($p+['current_hash'=>$preview['current_hash']]));
@@ -59,6 +65,14 @@ try {
     rejects(fn()=>$v->apply($p+['current_hash'=>$preview['current_hash']]));
     check(file_get_contents($path)===$original."\n# later edit\n",'設定検査失敗時は手作業の追記も含めて完全復元');
     rejects(fn()=>$v->apply(['service'=>$s,'update_mode'=>'invalid']));
+    unlink($dir.'/fail');
+    $afterFail=$dir.'/after-fail';
+    file_put_contents($afterFail,"#!/bin/sh\nif [ \"\$1\" = graceful ]; then chmod 755 '".$historyRepo."'; fi\nexit 0\n");
+    chmod($afterFail,0700);
+    $warningVhost=new Vhost(array_replace($cfg,['apachectl'=>$afterFail]),new Paths('/var/www'));
+    $warning=$warningVhost->apply($p+['current_hash'=>hash('sha256',file_get_contents($path))]);
+    check(!empty($warning['history_warning'])&&str_contains(file_get_contents($path),'ErrorDocument 404'),'反映後だけの履歴保存失敗は、設定を反映済みとして警告');
+    chmod($historyRepo,0700);
     $broken=preg_replace('/^[\t ]*ErrorDocument 404 [^\r\n]*\r?\n/m', '', SiteErrors::decorate($original));
     file_put_contents($path,$broken);
     $brokenPreview=$v->preview($p);
@@ -67,7 +81,6 @@ try {
     // 既存設定を確認した後にファイルが消えても、全体作成へ切り替えない。
     rejects(fn()=>$v->apply($p+['current_hash'=>hash('sha256',$broken)]));
     check(!file_exists($path),'確認後にconfが消えた場合は再生成せず拒否');
-    unlink($dir.'/fail');
     unlink($snapshot);
     $initial=$v->preview($p);
     check($initial['resolved_mode']==='template' && $initial['can_apply'],'confがない場合は初回作成をプレビュー');
@@ -87,7 +100,7 @@ try {
     check(!file_exists($path),'既存の別confを無効化する生成処理には進まない');
     unlink($dir.'/enabled/legacy.conf'); rmdir($dir.'/enabled');
 } finally {
-    foreach (glob($dir.'/*') as $f) if (is_file($f)) unlink($f);
-    foreach (glob($dir.'/.*') as $f) if (is_file($f)) unlink($f);
+    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
+    foreach ($it as $file) { if ($file->isDir() && !$file->isLink()) rmdir($file->getPathname()); else unlink($file->getPathname()); }
     rmdir($dir);
 }

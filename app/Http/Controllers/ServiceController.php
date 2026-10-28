@@ -254,10 +254,11 @@ final class ServiceController
             );
             try {
                 $cur = AgentClient::call('apache.render', ['service' => Deployer::spec($s), 'migration_source' => (string) ($_GET['migration_source'] ?? ''), 'update_mode'=>$data['update_mode']], Auth::actor());
-                foreach (['migration_sources', 'migration_source', 'migration_hash', 'inherited', 'current_hash', 'errors_available', 'preview_error', 'resolved_mode', 'can_apply'] as $field) $data[$field] = $cur[$field] ?? null;
+                foreach (['migration_sources', 'migration_source', 'migration_hash', 'inherited', 'current_hash', 'errors_available', 'preview_error', 'resolved_mode', 'can_apply', 'history', 'history_warning'] as $field) $data[$field] = $cur[$field] ?? null;
                 $data['live']    = (string) ($cur['current'] ?? '');
                 $data['managed'] = (bool) ($cur['managed'] ?? false);
                 $data['conflicts'] = (array) ($cur['conflicts'] ?? []);
+                $data['git_diff'] = $cur['git_diff'] ?? null;
                 $data['rendered'] = (string) ($cur['rendered'] ?? $data['rendered']); // agent 側が正
             } catch (AgentException $e) {
                 $data['live'] = '';
@@ -265,7 +266,7 @@ final class ServiceController
                 $data['conflicts'] = [];
                 $data['agentErr'] = $e->getMessage();
             }
-            $data['diff'] = VhostRenderer::diff($data['live'], $data['rendered']);
+            $data['diff'] = $data['git_diff'] ?? VhostRenderer::diff($data['live'], $data['rendered']);
             $data['error_coverage'] = [
                 'current' => \Pjas\Shared\SiteErrors::coverage($data['live']),
                 'planned' => \Pjas\Shared\SiteErrors::coverage($data['rendered']),

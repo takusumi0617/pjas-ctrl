@@ -152,17 +152,31 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
   <?php if (!empty($preview_error)): ?><div class="note err"><?= View::e($preview_error) ?>。下のチェックで現在の指定を確認できます。設定は変更していません。</div><?php endif; ?>
   <div class="note" style="margin-bottom:12px">404・403・500・503など、Apacheが返す標準エラーページを共通デザインで表示します。既存設定を継承したサイトも対象です。独自のエラーページ指定は優先され、アプリが返すエラー本文やCloudflare側のエラーは変更しません。</div>
   <?php if (empty($agentErr) && isset($error_coverage)) require __DIR__ . '/partials/error_coverage.php'; ?>
+  <?php if (!empty($history_warning)): ?><div class="note err"><?= View::e($history_warning) ?>。Git履歴を保存できる状態になってから反映してください。</div><?php endif; ?>
+  <?php if (!empty($history)): ?>
+    <details class="card" style="margin-bottom:16px">
+      <summary class="card-h">公開設定のGit履歴（最新10件）</summary>
+      <div class="card-b"><p class="hint">公開設定ボタンによる反映前後のconfを、サーバー内だけに保存します。復元する場合はサーバー管理者が内容と設定検査を確認してください。</p>
+        <table><thead><tr><th>履歴番号</th><th>記録日時</th><th>内容</th></tr></thead><tbody>
+          <?php foreach ($history as $entry): ?><tr>
+            <td class="mono" title="<?= View::e($entry['revision']) ?>"><?= View::e(substr($entry['revision'], 0, 12)) ?></td>
+            <td><?= View::e($entry['time']) ?></td><td><?= $entry['phase'] === 'before' ? '反映前の設定' : '反映後の設定' ?></td>
+          </tr><?php endforeach; ?>
+        </tbody></table>
+      </div>
+    </details>
+  <?php endif; ?>
   <div class="f2">
     <div class="card"><div class="card-h">これから使うサーバー設定（詳しい人向け）
       <span class="spacer"></span><span class="mono muted"><?= View::e('/etc/apache2/sites-available/pjas-' . $s['name'] . '.conf') ?></span></div>
       <div class="card-b"><pre><?= View::e($rendered) ?></pre></div>
     </div>
-    <div class="card"><div class="card-h">現在との変更点（詳しい人向け）
-      <?= trim($live) === trim($rendered)
+    <div class="card"><div class="card-h"><?= isset($git_diff) ? 'Gitによる変更点' : '現在との変更点（詳しい人向け）' ?>
+      <?= (isset($git_diff) ? $git_diff === [] : trim($live) === trim($rendered))
             ? '<span class="tag t-ok">違いはありません</span>'
             : '<span class="tag t-warn">まだ反映していない変更があります</span>' ?></div>
       <div class="card-b"><pre class="diff"><?php foreach ($diff as [$sign, $line]):
-          $cls = $sign === '+' ? 'add' : ($sign === '-' ? 'del' : 'ctx'); ?><span class="<?= $cls ?>"><?= View::e($sign . ' ' . $line) ?></span>
+          $cls = $sign === '+' ? 'add' : ($sign === '-' ? 'del' : 'ctx'); ?><span class="<?= $cls ?>"><?= View::e(($sign === '@' ? '' : $sign . ' ') . $line) ?></span>
 <?php endforeach; ?></pre></div>
     </div>
   </div>

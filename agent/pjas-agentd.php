@@ -165,6 +165,7 @@ function handle(string $line, array $registry): array
     $op     = (string) $req['op'];
     $actor  = substr((string) ($req['actor'] ?? 'unknown'), 0, 120);
     $params = is_array($req['params'] ?? null) ? $req['params'] : [];
+    $params['_actor'] = $actor;
 
     if (!isset($registry[$op])) {
         syslog(LOG_WARNING, "未登録の op を拒否しました: {$op} (actor={$actor})");

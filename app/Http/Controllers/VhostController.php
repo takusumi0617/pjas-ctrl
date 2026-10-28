@@ -59,7 +59,7 @@ final class VhostController
             [$s['id'], (string) ($r['hash'] ?? ''), $actor]);
         $disabled = array_values((array) ($r['disabled'] ?? []));
         Audit::log($actor, 'apache.vhost.apply', $s['name'],
-            ['hash' => $r['hash'] ?? '', 'disabled' => $disabled, 'update_mode' => $r['update_mode'] ?? 'auto']);
+            ['hash' => $r['hash'] ?? '', 'disabled' => $disabled, 'update_mode' => $r['update_mode'] ?? 'auto', 'history_revision' => $r['history_revision'] ?? '']);
 
         $msg = ($r['update_mode'] ?? '') === 'errors'
             ? '標準エラーページだけ更新しました。現在のHTTP・HTTPSの独自設定は維持しています'
@@ -67,7 +67,8 @@ final class VhostController
         if ($disabled) {
             $msg .= '。同じアドレスを使っていた古い設定を無効にしました: ' . implode(', ', $disabled);
         }
-        View::redirect('/services/' . $s['name'] . '?tab=vhost', $msg);
+        if (!empty($r['history_warning'])) $msg .= '。' . $r['history_warning'];
+        View::redirect('/services/' . $s['name'] . '?tab=vhost', $msg, !empty($r['history_warning']) ? 'err' : 'ok');
     }
 
 }

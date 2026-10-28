@@ -9,6 +9,8 @@ use Pjas\Shared\SiteErrors;
 use Pjas\Agentd\OpException;
 use Pjas\Agentd\InheritedVhost;
 use Pjas\Agentd\SitePause;
+use Pjas\Agentd\ApacheHistory;
+require_once dirname(__DIR__) . '/lib/ApacheHistory.php';
 require_once dirname(__DIR__) . '/lib/SitePause.php';
 use Pjas\Agentd\Paths;
 use Pjas\Agentd\Proc;
@@ -272,6 +274,7 @@ final class Vhost
             throw new OpException('公開設定がプレビュー後に変更されています。画面を開き直して変更点を確認してください');
         }
         $conf = SiteErrors::decorate($old);
+        ApacheHistory::assertErrorOnly($old, $conf);
         $mode = fileperms($path) & 0777;
         $write = static function (string $body) use ($path, $mode): void {
             $tmp = $path . '.tmp-' . bin2hex(random_bytes(8));
@@ -296,6 +299,9 @@ final class Vhost
         $spec = Spec::service($params['service'] ?? null);
         $path = $this->confPath($spec['name']);
         $cur  = is_file($path) ? (string) file_get_contents($path) : '';
+        $history = []; $historyWarning = '';
+        try { $history = (new ApacheHistory($this->cfg))->listing($spec['name']); }
+        catch (OpException $e) { $historyWarning = $e->getMessage(); }
 
         if ($this->resolvedMode($params, $spec) === 'errors') {
             $current = ($this->updateMode($params) === 'auto' || $cur !== '') ? $this->currentForErrors($spec) : '';
@@ -304,7 +310,9 @@ final class Vhost
             try { $rendered = $current === '' ? '' : SiteErrors::decorate($current); }
             catch (\InvalidArgumentException $e) { $previewError = $e->getMessage(); }
             return ['rendered'=>$rendered, 'current'=>$current, 'preview_error'=>$previewError,
-                'resolved_mode'=>'errors', 'can_apply'=>$current !== '' && $previewError === '',
+                'git_diff'=>$previewError === '' ? ApacheHistory::diff($current, $rendered) : [],
+                'history'=>$history, 'history_warning'=>$historyWarning,
+                'resolved_mode'=>'errors', 'can_apply'=>$current !== '' && $previewError === '' && $historyWarning === '',
                 'current_hash'=>hash('sha256', $current), 'errors_available'=>$current !== '' && $previewError === '',
                 'managed'=>str_starts_with($current, self::MANAGED_HEADER), 'conflicts'=>[],
                 'inherited'=>is_file($this->inheritedPath($spec['name'])), 'migration_sources'=>[]];
@@ -320,14 +328,17 @@ final class Vhost
             }
         }
         $creationError = $this->creationError($params, $spec);
+        $rendered = $migration['rendered'] ?? $this->render($spec);
         return [
-            'resolved_mode'=>'template', 'can_apply'=>$creationError === '', 'preview_error'=>$creationError,
+            'git_diff'=>ApacheHistory::diff($migration['body'] ?? $cur, $rendered),
+            'history'=>$history, 'history_warning'=>$historyWarning,
+            'resolved_mode'=>'template', 'can_apply'=>$creationError === '' && $historyWarning === '', 'preview_error'=>$creationError,
             'current_hash'=>hash('sha256', $cur),
             'migration_sources' => $sources,
             'migration_source' => $migration['source'] ?? '',
             'migration_hash' => $migration['hash'] ?? '',
             'inherited' => is_file($this->inheritedPath($spec['name'])),
-            'rendered'  => $migration['rendered'] ?? $this->render($spec),
+            'rendered'  => $rendered,
             'current'   => $migration['body'] ?? $cur,
             'managed'   => $cur !== '' && str_starts_with($cur, self::MANAGED_HEADER),
             'path'      => $path,
@@ -350,7 +361,16 @@ final class Vhost
                 }
                 if ($mode === 'template' && ($error = $this->creationError($params, $spec)) !== '') throw new OpException($error);
             }
+            $history = new ApacheHistory($this->cfg);
+            $path = $this->confPath($spec['name']);
+            $before = is_file($path) ? (string)file_get_contents($path) : null;
+            $history->save($spec['name'], $before, 'before', (string)($params['_actor'] ?? 'system'));
             $result = $mode === 'errors' ? $this->applyErrors($params) : $this->applyUnlocked($params);
+            try {
+                $result['history_revision'] = $history->save($spec['name'], (string)file_get_contents($path), 'applied', (string)($params['_actor'] ?? 'system'));
+            } catch (OpException $e) {
+                $result['history_warning'] = '公開設定は反映しましたが、反映後のGit履歴を保存できませんでした。反映前の履歴は保存済みです。' . $e->getMessage();
+            }
             $result['update_mode'] = $mode;
             return $result;
         }
