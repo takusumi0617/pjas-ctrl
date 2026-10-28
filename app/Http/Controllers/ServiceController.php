@@ -6,6 +6,7 @@ namespace Pjas\Http\Controllers;
 use Pjas\Agent\AgentClient;
 use Pjas\Agent\AgentException;
 use Pjas\Domain\Deployer;
+use Pjas\Domain\GitHubRepository;
 use Pjas\Domain\JobRepo;
 use Pjas\Domain\ReleaseRepo;
 use Pjas\Domain\ServiceRepo;
@@ -32,8 +33,11 @@ final class ServiceController
     {
         try {
             $v = ServiceRepo::validate($_POST, true);
-        } catch (ValidationException $e) {
-            View::render('service_new', ['title' => 'サイト登録', 'errors' => $e->errors, 'in' => $_POST]);
+            $repo = trim((string) ($_POST['github_repo'] ?? ''));
+            $ref = GitHubRepository::ref((string) ($_POST['github_ref'] ?? ''));
+            if ($repo !== '') $repo = GitHubRepository::normalize($repo);
+        } catch (ValidationException|\InvalidArgumentException $e) {
+            View::render('service_new', ['title' => 'サイト登録', 'errors' => $e instanceof ValidationException ? $e->errors : [$e->getMessage()], 'in' => $_POST]);
             return;
         }
 
@@ -41,6 +45,7 @@ final class ServiceController
         try {
             // ディレクトリ雛形 (releases/ shared/ current) は agent が root で作る
             AgentClient::call('service.create', [
+                'github_repo' => $repo,
                 'service' => [
                     'name'   => $v['name'],
                     'shared' => array_values(array_filter(explode(',', $v['shared_paths']))),
@@ -53,6 +58,15 @@ final class ServiceController
 
         ServiceRepo::create($v);
         Audit::log($actor, 'service.create', $v['name'], ['domain' => $v['domain']]);
+        if ($repo !== '') {
+            try {
+                $job = Deployer::fromGit(ServiceRepo::findOrFail($v['name']), $ref,
+                    ['label' => 'GitHubから初回公開', 'apply_vhost' => true, 'auto_rollback' => true], $actor);
+            } catch (AgentException|ValidationException $e) {
+                View::redirect('/services/' . $v['name'], 'サイトは登録済みですが、GitHubからの取得を開始できませんでした: ' . $e->getMessage(), 'err');
+            }
+            View::redirect('/jobs/' . $job, 'サイトを登録し、GitHubからの取得と初回公開を開始しました');
+        }
         View::redirect('/services/' . $v['name'], "サイト {$v['name']} を登録しました。続けて「公開設定」タブで設定を反映してください。");
     }
 

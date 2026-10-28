@@ -7,6 +7,7 @@ declare(strict_types=1);
 $unit = (string) file_get_contents(dirname(__DIR__) . '/systemd/pjas-agentd.service');
 $required = [
     '/var/www',
+    '/var/lib/pjas-repositories',
     '/etc/apache2/sites-available',
     '/etc/apache2/sites-enabled',
     '/var/lib/apache2/site',

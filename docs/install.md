@@ -158,3 +158,20 @@ sudo systemctl restart pjas-agentd
 pjas-chat の既存 `pjas-websocket.service` は、`User=www-data`、`WorkingDirectory=/var/www/pjas-chat` の構成ならそのまま選択できます。作業フォルダと起動パスは current へ追従し、`EnvironmentFile=/etc/pjas-chat.env` は維持します。元設定の EnvironmentFile・ExecStartPre/Post・ExecStop/Post・PIDFile・ReadWritePaths・ReadOnlyPaths にサイト内の直置きパスがあれば、それらも current へ変更します。環境変数ファイルの中身や外部スクリプト内の固定パスまでは書き換えません。
 
 内容編集・自動パス移行の対象は、サイト内の作業フォルダを使い、www-data で動く simple/exec 型の単一 ExecStart サービスです。root 実行や forking 型などは既存の起動・停止管理のみとし、この編集の対象外です。元設定は上書きせず、ctrl用のdrop-inで変更します。`/var/lib/pjas-daemons` と `/etc/systemd/system/対象.service.d/zzzz-pjas-ctrl.conf` をバックアップしてください。
+
+## 公開GitHubから新しいサイトを登録する
+
+「サイト一覧」→「サイトを登録する」で、公開GitHubリポジトリのURL（または 所有者/リポジトリ）を入力します。ブランチ・タグを省略するとリポジトリの既定ブランチを使用します。GitHubの認証情報は使用せず、privateリポジトリは対象外です。
+
+公開アドレス・公開フォルダ・PHPの種類・動作確認ページなどを指定して登録すると、ファイル取得、準備処理、公開設定の反映、動作確認をジョブとして実行します。取得元は保存されるため、次回以降も通常のGit公開を利用できます。URLが空欄なら従来どおりサイト登録だけを行います。DB更新は不要です。
+
+GitHubリポジトリには様々な構成があります。public・dist・ルート直下など、公開フォルダをリポジトリに合わせて指定してください。npmやComposerが必要なら準備処理を指定し、DB・秘密鍵・環境変数の設定はアプリの手順に従ってください。取得や公開に失敗してもサイト登録と取得元は残るので、設定を修正し通常のGit公開から再試行できます。
+
+取得元台帳はroot所有の `/var/lib/pjas-repositories/サイト名.json` に保存します。既存の `agent/config.php` の `git_repos` も引き続き利用できます。Ubuntu側でGitHubへのHTTPS通信と git コマンドが必要です。更新時は以下を実行します。
+
+```bash
+sudo install -d -o root -g root -m 755 /var/lib/pjas-repositories
+sudo cp /opt/pjas-ctrl/systemd/pjas-agentd.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl restart pjas-agentd
+```

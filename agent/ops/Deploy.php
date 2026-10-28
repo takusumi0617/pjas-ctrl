@@ -8,6 +8,7 @@ use Pjas\Agentd\OpException;
 use Pjas\Agentd\Paths;
 use Pjas\Agentd\Proc;
 use Pjas\Agentd\Spec;
+use Pjas\Agentd\GitRepositories;
 
 final class Deploy
 {
@@ -38,6 +39,7 @@ final class Deploy
             'label'         => substr((string) ($params['label'] ?? ''), 0, 60),
             'auto_rollback' => !empty($params['auto_rollback']),
             'maintenance'   => !empty($params['maintenance']),
+            'apply_vhost'   => !empty($params['apply_vhost']) || (!empty($source['public_github']) && $this->paths->currentTag($spec['name']) === null),
         ];
 
         $pid = pcntl_fork();
@@ -229,6 +231,10 @@ final class Deploy
 
             // [8] 切替 + リロード
             $this->switchCurrent($name, $tag, $log);
+            if (!empty($opts['apply_vhost'])) {
+                $log->line('初回の公開設定を反映します');
+                $this->vhost->apply(['service' => $spec]);
+            }
             $this->reloadRuntime($spec, $log);
 
             if ($opts['maintenance']) {
@@ -273,6 +279,10 @@ final class Deploy
                     $log->set('release', ['tag' => $prev, 'state' => 'current', 'source' => 'auto-rollback']);
                 } catch (\Throwable $rollbackError) { $log->line('復元処理のエラー: ' . $rollbackError->getMessage()); }
             }
+            if ($this->paths->currentTag($name) === $tag && isset($meta)) {
+                $log->set('release', ['tag' => $tag, 'state' => 'current', 'label' => $opts['label'],
+                    'source' => $meta['source'], 'sha256' => $meta['sha256'], 'size' => $meta['size']]);
+            }
             @unlink($this->paths->shared($name) . '/maintenance.on');
             // 引き継いだリリースが公開されたまま終わる場合は、その事実を web に伝える
             // (引き継ぎ分は既存サイトそのものなので、失敗しても消してはいけない)
@@ -298,15 +308,11 @@ final class Deploy
     {
         $type = (string) ($src['type'] ?? '');
         if ($type === 'git') {
-            $repos = (array) $this->cfg['git_repos'];
-            if (empty($repos[$spec['name']])) {
-                throw new OpException("このサービスには git リポジトリが登録されていません: {$spec['name']}");
-            }
+            $repo = (new GitRepositories($this->cfg))->resolve($spec['name']);
             $ref = (string) ($src['ref'] ?? '');
-            if (!preg_match('#^[A-Za-z0-9._/-]{1,100}$#', $ref)) {
-                throw new OpException('git ref が不正です');
-            }
-            return ['type' => 'git', 'ref' => $ref, 'repo' => (string) $repos[$spec['name']]];
+            try { $ref = \Pjas\Domain\GitHubRepository::ref($ref); }
+            catch (\InvalidArgumentException $e) { throw new OpException($e->getMessage()); }
+            return ['type' => 'git', 'ref' => $ref] + $repo;
         }
 
         // アップロードは upload_dir 直下のファイルのみ受け付ける
@@ -370,7 +376,13 @@ final class Deploy
 
     private function fetchGit(string $name, array $src, string $relDir, JobLog $log): array
     {
-        Proc::must(['/usr/bin/git', 'clone', '--depth', '1', '--branch', $src['ref'], '--', $src['repo'], $relDir], null, 600);
+        $args = GitRepositories::cloneArgs($src, $relDir);
+        if (!empty($src['public_github'])) {
+            $env = ['PATH' => '/usr/bin:/bin', 'GIT_TERMINAL_PROMPT' => '0', 'GIT_ASKPASS' => '/bin/false', 'GIT_CONFIG_NOSYSTEM' => '1', 'GIT_CONFIG_GLOBAL' => '/dev/null'];
+            $result = Proc::run($args, null, 600, null, $env);
+            if ($result['code'] !== 0) throw new OpException('公開GitHubから取得できませんでした。URL・公開設定・ブランチ名を確認してください: ' . trim($result['err'] ?: $result['out']));
+        } else { Proc::must($args, null, 600); }
+        $this->assertNoEscape($relDir, $log);
         $sha = trim(Proc::must(['/usr/bin/git', 'rev-parse', 'HEAD'], $relDir, 30));
         Proc::run(['/bin/rm', '-rf', '--', $relDir . '/.git'], null, 120);
         $log->line("git {$src['ref']} @ " . substr($sha, 0, 8) . ' を取得しました');

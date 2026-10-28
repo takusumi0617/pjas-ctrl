@@ -8,8 +8,8 @@ use Pjas\Support\Labels;
 $v = static fn(string $k, string $d = '') => View::e((string) ($in[$k] ?? $d));
 ?>
 <h1>サイトを登録する</h1>
-<div class="sub">このサーバーで新しくサイトを管理できるようにします。ファイルの置き場所とバージョン管理用のフォルダが自動で作られます
-  （ファイルの公開はこの後の「新しいバージョンを公開」で行います）。</div>
+<div class="sub">このサーバーで新しくサイトを管理できるようにします。ファイルの置き場所とバージョン管理用のフォルダが自動で作られます。
+  公開GitHubリポジトリを指定すると、登録と同時にファイルを取得し、初回公開まで実行します。</div>
 
 <?php if ($errors): ?>
   <div class="note err flash"><?php foreach ($errors as $e): ?>・<?= View::e($e) ?><br><?php endforeach; ?></div>
@@ -17,6 +17,12 @@ $v = static fn(string $k, string $d = '') => View::e((string) ($in[$k] ?? $d));
 
 <form method="post" action="/services">
   <?= Csrf::field() ?>
+
+  <div class="card step"><div class="card-h">GitHubから取得する（任意）</div><div class="card-b">
+    <div class="field"><label>公開GitHubリポジトリ</label><input name="github_repo" value="<?= $v('github_repo') ?>" placeholder="https://github.com/takusumi0617/pjas-chat"><div class="hint">所有者/リポジトリ の形式でも入力できます。公開リポジトリ専用です。空欄ならサイトの登録だけを行います。</div></div>
+    <div class="field"><label>取得するブランチ・タグ（任意）</label><input name="github_ref" value="<?= $v('github_ref') ?>" placeholder="空欄ならリポジトリの既定ブランチ"><div class="hint">例: main、v1.0.0。取得元は保存され、次回以降も「Git」から更新できます。</div></div>
+    <p class="hint">取得後に下の設定で公開します。公開フォルダ・動作確認ページ・必要な準備処理を確認してください。ビルドや初期設定が必要なアプリは、詳細設定の準備処理やアプリの導入手順に従ってください。</p>
+  </div></div>
 
   <div class="card step">
     <div class="card-h"><span class="step-n">1</span>サイトの基本情報</div>
@@ -54,7 +60,7 @@ $v = static fn(string $k, string $d = '') => View::e((string) ($in[$k] ?? $d));
     <div class="card-h"><span class="step-n">2</span>動作確認とバージョン管理</div>
     <div class="card-b">
       <div class="field"><label>動作確認に使うページ</label>
-        <input name="health_path" value="<?= $v('health_path', '/healthz') ?>">
+        <input name="health_path" value="<?= $v('health_path', '/') ?>">
         <div class="hint">公開のたびに、このページを開いてサイトが正常に動いているかを自動で確認します。
           専用のページが無ければ <span class="mono">/</span> でも構いません。</div></div>
 

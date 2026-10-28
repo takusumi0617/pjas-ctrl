@@ -85,21 +85,26 @@ final class Deployer
         return $job;
     }
 
-    /** Git ref からのデプロイ (リポジトリ URL はサービス設定ではなく agent 側の許可リストに従う) */
+    /** 登録済みの取得元からブランチ・タグを取得する。HEADは既定ブランチ。 */
     public static function fromGit(array $service, string $ref, array $opts, string $actor): int
     {
-        if (!preg_match('#^[A-Za-z0-9._/-]{1,100}$#', $ref)) {
-            throw new ValidationException(['ブランチ名 / タグ名 / コミットの書き方が正しくありません']);
-        }
+        try { $ref = GitHubRepository::ref($ref); }
+        catch (\InvalidArgumentException $e) { throw new ValidationException([$e->getMessage()]); }
         $job = JobRepo::create((int) $service['id'], 'deploy', $actor, 'git:' . $ref);
-        AgentClient::call('deploy.start', [
-            'job_id'        => $job,
-            'service'       => self::spec($service),
-            'source'        => ['type' => 'git', 'ref' => $ref],
-            'label'         => (string) ($opts['label'] ?? ''),
-            'auto_rollback' => !empty($opts['auto_rollback']),
-            'maintenance'   => !empty($opts['maintenance']),
-        ], $actor);
+        try {
+            AgentClient::call('deploy.start', [
+                'job_id' => $job, 'service' => self::spec($service),
+                'source' => ['type' => 'git', 'ref' => $ref],
+                'label' => (string) ($opts['label'] ?? ''),
+                'auto_rollback' => !empty($opts['auto_rollback']),
+                'maintenance' => !empty($opts['maintenance']),
+                'apply_vhost' => !empty($opts['apply_vhost']),
+            ], $actor);
+        } catch (\Throwable $e) {
+            \Pjas\Support\Db::run("UPDATE jobs SET state='failed', detail=?, finished_at=datetime('now') WHERE id=?", [$e->getMessage(), $job]);
+            Audit::log($actor, 'service.deploy', $service['name'], ['job' => $job], 'failed');
+            throw $e;
+        }
         Audit::log($actor, 'service.deploy', $service['name'], ['job' => $job, 'ref' => $ref]);
         return $job;
     }

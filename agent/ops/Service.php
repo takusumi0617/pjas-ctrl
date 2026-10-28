@@ -7,6 +7,7 @@ use Pjas\Agentd\OpException;
 use Pjas\Agentd\Paths;
 use Pjas\Agentd\Proc;
 use Pjas\Agentd\Spec;
+use Pjas\Agentd\GitRepositories;
 
 final class Service
 {
@@ -27,6 +28,9 @@ final class Service
             }
         }
 
+        if (!empty($params['github_repo'])) {
+            (new GitRepositories($this->cfg))->register($name, (string) $params['github_repo']);
+        }
         $base = $this->paths->base($name);
         if (is_link($base)) {
             throw new OpException("{$base} はシンボリックリンクです");

@@ -50,7 +50,7 @@ use Pjas\Http\View;
         <input name="git_ref" placeholder="main">
         <div class="hint">例: <span class="mono">main</span>、<span class="mono">v1.8.2</span>。
           「main」などの開発ライン名、または「v1.8.2」などのバージョン名を入力します。
-          取得元はサーバー管理者があらかじめ登録した場所に限られます。</div>
+          取得元には、サイト登録時に指定した公開GitHubリポジトリ、またはサーバー管理者が登録した場所を使います。</div>
       </div>
 
       <div class="field">
