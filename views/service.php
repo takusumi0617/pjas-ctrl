@@ -129,7 +129,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
 
 <?php elseif ($tab === 'vhost'): ?>
   <div class="sub">このサイトをどのアドレスで公開するかという、Web サーバー (Apache) 側の設定です。
-    設定タブの内容から自動で作られるので、ふだんは「反映する」を押すだけで大丈夫です。</div>
+    設定タブの内容から自動で作られるので、「最新の雛形で反映する」を押すと、登録済みのサイトにも最新の共通設定を適用できます。</div>
   <div class="note" style="margin-bottom:12px">
     反映するときは、まず設定内容に誤りがないか検査してから切り替えます。
     検査に失敗した場合は自動で元の設定に戻すため、サイトが止まることはありません。
@@ -149,9 +149,10 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
     <form method="get" action="/services/<?= $name ?>"><input type="hidden" name="tab" value="vhost">
     <select name="migration_source" required><?php foreach ($migration_sources as $source): ?><option value="<?= View::e($source) ?>" <?= ($migration_source ?? '') === $source ? 'selected' : '' ?>><?= View::e($source) ?></option><?php endforeach; ?></select>
     <button class="btn">継承する内容を確認</button></form>
-    <?php if (!empty($migration_source)): ?><p>継承元: <?= View::e($migration_source) ?>。下の「反映する」で継承を確定します。</p><?php endif; ?>
+    <?php if (!empty($migration_source)): ?><p>継承元: <?= View::e($migration_source) ?>。下の「最新の雛形で反映する」で継承を確定します。</p><?php endif; ?>
     </div></div>
   <?php endif; ?>
+  <div class="note" style="margin-bottom:12px">404・403・500・503など、Apacheが返す標準エラーページを共通デザインで表示します。既存設定を継承したサイトも対象です。独自のエラーページ指定は優先され、アプリが返すエラー本文やCloudflare側のエラーは変更しません。</div>
   <div class="f2">
     <div class="card"><div class="card-h">これから使うサーバー設定（詳しい人向け）
       <span class="spacer"></span><span class="mono muted"><?= View::e('/etc/apache2/sites-available/pjas-' . $s['name'] . '.conf') ?></span></div>
@@ -174,7 +175,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
         <?= Csrf::field() ?>
         <input type="hidden" name="migration_source" value="<?= View::e($migration_source ?? '') ?>">
         <input type="hidden" name="migration_hash" value="<?= View::e($migration_hash ?? '') ?>">
-        <?php if (empty($agentErr)): ?><button class="btn p">反映する</button><?php endif; ?></form>
+        <?php if (empty($agentErr)): ?><button class="btn p">最新の雛形で反映する</button><?php endif; ?></form>
     </div>
   <?php endif; ?>
 

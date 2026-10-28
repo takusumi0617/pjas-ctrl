@@ -3,6 +3,9 @@ declare(strict_types=1);
 
 namespace Pjas\Agentd\Ops;
 
+require_once dirname(__DIR__, 2) . '/shared/SiteErrors.php';
+use Pjas\Shared\SiteErrors;
+
 use Pjas\Agentd\OpException;
 use Pjas\Agentd\InheritedVhost;
 use Pjas\Agentd\SitePause;
@@ -56,7 +59,7 @@ final class Vhost
         }
         $body = (string) file_get_contents($path);
         if (str_starts_with($body, self::MANAGED_HEADER)) throw new OpException('管理下の生成済み設定は移行元に選べません');
-        $rendered = (new SitePause($this->cfg))->render($this->inheritedRender($body, $spec), $spec);
+        $rendered = (new SitePause($this->cfg))->render(SiteErrors::decorate($this->inheritedRender($body, $spec)), $spec);
         return ['source' => $source, 'domain' => $spec['domain'], 'body' => $body, 'hash' => hash('sha256', $body), 'rendered' => $rendered];
     }
 
@@ -113,7 +116,7 @@ final class Vhost
 
     public function render(array $spec): string
     {
-        return (new SitePause($this->cfg))->render($this->renderNormal($spec), $spec);
+        return (new SitePause($this->cfg))->render(SiteErrors::decorate($this->renderNormal($spec)), $spec);
     }
 
     private function renderNormal(array $spec): string
@@ -139,7 +142,6 @@ final class Vhost
         $body .= "    RewriteCond {$shared}/maintenance.on -f\n";
         $body .= "    RewriteCond %{REQUEST_URI} !^/maintenance\\.html$\n";
         $body .= "    RewriteRule ^ - [R=503,L]\n";
-        $body .= "    ErrorDocument 503 /maintenance.html\n";
         foreach (explode("\n", $spec['extra_conf']) as $line) {
             if (trim($line) !== '') {
                 $body .= '    ' . strtr(trim($line), ['{{site_root}}' => $this->paths->current($name), '{{document_root}}' => $docroot]) . "\n";

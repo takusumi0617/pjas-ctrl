@@ -3,6 +3,9 @@ declare(strict_types=1);
 
 namespace Pjas\Domain;
 
+require_once dirname(__DIR__, 2) . '/shared/SiteErrors.php';
+use Pjas\Shared\SiteErrors;
+
 /**
  * vhost 生成のプレビュー用。
  *
@@ -85,7 +88,6 @@ final class VhostRenderer
         $body .= "    RewriteCond {$shared}/maintenance.on -f\n";
         $body .= "    RewriteCond %{REQUEST_URI} !^/maintenance\\.html$\n";
         $body .= "    RewriteRule ^ - [R=503,L]\n";
-        $body .= "    ErrorDocument 503 /maintenance.html\n";
         $body .= $extra;
         if ($s['runtime'] !== 'static') {
             $sock  = '/run/php/' . $s['runtime'] . '.sock';
@@ -121,7 +123,7 @@ final class VhostRenderer
             $out .= $body;
             $out .= "</VirtualHost>\n";
         }
-        return $out;
+        return SiteErrors::decorate($out);
     }
 
     /** 単純な行単位 diff (プレビュー表示用) */
