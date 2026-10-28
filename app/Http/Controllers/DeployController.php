@@ -47,7 +47,9 @@ final class DeployController
     {
         $s = ServiceRepo::findOrFail($a['name']);
         try {
-            $job = Deployer::adopt($s, Auth::actor());
+            $daemons = (array) ($_POST['daemons'] ?? []);
+            if ($daemons && !Auth::can('owner')) throw new ValidationException(['常駐プログラムの移行には管理者権限が必要です']);
+            $job = Deployer::adopt($s, Auth::actor(), $daemons);
         } catch (ValidationException|AgentException $e) {
             View::redirect('/services/' . $s['name'], $e->getMessage(), 'err');
         }

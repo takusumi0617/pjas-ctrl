@@ -89,6 +89,12 @@ final class Deploy
                 $log->set('release', ['tag' => $tag, 'state' => 'current', 'source' => 'rollback']);
                 $log->finish('succeeded', "current → {$tag}");
             } catch (\Throwable $e) {
+                if ($prev !== null && $this->paths->currentTag($name) !== $prev) {
+                    try {
+                        $this->switchCurrent($name, $prev, $log);
+                        $this->reloadRuntime($spec, $log);
+                    } catch (\Throwable $restoreError) { $log->line('復元処理のエラー: ' . $restoreError->getMessage()); }
+                }
                 $log->finish('failed', $e->getMessage());
             }
             exit(0);
@@ -109,6 +115,7 @@ final class Deploy
         }
         $spec = Spec::service($params['service'] ?? null);
         $name = $spec['name'];
+        $plan = (new Daemon($this->cfg))->migrationPlan($name, (array) ($params['daemons'] ?? []));
 
         if ($this->paths->currentTag($name) !== null) {
             throw new OpException('すでに管理下のリリースが公開されています。取り込みは初回のみ行えます');
@@ -138,6 +145,7 @@ final class Deploy
 
                 $this->switchCurrent($name, $adopted['tag'], $log);
                 $log->set('adopted', ['tag' => $adopted['tag'], 'state' => 'current'] + $adopted['release']);
+                (new Daemon($this->cfg))->migrateForSite($name, $plan, fn($m) => $log->line($m));
 
                 // 公開設定を反映する前でも実行できる操作なので、ヘルスチェックは
                 // 結果をログに残すだけにする (この時点の NG は「まだ反映していない」の
@@ -257,6 +265,14 @@ final class Deploy
             ]);
             $log->finish('succeeded', "current → {$tag}");
         } catch (\Throwable $e) {
+            if ($opts['auto_rollback'] && $prev !== null && $this->paths->currentTag($name) === $tag) {
+                try {
+                    $log->line('切替後の処理に失敗したため、以前のバージョンと常駐プログラムへ戻します');
+                    $this->switchCurrent($name, $prev, $log);
+                    $this->reloadRuntime($spec, $log);
+                    $log->set('release', ['tag' => $prev, 'state' => 'current', 'source' => 'auto-rollback']);
+                } catch (\Throwable $rollbackError) { $log->line('復元処理のエラー: ' . $rollbackError->getMessage()); }
+            }
             @unlink($this->paths->shared($name) . '/maintenance.on');
             // 引き継いだリリースが公開されたまま終わる場合は、その事実を web に伝える
             // (引き継ぎ分は既存サイトそのものなので、失敗しても消してはいけない)
@@ -632,6 +648,7 @@ final class Deploy
         }
         $r = Proc::run([$this->cfg['apachectl'], 'graceful'], null, 60);
         $log->proc('apachectl graceful', $r);
+        (new Daemon($this->cfg))->restartForSite($spec['name'], fn($m) => $log->line($m));
     }
 
     /** @return array<int,string> 削除したタグ */

@@ -28,7 +28,7 @@ final class DaemonController
     private function perform(string $op): void
     {
         $params = [];
-        foreach (['service', 'target_service', 'unit', 'original_unit', 'label', 'mode', 'command', 'action'] as $key) {
+        foreach (['service', 'target_service', 'unit', 'original_unit', 'label', 'mode', 'command', 'exec_start', 'edit_execution', 'working_subdir', 'action'] as $key) {
             $params[$key] = (string) ($_POST[$key] ?? '');
         }
         ServiceRepo::findOrFail($params['service']);

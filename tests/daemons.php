@@ -3,6 +3,7 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/agent/lib/Proc.php';
 require dirname(__DIR__) . '/agent/lib/OpException.php';
 require dirname(__DIR__) . '/agent/lib/Spec.php';
+require dirname(__DIR__) . '/agent/lib/DaemonDefinition.php';
 require dirname(__DIR__) . '/agent/ops/Daemon.php';
 use Pjas\Agentd\Ops\Daemon;
 use Pjas\Agentd\OpException;

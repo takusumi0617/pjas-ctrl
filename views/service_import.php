@@ -48,7 +48,7 @@ use Pjas\Support\Labels;
     <table>
       <thead><tr>
         <th style="width:34px"></th><th>フォルダ名</th><th>中身</th>
-        <th>公開アドレス</th><th>実行環境</th><th>公開するフォルダ</th>
+        <th>公開アドレス</th><th>実行環境</th><th>公開するフォルダ</th><th>一緒に移行する常駐プログラム</th>
       </tr></thead>
       <tbody>
       <?php foreach ($found as $f): $n = View::e($f['name']); ?>
@@ -77,6 +77,9 @@ use Pjas\Support\Labels;
               <?php endforeach; ?></select></td>
           <td><input name="row[<?= $n ?>][docroot]" value="<?= View::e($f['docroot']) ?>"
                      placeholder="(フォルダ直下)" <?= $f['eligible'] ? '' : 'disabled' ?>></td>
+          <td><select name="row[<?= $n ?>][daemons][]" multiple size="3" <?= $f['eligible'] ? '' : 'disabled' ?>>
+            <?php foreach (($daemon_candidates ?? []) as $unit): ?><option value="<?= View::e($unit) ?>"><?= View::e($unit) ?></option><?php endforeach; ?>
+          </select><div class="hint">任意・複数選択可。このサイト内で www-data として動くものを選びます。「既存ファイルを取り込む」をオンにしてください。</div></td>
         </tr>
       <?php endforeach; ?>
       </tbody>

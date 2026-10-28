@@ -64,6 +64,7 @@ final class ServiceController
             $r = AgentClient::call('service.scan', [
                 'known' => array_column(ServiceRepo::all(), 'name'),
             ], Auth::actor());
+            $data['daemon_candidates'] = AgentClient::call('daemon.candidates', [], Auth::actor())['units'];
             $data['root']  = (string) ($r['root'] ?? '');
             $data['found'] = (array) ($r['services'] ?? []);
         } catch (AgentException $e) {
@@ -89,6 +90,7 @@ final class ServiceController
             $in['name'] = (string) $name;
 
             try {
+                if (!$adopt && !empty($in['daemons'])) throw new ValidationException(['常駐プログラムも移行する場合は既存ファイルの取り込みをオンにしてください']);
                 $v = ServiceRepo::validate($in, true);
                 AgentClient::call('service.create', [
                     'service' => [
@@ -102,7 +104,7 @@ final class ServiceController
                 $note = '登録しました';
                 if ($adopt) {
                     $s = ServiceRepo::findOrFail($v['name']);
-                    $job = Deployer::adopt($s, $actor);
+                    $job = Deployer::adopt($s, $actor, (array) ($in['daemons'] ?? []));
                     $note .= " / 既存ファイルの取り込みを開始しました (作業 #{$job})";
                 }
                 $results[] = ['name' => $name, 'ok' => true, 'note' => $note];
@@ -148,6 +150,11 @@ final class ServiceController
             'wwwRoot'  => (string) Config::get('www_root', '/var/www'),
             'agentErr' => null,
         ];
+
+        if ($tab === 'overview' && $data['current'] === null && Auth::can('owner')) {
+            try { $data['daemon_candidates'] = AgentClient::call('daemon.candidates', [], Auth::actor())['units']; }
+            catch (AgentException $e) { $data['daemon_candidates'] = []; }
+        }
 
         if ($tab === 'vhost') {
             $data['rendered'] = VhostRenderer::render(

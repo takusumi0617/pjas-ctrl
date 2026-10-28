@@ -108,17 +108,24 @@ final class Deployer
      * デプロイを伴わない取り込み。既に /var/www/<name> にあるファイルを
      * そのままひとつのリリースにして公開状態にする (導入時の移行用)。
      */
-    public static function adopt(array $service, string $actor): int
+    public static function adopt(array $service, string $actor, array $daemons = []): int
     {
         if (ReleaseRepo::current((int) $service['id']) !== null) {
             throw new ValidationException(['すでに公開中のバージョンがあります。取り込みは初回のみ行えます']);
         }
         $job = JobRepo::create((int) $service['id'], 'adopt', $actor, '既存ファイルの取り込み');
-        AgentClient::call('deploy.adopt', [
-            'job_id'  => $job,
-            'service' => self::spec($service),
-        ], $actor);
-        Audit::log($actor, 'service.adopt', $service['name'], ['job' => $job]);
+        try {
+            AgentClient::call('deploy.adopt', [
+                'daemons' => $daemons,
+                'job_id'  => $job,
+                'service' => self::spec($service),
+            ], $actor);
+        } catch (\Throwable $e) {
+            \Pjas\Support\Db::run("UPDATE jobs SET state='failed', detail=?, finished_at=datetime('now') WHERE id=?", [$e->getMessage(), $job]);
+            Audit::log($actor, 'service.adopt', $service['name'], ['job' => $job, 'daemons' => $daemons], 'failed');
+            throw $e;
+        }
+        Audit::log($actor, 'service.adopt', $service['name'], ['job' => $job, 'daemons' => $daemons]);
         return $job;
     }
 

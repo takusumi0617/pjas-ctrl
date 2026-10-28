@@ -49,7 +49,13 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
       （新しくファイルを用意する必要はありません）。
       <form method="post" action="/services/<?= $name ?>/adopt" style="margin-top:8px"
             onsubmit="return confirm('いま置かれているファイルを最初のバージョンとして取り込みます。よろしいですか?')">
-        <?= Csrf::field() ?><button class="btn">既存ファイルを取り込む</button>
+        <?= Csrf::field() ?>
+        <?php if (Auth::can('owner') && !empty($daemon_candidates)): ?>
+        <div class="field"><label>一緒に移行する常駐プログラム（任意・複数選択可）</label>
+        <select name="daemons[]" multiple size="4"><?php foreach ($daemon_candidates as $unit): ?><option value="<?= View::e($unit) ?>"><?= View::e($unit) ?></option><?php endforeach; ?></select>
+        <div class="hint">このサイト内で www-data として動くプログラムを選んでください。パスを current に追従させ、稼働中なら取り込み後に再起動します。</div></div>
+        <?php endif; ?>
+        <button class="btn">既存ファイルを取り込む</button>
       </form>
     </div>
   <?php endif; ?>
