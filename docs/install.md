@@ -110,3 +110,20 @@ max_execution_time = 0        ; SSE ストリーム用 (fastcgi_read_timeout も
 - **agent が落ちている場合**: 画面は閲覧できるが、デプロイと Apache 操作はすべて拒否される
 - **定期処理**: コード更新後に `sudo -u www-data php8.4 bin/pjas-migrate` でDBを更新する。
   定期処理は `/etc/cron.d/pjas-task-*`、実行内容は `/var/lib/pjas/cron/`、ログは `/var/log/pjas/cron/` に保存される
+
+## 常駐プログラムの管理
+
+管理者権限で「常駐プログラム」を開くと、登録された systemd サービスの状態確認・起動・停止・再起動ができます。操作は「操作の記録」に残ります。初期の対象は Apache、PHP 8.4、cron です。
+
+独自の常駐プログラムは、Ubuntu に systemd サービスとしてインストールした後、`agent/config.php` の `managed_daemons` に追加してください。
+
+```php
+'managed_daemons' => [
+    'apache2.service' => 'サイトの公開（Apache）',
+    'php8.4-fpm.service' => 'PHP 8.4 の実行',
+    'cron.service' => '定期処理の実行',
+    'pjas-worker.service' => 'バックグラウンドの作業',
+],
+```
+
+設定変更後に `sudo systemctl restart pjas-agentd` を実行します。登録されていないサービスは操作できません。pjas-agentd 自身の操作やサービス定義の作成・編集、自動起動設定の変更はこの画面の対象外です。Apache や PHP の停止・再起動中は管理画面にも影響します。

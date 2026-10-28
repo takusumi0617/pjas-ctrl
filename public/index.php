@@ -48,6 +48,10 @@ $r->get('/jobs/{id}/stream', [$job, 'stream']);
 
 $r->get('/audit', [new AuditController(), 'index'], 'operator');
 
+$daemon = new \Pjas\Http\Controllers\DaemonController();
+$r->get('/daemons', [$daemon, 'index'], 'owner');
+$r->post('/daemons/action', [$daemon, 'action'], 'owner');
+
 $scheduled = new ScheduledTaskController();
 $r->get('/scheduled-tasks', [$scheduled, 'index'], 'owner');
 $r->post('/scheduled-tasks', [$scheduled, 'create'], 'owner');

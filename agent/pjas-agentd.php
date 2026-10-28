@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 namespace Pjas\Agentd;
 
+use Pjas\Agentd\Ops\Daemon;
 use Pjas\Agentd\Ops\Deploy;
 use Pjas\Agentd\Ops\Fs;
 use Pjas\Agentd\Ops\Health;
@@ -58,6 +59,7 @@ $deploy  = new Deploy($cfg, $paths, $vhost, $health);
 $service = new Service($cfg, $paths);
 $fs      = new Fs($cfg, $paths);
 $cron    = new ScheduledTask($cfg, $paths);
+$daemon  = new Daemon($cfg);
 
 /** op 登録表。ここに無いものは実行できない。 */
 $registry = [
@@ -82,6 +84,8 @@ $registry = [
     'fs.read'         => [$fs, 'read'],
     'fs.write'        => [$fs, 'write'],
     'health.check'    => [$health, 'check'],
+    'daemon.list'     => [$daemon, 'listing'],
+    'daemon.action'   => [$daemon, 'action'],
     'cron.apply'      => [$cron, 'apply'],
     'cron.delete'     => [$cron, 'delete'],
 ];

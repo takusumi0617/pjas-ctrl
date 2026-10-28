@@ -31,6 +31,13 @@ return [
         'pjas-memo' => 'https://github.com/takusumi0617/pjas-memo.git',
     ],
 
+    // 管理画面で操作できる systemd サービス。追加後は pjas-agentd を再起動する。
+    'managed_daemons' => [
+        'apache2.service' => 'サイトの公開（Apache）',
+        'php8.4-fpm.service' => 'PHP 8.4 の実行',
+        'cron.service' => '定期処理の実行',
+    ],
+
     'hook_timeout'   => 300,
     'health_retries' => 5,
     'health_wait'    => 2,
