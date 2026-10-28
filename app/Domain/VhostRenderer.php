@@ -21,28 +21,36 @@ final class VhostRenderer
         'Header', 'RequestHeader', 'Redirect', 'RedirectMatch',
         'RewriteEngine', 'RewriteCond', 'RewriteRule',
         'ErrorDocument', 'AddDefaultCharset', 'Options',
-        'ProxyPassMatch', 'SetEnvIf', 'Timeout', 'LimitRequestBody',
+        'ProxyPassMatch', 'ProxyPass', 'ProxyPassReverse', 'ProxyPreserveHost',
+        'FallbackResource', 'SetEnvIf', 'Timeout', 'LimitRequestBody',
     ];
 
     /** @return array<int,string> 不許可だった行 */
     public static function rejectedDirectives(string $extra): array
     {
+        if (str_contains($extra, "\0")) return ['追加設定に不正な文字が含まれています'];
         $bad = [];
+        $directory = false;
         foreach (preg_split('/\R/', $extra) ?: [] as $line) {
             $line = trim($line);
-            if ($line === '' || str_starts_with($line, '#')) {
+            if ($line === '' || str_starts_with($line, '#')) continue;
+            if ($line === '<Directory {{document_root}}>' && !$directory) {
+                $directory = true;
                 continue;
             }
-            // セクション (<Directory> など) と改行注入を禁止
-            if (str_starts_with($line, '<')) {
-                $bad[] = $line;
+            if ($line === '</Directory>' && $directory) {
+                $directory = false;
                 continue;
             }
             $token = strtok($line, " \t");
-            if (!in_array($token, self::ALLOWED_DIRECTIVES, true)) {
+            if (str_starts_with($line, '<') || str_contains($line, "\0")
+                || (!in_array($token, self::ALLOWED_DIRECTIVES, true)
+                    && !($directory && $line === 'Require all granted'))
+                || ($directory && !in_array($token, ['Header', 'FallbackResource', 'Options', 'Require', 'RewriteEngine', 'RewriteCond', 'RewriteRule'], true))) {
                 $bad[] = $line;
             }
         }
+        if ($directory) $bad[] = 'Directory の閉じタグがありません';
         return $bad;
     }
 
@@ -60,6 +68,7 @@ final class VhostRenderer
         foreach (preg_split('/\R/', (string) $s['extra_conf']) ?: [] as $line) {
             $line = trim($line);
             if ($line !== '' && !str_starts_with($line, '#')) {
+                $line = strtr($line, ['{{site_root}}' => rtrim($wwwRoot, '/') . '/' . $name . '/current', '{{document_root}}' => $docroot]);
                 $extra .= "    {$line}\n";
             }
         }

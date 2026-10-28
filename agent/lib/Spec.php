@@ -17,7 +17,8 @@ final class Spec
         'Header', 'RequestHeader', 'Redirect', 'RedirectMatch',
         'RewriteEngine', 'RewriteCond', 'RewriteRule',
         'ErrorDocument', 'AddDefaultCharset', 'Options',
-        'ProxyPassMatch', 'SetEnvIf', 'Timeout', 'LimitRequestBody',
+        'ProxyPassMatch', 'ProxyPass', 'ProxyPassReverse', 'ProxyPreserveHost',
+        'FallbackResource', 'SetEnvIf', 'Timeout', 'LimitRequestBody',
     ];
 
     /** after_deploy フックの許可リスト (web 側 app/Domain/Hooks.php と同一) */
@@ -123,21 +124,32 @@ final class Spec
     public static function extraConf(mixed $v): string
     {
         $v = is_string($v) ? $v : '';
+        if (str_contains($v, "\0")) throw new OpException('追加設定に不正な文字が含まれています');
         $out = [];
+        $directory = false;
         foreach (preg_split('/\R/', $v) ?: [] as $line) {
             $line = trim($line);
-            if ($line === '' || str_starts_with($line, '#')) {
+            if ($line === '' || str_starts_with($line, '#')) continue;
+            if ($line === '<Directory {{document_root}}>' && !$directory) {
+                $directory = true;
+                $out[] = $line;
                 continue;
             }
-            if (str_starts_with($line, '<')) {
-                throw new OpException("追加ディレクティブにセクションは書けません: {$line}");
+            if ($line === '</Directory>' && $directory) {
+                $directory = false;
+                $out[] = $line;
+                continue;
             }
             $token = strtok($line, " \t");
-            if (!in_array($token, self::ALLOWED_DIRECTIVES, true)) {
-                throw new OpException("許可されていないディレクティブです: {$line}");
+            if (str_starts_with($line, '<') || str_contains($line, "\0")
+                || (!in_array($token, self::ALLOWED_DIRECTIVES, true)
+                    && !($directory && $line === 'Require all granted'))
+                || ($directory && !in_array($token, ['Header', 'FallbackResource', 'Options', 'Require', 'RewriteEngine', 'RewriteCond', 'RewriteRule'], true))) {
+                throw new OpException("許可されていない追加設定です: {$line}");
             }
             $out[] = $line;
         }
+        if ($directory) throw new OpException('Directory の閉じタグがありません');
         return implode("\n", $out);
     }
 

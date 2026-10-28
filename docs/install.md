@@ -131,3 +131,5 @@ sudo cp /opt/pjas-ctrl/systemd/pjas-agentd.service /etc/systemd/system/pjas-agen
 sudo systemctl daemon-reload
 sudo systemctl restart pjas-agentd
 ```
+
+特殊なApache設定（dist配信・API・WebSocket）の例は [pjas-chat の公開設定](pjas-chat-apache.md) を参照してください。

@@ -280,8 +280,27 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
 
       <div class="field"><label>Apache 設定に追加する行（上級者向け）</label>
         <textarea name="extra_conf" rows="4" class="mono"><?= View::e($s['extra_conf']) ?></textarea>
-        <div class="hint">通常は空欄のままで構いません。使える項目:
+        <div class="hint">通常は空欄で構いません。WebSocket 転送や別フォルダのAPIにも対応します。<br>
+          <span class="mono">{{site_root}}</span> はサイトの公開中フォルダ、
+          <span class="mono">{{document_root}}</span> は公開するフォルダに置き換わります。<br>
+          <span class="mono">&lt;Directory {{document_root}}&gt; ... &lt;/Directory&gt;</span> 内に画面の配信設定を書けます。使える項目:
           <span class="mono"><?= View::e(implode(', ', VhostRenderer::ALLOWED_DIRECTIVES)) ?></span></div></div>
+        <?php if ($s['name'] === 'pjas-chat'): ?>
+        <details><summary>pjas-chat 用の設定例（コピーして上の欄へ貼り付け）</summary>
+        <p>公開するフォルダを dist、PHP を php8.4-fpm に設定してください。追加欄に既存の指定がある場合は内容を確認して統合します。</p>
+        <textarea readonly rows="15" class="mono">&lt;Directory {{document_root}}&gt;
+    Require all granted
+    FallbackResource /index.html
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "no-referrer"
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss:; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+&lt;/Directory&gt;
+ProxyPass /ws ws://127.0.0.1:8081
+ProxyPassReverse /ws ws://127.0.0.1:8081
+ProxyPassMatch ^/api(?:/.*)?$ unix:/run/php/php8.4-fpm.sock|fcgi://localhost{{site_root}}/api/index.php</textarea>
+        <p>Apache の proxy・proxy_fcgi・proxy_wstunnel・rewrite・headers・ssl モジュールが必要です。WebSocket の常駐プログラムは別途起動してください。</p>
+        </details>
+        <?php endif; ?>
     </div></div>
 
     <?php if (Auth::can('owner')): ?>

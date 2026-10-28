@@ -34,6 +34,12 @@ $cases = [
      'extra_conf' => "RewriteEngine On\nErrorDocument 404 /404.html", 'tls' => 1],
 ];
 
+$chatGuide = file_get_contents(PJAS_ROOT . '/docs/pjas-chat-apache.md');
+preg_match('/```apache\n(.*?)\n```/s', $chatGuide, $match);
+$chatExtra = $match[1];
+$cases[] = ['name' => 'pjas-chat', 'domain' => 'chat.example.com', 'runtime' => 'php8.4-fpm',
+    'docroot' => 'dist', 'allow_override' => 'None', 'extra_conf' => $chatExtra, 'tls' => 1];
+
 $cfg   = ['apache_sites' => '/etc/apache2/sites-available'];
 $paths = new Paths('/var/www');
 $agent = new AgentVhost($cfg, $paths);
@@ -54,6 +60,24 @@ foreach ($cases as $c) {
             echo "  {$sign} {$line}\n";
         }
     }
+}
+
+$chat = VhostRenderer::render($cases[3]);
+foreach (['DocumentRoot /var/www/pjas-chat/current/dist', '<Directory /var/www/pjas-chat/current/dist>',
+    'fcgi://localhost/var/www/pjas-chat/current/api/index.php', 'ProxyPass /ws ws://127.0.0.1:8081',
+    'FallbackResource /index.html'] as $expected) {
+    if (!str_contains($chat, $expected)) { $fail++; echo "FAIL chat設定: {$expected}\n"; }
+}
+if (str_contains($chat, '{{') || VhostRenderer::rejectedDirectives($chatExtra)) {
+    $fail++; echo "FAIL chat設定の検証または置き換え\n";
+}
+foreach (['</Directory>', '<Directory {{document_root}}>',
+    "<Directory {{document_root}}>\n<Directory {{document_root}}>\n</Directory>\n</Directory>",
+    "<Directory {{document_root}}>\nInclude /etc/passwd\n</Directory>",
+    '<VirtualHost *:443>', "Header set Test ok\0"] as $bad) {
+    if (!VhostRenderer::rejectedDirectives($bad)) { $fail++; echo "FAIL Web検証が不正設定を許可\n"; }
+    try { Spec::extraConf($bad); $fail++; echo "FAIL agent検証が不正設定を許可\n"; }
+    catch (\Pjas\Agentd\OpException) {}
 }
 
 $tlsVhost = VhostRenderer::render($cases[0], '/var/www');

@@ -98,7 +98,7 @@ final class Vhost
         $body .= "    ErrorDocument 503 /maintenance.html\n";
         foreach (explode("\n", $spec['extra_conf']) as $line) {
             if (trim($line) !== '') {
-                $body .= '    ' . trim($line) . "\n";
+                $body .= '    ' . strtr(trim($line), ['{{site_root}}' => $this->paths->current($name), '{{document_root}}' => $docroot]) . "\n";
             }
         }
         if ($spec['runtime'] !== 'static') {
