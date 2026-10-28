@@ -128,8 +128,22 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
   </table></div>
 
 <?php elseif ($tab === 'vhost'): ?>
-  <div class="sub">このサイトをどのアドレスで公開するかという、Web サーバー (Apache) 側の設定です。
-    設定タブの内容から自動で作られるので、「最新の雛形で反映する」を押すと、登録済みのサイトにも最新の共通設定を適用できます。</div>
+  <?php $errorsOnly = ($update_mode ?? 'errors') === 'errors'; ?>
+  <div class="sub">エラーページだけの更新と、公開設定全体の更新を選べます。</div>
+  <form method="get" action="/services/<?= $name ?>" class="row" style="margin-bottom:16px">
+    <input type="hidden" name="tab" value="vhost">
+    <label for="update-mode">更新する内容</label>
+    <select id="update-mode" name="update_mode">
+      <option value="errors" <?= $errorsOnly ? 'selected' : '' ?>>標準エラーページだけ更新（現在の設定を維持）</option>
+      <option value="template" <?= !$errorsOnly ? 'selected' : '' ?>>最新の雛形で設定全体を更新</option>
+    </select>
+    <button class="btn">変更点を確認</button>
+  </form>
+  <?php if ($errorsOnly): ?>
+    <div class="note" style="margin-bottom:12px">現在の設定ファイルを使って、ctrlの共通エラーページだけを追加・更新します。80・443の独自設定、手作業で追記した内容、独自のエラーページ指定を維持します。</div>
+    <?php if (empty($errors_available) && empty($agentErr)): ?><div class="note">更新する公開設定がありません。「最新の雛形で設定全体を更新」を選び、先に公開設定を作成してください。</div><?php endif; ?>
+  <?php else: ?>
+    <div class="note err" style="margin-bottom:12px">設定全体を再生成します。現在のconfへ手作業で加えた変更は失われる可能性があります。継承モードでは保存した継承元を使います。差分を確認してから反映してください。</div>
   <div class="note" style="margin-bottom:12px">
     反映するときは、まず設定内容に誤りがないか検査してから切り替えます。
     検査に失敗した場合は自動で元の設定に戻すため、サイトが止まることはありません。
@@ -146,11 +160,12 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
   <?php elseif (Auth::can('owner') && !empty($migration_sources)): ?>
     <div class="card"><div class="card-h">移行時のみ：既存設定を継承する</div><div class="card-b">
     <p>独自のApache設定を残し、公開フォルダとSSL証明書を置き換えます。まずプレビューで差分を確認してください。</p>
-    <form method="get" action="/services/<?= $name ?>"><input type="hidden" name="tab" value="vhost">
+    <form method="get" action="/services/<?= $name ?>"><input type="hidden" name="tab" value="vhost"><input type="hidden" name="update_mode" value="template">
     <select name="migration_source" required><?php foreach ($migration_sources as $source): ?><option value="<?= View::e($source) ?>" <?= ($migration_source ?? '') === $source ? 'selected' : '' ?>><?= View::e($source) ?></option><?php endforeach; ?></select>
     <button class="btn">継承する内容を確認</button></form>
-    <?php if (!empty($migration_source)): ?><p>継承元: <?= View::e($migration_source) ?>。下の「最新の雛形で反映する」で継承を確定します。</p><?php endif; ?>
+    <?php if (!empty($migration_source)): ?><p>継承元: <?= View::e($migration_source) ?>。下の「設定全体を更新する」で継承を確定します。</p><?php endif; ?>
     </div></div>
+  <?php endif; ?>
   <?php endif; ?>
   <div class="note" style="margin-bottom:12px">404・403・500・503など、Apacheが返す標準エラーページを共通デザインで表示します。既存設定を継承したサイトも対象です。独自のエラーページ指定は優先され、アプリが返すエラー本文やCloudflare側のエラーは変更しません。</div>
   <div class="f2">
@@ -173,9 +188,11 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
       <form method="post" action="/services/<?= $name ?>/vhost"
             onsubmit="return confirm('この設定を反映します。サイトを止めずに切り替わります。よろしいですか?')">
         <?= Csrf::field() ?>
+        <input type="hidden" name="update_mode" value="<?= $errorsOnly ? 'errors' : 'template' ?>">
+        <input type="hidden" name="current_hash" value="<?= View::e($current_hash ?? '') ?>">
         <input type="hidden" name="migration_source" value="<?= View::e($migration_source ?? '') ?>">
         <input type="hidden" name="migration_hash" value="<?= View::e($migration_hash ?? '') ?>">
-        <?php if (empty($agentErr)): ?><button class="btn p">最新の雛形で反映する</button><?php endif; ?></form>
+        <?php if (empty($agentErr) && (!$errorsOnly || !empty($errors_available))): ?><button class="btn p"><?= $errorsOnly ? '標準エラーページだけ更新する' : '設定全体を更新する' ?></button><?php endif; ?></form>
     </div>
   <?php endif; ?>
 

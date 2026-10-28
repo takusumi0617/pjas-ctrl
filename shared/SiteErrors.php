@@ -48,11 +48,19 @@ final class SiteErrors
             $html = str_replace(['\\', '"'], ['\\\\', '\\"'], $html);
             $out .= '    ErrorDocument ' . $code . ' "' . $html . '"' . "\n";
         }
-        return $out;
+        return $out . "    # end pjas-ctrl standard error pages\n";
     }
 
     public static function decorate(string $conf): string
     {
+        // 旧版を含め、ctrlが生成した部分だけを置き換える。
+        $header = '[\t ]*# pjas-ctrl standard error pages v1 \(site overrides take priority\)';
+        $line = '[\t ]*ErrorDocument [0-9]+ "<!doctype html>[^\r\n]*"[\t ]*(?:\r?\n|$)';
+        $pattern = '~^' . $header . '\r?\n(?:' . $line . '){' . count(self::MESSAGES) . '}(?:[\t ]*# end pjas-ctrl standard error pages(?:\r?\n|$))?~m';
+        $conf = preg_replace($pattern, '', $conf);
+        if (preg_match('~^' . $header . '~m', $conf)) {
+            throw new \InvalidArgumentException('共通エラーページの生成部分が編集されています。公開設定を確認してください');
+        }
         // VirtualHostの冒頭に既定値を追加する。後続の独自指定やDirectoryの指定を優先。
         return preg_replace_callback('~(^[\t ]*<VirtualHost\s+[^>]+>[^\S\r\n]*\R)~mi',
             static fn($m) => $m[1] . self::directives(), $conf);

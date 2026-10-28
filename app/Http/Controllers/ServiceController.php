@@ -245,6 +245,7 @@ final class ServiceController
         }
 
         if ($tab === 'vhost') {
+            $data['update_mode'] = (string) ($_GET['update_mode'] ?? (!empty($_GET['migration_source']) ? 'template' : 'errors'));
             $data['rendered'] = VhostRenderer::render(
                 $s,
                 $data['wwwRoot'],
@@ -252,8 +253,8 @@ final class ServiceController
                 (string) Config::get('tls_key_file', VhostRenderer::DEFAULT_TLS_KEY_FILE),
             );
             try {
-                $cur = AgentClient::call('apache.render', ['service' => Deployer::spec($s), 'migration_source' => (string) ($_GET['migration_source'] ?? '')], Auth::actor());
-                foreach (['migration_sources', 'migration_source', 'migration_hash', 'inherited'] as $field) $data[$field] = $cur[$field] ?? null;
+                $cur = AgentClient::call('apache.render', ['service' => Deployer::spec($s), 'migration_source' => (string) ($_GET['migration_source'] ?? ''), 'update_mode'=>$data['update_mode']], Auth::actor());
+                foreach (['migration_sources', 'migration_source', 'migration_hash', 'inherited', 'current_hash', 'errors_available'] as $field) $data[$field] = $cur[$field] ?? null;
                 $data['live']    = (string) ($cur['current'] ?? '');
                 $data['managed'] = (bool) ($cur['managed'] ?? false);
                 $data['conflicts'] = (array) ($cur['conflicts'] ?? []);

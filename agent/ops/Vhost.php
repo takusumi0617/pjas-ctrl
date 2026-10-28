@@ -226,6 +226,52 @@ final class Vhost
         } finally { flock($lock, LOCK_UN); fclose($lock); }
     }
 
+    private function updateMode(array $params): string
+    {
+        $mode = $params['update_mode'] ?? 'template';
+        if (!in_array($mode, ['errors', 'template'], true)) throw new OpException('更新する内容を選んでください');
+        return $mode;
+    }
+
+    private function currentForErrors(array $spec): string
+    {
+        $path = $this->confPath($spec['name']);
+        if (!is_file($path) || is_link($path)) throw new OpException('先に設定全体を反映してください。更新する公開設定ファイルがありません');
+        $stat = stat($path);
+        if ($stat['uid'] !== posix_geteuid() || ($stat['mode'] & 0022)) throw new OpException('公開設定はroot所有で、他のユーザーが書き込めない状態にしてください');
+        $conf = (string) file_get_contents($path);
+        if (!preg_match('/^[\t ]*<VirtualHost\s+[^>]+>[^\S\r\n]*\R/mi', $conf)) throw new OpException('更新するVirtualHostが見つかりません');
+        return $conf;
+    }
+
+    /** 現在のconfだけを入力とし、再生成・有効化・継承元の変更を行わない。 */
+    private function applyErrors(array $params): array
+    {
+        $spec = Spec::service($params['service'] ?? null);
+        $path = $this->confPath($spec['name']);
+        $old = $this->currentForErrors($spec);
+        if (!hash_equals(hash('sha256', $old), (string) ($params['current_hash'] ?? ''))) {
+            throw new OpException('公開設定がプレビュー後に変更されています。画面を開き直して変更点を確認してください');
+        }
+        $conf = SiteErrors::decorate($old);
+        $mode = fileperms($path) & 0777;
+        $write = static function (string $body) use ($path, $mode): void {
+            $tmp = $path . '.tmp-' . bin2hex(random_bytes(8));
+            if (file_put_contents($tmp, $body, LOCK_EX) === false) throw new OpException('公開設定を保存できません');
+            chmod($tmp, $mode);
+            if (!rename($tmp, $path)) { @unlink($tmp); throw new OpException('公開設定を保存できません'); }
+        };
+        $write($conf);
+        try {
+            $this->reload();
+        } catch (\Throwable $e) {
+            $write($old);
+            Proc::run([$this->cfg['apachectl'], 'graceful'], null, 60);
+            throw new OpException($e->getMessage() . ' (公開設定は更新前の内容に戻しました)');
+        }
+        return ['hash'=>hash('sha256', $conf), 'path'=>$path, 'configtest'=>'Syntax OK', 'disabled'=>[], 'update_mode'=>'errors'];
+    }
+
     /** 現行ファイルと生成結果を返す (書き込みはしない) */
     public function preview(array $params): array
     {
@@ -233,6 +279,13 @@ final class Vhost
         $path = $this->confPath($spec['name']);
         $cur  = is_file($path) ? (string) file_get_contents($path) : '';
 
+        if ($this->updateMode($params) === 'errors') {
+            $current = $cur === '' ? '' : $this->currentForErrors($spec);
+            return ['rendered'=>$current === '' ? '' : SiteErrors::decorate($current), 'current'=>$current,
+                'current_hash'=>hash('sha256', $current), 'errors_available'=>$current !== '',
+                'managed'=>str_starts_with($current, self::MANAGED_HEADER), 'conflicts'=>[],
+                'inherited'=>is_file($this->inheritedPath($spec['name'])), 'migration_sources'=>[]];
+        }
         $migration = $this->migrationSource($params, $spec);
         $sources = [];
         if (!is_file($this->inheritedPath($spec['name']))) {
@@ -261,7 +314,7 @@ final class Vhost
     {
         $lock = fopen($this->cfg['apache_sites'] . '/.pjas-vhost.lock', 'c');
         if (!$lock || !flock($lock, LOCK_EX)) throw new OpException('公開設定をロックできません');
-        try { return $this->applyUnlocked($params); }
+        try { return $this->updateMode($params) === 'errors' ? $this->applyErrors($params) : $this->applyUnlocked($params); }
         finally { flock($lock, LOCK_UN); fclose($lock); }
     }
 
