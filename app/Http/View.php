@@ -5,6 +5,15 @@ namespace Pjas\Http;
 
 final class View
 {
+    /** 障害時にもDB・公開機能に依存せず表示する。 */
+    public static function error(int $code, string $message = ''): void
+    {
+        http_response_code($code);
+        header('Content-Type: text/html; charset=utf-8');
+        header('Cache-Control: no-store');
+        self::render('error', ['code' => $code, 'message' => $message], true);
+    }
+
     public static function render(string $view, array $data = [], bool $bare = false): void
     {
         $file = dirname(__DIR__, 2) . '/views/' . $view . '.php';

@@ -68,6 +68,5 @@ try {
     $r->dispatch($_SERVER['REQUEST_METHOD'] ?? 'GET', $path);
 } catch (Throwable $e) {
     error_log('[pjas-ctrl] ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
-    http_response_code(500);
-    View::render('error', ['title' => 'エラー', 'message' => $e->getMessage()]);
+    View::error(500);
 }

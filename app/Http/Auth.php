@@ -56,8 +56,7 @@ final class Auth
             exit;
         }
         if (!self::can($role)) {
-            http_response_code(403);
-            View::render('error', ['title' => '403', 'message' => "この操作には {$role} 権限が必要です"]);
+            View::error(403, 'この操作には「' . \Pjas\Support\Labels::role($role) . '」権限が必要です。管理者に確認してください。');
             exit;
         }
     }

@@ -13,8 +13,7 @@ final class JobController
     {
         $job = JobRepo::sync((int) $a['id']);
         if ($job === null) {
-            http_response_code(404);
-            View::render('error', ['title' => '見つかりません', 'message' => '指定された作業の記録が見つかりません']);
+            View::error(404, '指定された作業の記録が見つかりません。ホームから作業の一覧を確認してください。');
             return;
         }
         $svc = $job['service_id']

@@ -39,7 +39,6 @@ final class Router
             $handler($args);
             return;
         }
-        http_response_code(404);
-        View::render('error', ['title' => '404', 'message' => 'ページが見つかりません']);
+        View::error(404);
     }
 }

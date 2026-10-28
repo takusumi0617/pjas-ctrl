@@ -22,8 +22,7 @@ final class Csrf
     {
         $sent = $_POST['_csrf'] ?? '';
         if (!is_string($sent) || !hash_equals(self::token(), $sent)) {
-            http_response_code(419);
-            View::render('error', ['title' => '419', 'message' => 'セッションが失効しました。再読み込みしてやり直してください。']);
+            View::error(419);
             exit;
         }
     }
