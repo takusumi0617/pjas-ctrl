@@ -18,6 +18,7 @@ final class AgentClient
         'ping',
         'service.scan', 'service.create', 'service.destroy',
         'deploy.start', 'deploy.rollback', 'deploy.adopt',
+        'apache.pause', 'apache.pause.status',
         'apache.render', 'apache.apply', 'apache.reload',
         'fpm.reload',
         'fs.list', 'fs.read', 'fs.write',

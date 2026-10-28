@@ -5,6 +5,8 @@ namespace Pjas\Agentd\Ops;
 
 use Pjas\Agentd\OpException;
 use Pjas\Agentd\InheritedVhost;
+use Pjas\Agentd\SitePause;
+require_once dirname(__DIR__) . '/lib/SitePause.php';
 use Pjas\Agentd\Paths;
 use Pjas\Agentd\Proc;
 use Pjas\Agentd\Spec;
@@ -54,7 +56,7 @@ final class Vhost
         }
         $body = (string) file_get_contents($path);
         if (str_starts_with($body, self::MANAGED_HEADER)) throw new OpException('管理下の生成済み設定は移行元に選べません');
-        $rendered = $this->inheritedRender($body, $spec);
+        $rendered = (new SitePause($this->cfg))->render($this->inheritedRender($body, $spec), $spec);
         return ['source' => $source, 'domain' => $spec['domain'], 'body' => $body, 'hash' => hash('sha256', $body), 'rendered' => $rendered];
     }
 
@@ -111,6 +113,11 @@ final class Vhost
 
     public function render(array $spec): string
     {
+        return (new SitePause($this->cfg))->render($this->renderNormal($spec), $spec);
+    }
+
+    private function renderNormal(array $spec): string
+    {
         $saved = $this->inheritedPath($spec['name']);
         if (is_file($saved)) {
             $snapshot = json_decode((string) file_get_contents($saved), true, 512, JSON_THROW_ON_ERROR);
@@ -165,6 +172,38 @@ final class Vhost
             $out .= "<VirtualHost *:80>\n    ServerName {$domain}\n" . $body . "</VirtualHost>\n";
         }
         return $out;
+    }
+
+    public function pauseStatus(array $params): array
+    {
+        $spec = Spec::service($params['service'] ?? null);
+        $state = (new SitePause($this->cfg))->read($spec['name']);
+        $path = $this->confPath($spec['name']);
+        $state['can_pause'] = is_file($path) && str_starts_with((string) file_get_contents($path), self::MANAGED_HEADER);
+        return $state;
+    }
+
+    public function pause(array $params): array
+    {
+        $spec = Spec::service($params['service'] ?? null);
+        $action = $params['action'] ?? '';
+        if (!in_array($action, ['pause', 'resume'], true)) throw new OpException('停止・再開の操作が不正です');
+        $lock = fopen($this->cfg['apache_sites'] . '/.pjas-vhost.lock', 'c');
+        if (!$lock || !flock($lock, LOCK_EX)) throw new OpException('公開設定をロックできません');
+        $pause = new SitePause($this->cfg);
+        try {
+            if (!$this->pauseStatus(['service' => $spec])['can_pause']) throw new OpException('先にこのサイトの公開設定を反映してください。独自設定がある場合は既存confを継承してから操作してください');
+            $old = $pause->read($spec['name']);
+            $state = $action === 'pause' ? $pause->validate($params) : array_replace($old, ['enabled' => false]);
+            try {
+                $pause->write($spec['name'], $state);
+                $result = $this->applyUnlocked(['service' => $spec]);
+                return $result + ['enabled' => $state['enabled'], 'code' => $state['code']];
+            } catch (\Throwable $e) {
+                $pause->write($spec['name'], $old);
+                throw $e;
+            }
+        } finally { flock($lock, LOCK_UN); fclose($lock); }
     }
 
     /** 現行ファイルと生成結果を返す (書き込みはしない) */

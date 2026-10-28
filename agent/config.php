@@ -32,6 +32,8 @@ return [
     ],
 
     // root 所有の関連付け台帳・実行スクリプト。管理画面からは書き換え不可。
+    'pause_dir' => '/var/lib/pjas-pauses',
+    'pause_fpm_socket' => '/run/php/php8.4-fpm.sock',
     'github_repo_dir' => '/var/lib/pjas-repositories',
     'daemon_dir' => '/var/lib/pjas-daemons',
     'daemon_unit_dir' => '/etc/systemd/system',

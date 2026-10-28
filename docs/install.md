@@ -175,3 +175,25 @@ sudo cp /opt/pjas-ctrl/systemd/pjas-agentd.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl restart pjas-agentd
 ```
+
+## サイトの一時停止と自由なHTMLページ
+
+サイトの「概要」→「サイトの一時停止・再開」でHTTPコードとHTMLを指定します。404・403・410・503など、200〜599のコードを使用できます。204・205・304はHTTPの仕様上本文を返せません。HEADリクエストも本文なしです。サイトの公開設定を反映済みであることが必要です。
+
+HTMLはデータとしてそのまま表示し、PHPとして実行しません。CSS・JavaScriptはインラインに記載するか外部URLを使ってください。同じサイトの全URLを停止ページに切り替えるため、そのサイトにある画像・CSSのURLも停止ページになります。管理画面ではHTMLをエスケープして編集欄に表示し、管理画面自身で実行しません。
+
+HTTPとHTTPS、別名ドメイン、APIやWebSocketの新規接続も停止ページに切り替えます。HTTP公開の切替であり、バックグラウンドのデーモン・定期処理は停止しません。既に確立済みの接続は直ちには切断しません。停止ページはキャッシュしないヘッダーを返しますが、外部キャッシュに既に残っているページの削除は別途行ってください。
+
+停止状態はリリースから独立して保存し、公開・ロールバックや公開設定の再反映でも維持します。停止中の公開では通常ページのヘルスチェックをスキップします。「サイトを再開する」で、独自設定の継承を含む通常の公開設定へ戻します。反映に失敗した場合は公開設定と停止状態を復元します。
+
+停止ページの応答にはPHP 8.4 FPMを使用します（静的サイトも同様）。`agent/config.php` の `pause_fpm_socket` でソケットを指定できます。PHP-FPMを停止しないでください。保存先 `/var/lib/pjas-pauses` はroot所有とし、バックアップに含めます。DB更新は不要です。
+
+既存環境では以下の更新を行います。
+
+```bash
+sudo install -d -o root -g root -m 755 /var/lib/pjas-pauses
+sudo cp /opt/pjas-ctrl/systemd/pjas-agentd.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl restart pjas-agentd
+sudo systemctl reload php8.4-fpm
+```

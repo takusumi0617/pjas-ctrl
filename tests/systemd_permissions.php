@@ -8,6 +8,7 @@ $unit = (string) file_get_contents(dirname(__DIR__) . '/systemd/pjas-agentd.serv
 $required = [
     '/var/www',
     '/var/lib/pjas-repositories',
+    '/var/lib/pjas-pauses',
     '/etc/apache2/sites-available',
     '/etc/apache2/sites-enabled',
     '/var/lib/apache2/site',

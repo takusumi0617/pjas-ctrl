@@ -12,7 +12,7 @@ use Pjas\Support\Labels;
     <option value="">すべての操作</option>
     <?php foreach ([
         'auth.login', 'auth.logout', 'service.create', 'service.update', 'service.deploy',
-        'service.rollback', 'service.health', 'apache.vhost.apply',
+        'service.rollback', 'service.health', 'service.pause', 'service.resume', 'apache.vhost.apply',
         'cron.create', 'cron.update', 'cron.delete', 'daemon.action', 'daemon.save',
     ] as $actionId): ?>
       <option value="<?= View::e($actionId) ?>" <?= $action === $actionId ? 'selected' : '' ?>>

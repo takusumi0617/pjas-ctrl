@@ -87,6 +87,8 @@ final class Labels
             'service.deploy'     => '新しいバージョンを公開',
             'service.rollback'   => '前のバージョンに戻す',
             'service.adopt'      => '既存ファイルの取り込み',
+            'service.pause'      => 'サイトの一時停止・停止ページ変更',
+            'service.resume'     => 'サイトの再開',
             'service.health'     => '動作確認',
             'apache.vhost.apply' => '公開設定の反映',
             'daemon.save'        => '常駐プログラムの登録・編集',

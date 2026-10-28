@@ -165,6 +165,9 @@ final class ServiceController
             'agentErr' => null,
         ];
 
+        try { $data['pause'] = AgentClient::call('apache.pause.status', ['service' => Deployer::spec($s)], Auth::actor()); }
+        catch (AgentException $e) { $data['pause'] = null; $data['pauseErr'] = $e->getMessage(); }
+
         if ($tab === 'overview' && $data['current'] === null && Auth::can('owner')) {
             try { $data['daemon_candidates'] = AgentClient::call('daemon.candidates', [], Auth::actor())['units']; }
             catch (AgentException $e) { $data['daemon_candidates'] = []; }
@@ -228,7 +231,7 @@ final class ServiceController
         try {
             $r = AgentClient::call('health.check', ['service' => Deployer::spec($s)], Auth::actor());
             ServiceRepo::setState((int) $s['id'], !empty($r['ok']) ? 'healthy' : 'unhealthy');
-            $msg = sprintf('%s%s の確認結果: %s', $s['domain'], $s['health_path'], !empty($r['ok']) ? '正常' : '確認が必要')
+            $msg = (!empty($r['paused']) ? '一時停止ページの確認: ' : '') . sprintf('%s%s の確認結果: %s', $s['domain'], $s['health_path'], !empty($r['ok']) ? '正常' : '確認が必要')
                 . '（応答番号 ' . ($r['status'] ?? '?') . '）';
             View::redirect('/services/' . $s['name'], $msg, !empty($r['ok']) ? 'ok' : 'err');
         } catch (AgentException $e) {

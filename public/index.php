@@ -40,6 +40,7 @@ $r->post('/services/{name}/rollback', [$dep, 'rollback'], 'operator');
 $r->post('/services/{name}/adopt', [$dep, 'adopt'], 'operator');
 
 $vh = new VhostController();
+$r->post('/services/{name}/pause', [$vh, 'pause'], 'owner');
 $r->post('/services/{name}/vhost', [$vh, 'apply'], 'owner');
 
 $job = new JobController();

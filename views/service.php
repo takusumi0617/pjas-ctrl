@@ -13,7 +13,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
 ?>
 <div class="row">
   <h1><?= $name ?></h1>
-  <?= match ((string) $s['state']) {
+  <?= !empty($pause['enabled']) ? '<span class="tag t-warn">一時停止中</span>' : match ((string) $s['state']) {
         'healthy'   => '<span class="tag t-ok">正常</span>',
         'unhealthy' => '<span class="tag t-err">異常</span>',
         default     => '<span class="tag t-mut">未確認</span>',
@@ -41,7 +41,25 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
   <div class="note err flash">サーバー側の作業プログラムでエラーが起きました: <?= View::e($agentErr) ?></div>
 <?php endif; ?>
 
+<?php if (!empty($pause['enabled'])): ?><div class="note">このサイトは一時停止中です。HTTP <?= (int) $pause['code'] ?> と指定したHTMLを返しています。</div><?php endif; ?>
+
 <?php if ($tab === 'overview'): ?>
+  <?php if (Auth::can('owner')): ?>
+  <div class="card"><div class="card-h">サイトの一時停止・再開</div><div class="card-b">
+  <?php if (!empty($pauseErr)): ?><p><?= View::e($pauseErr) ?></p>
+  <?php elseif (empty($pause['can_pause'])): ?><p>先に「公開設定」を反映してください。既存の独自設定がある場合は、既存confを継承してから操作できます。</p>
+  <?php else: ?>
+  <form method="post" action="/services/<?= $name ?>/pause" onsubmit="return confirm('指定したHTTPコードとHTMLでサイトを一時停止します。続けますか？')">
+    <?= Csrf::field() ?><input type="hidden" name="action" value="pause">
+    <div class="field"><label>停止中に返すHTTPコード</label><input type="number" name="code" min="200" max="599" required value="<?= (int) $pause['code'] ?>"><div class="hint">例: 404（見つかりません）、403（アクセス禁止）、503（一時停止）。200〜599を指定できます。204・205・304はHTTPの仕様上、HTMLを表示しません。</div></div>
+    <div class="field"><label>停止中に表示するHTML</label><textarea name="html" rows="10" class="mono"><?= View::e($pause['html']) ?></textarea><div class="hint">HTMLをそのまま表示します。CSSやJavaScriptも記載できます。サイト内の画像・CSSも停止ページに切り替わるため、インラインまたは外部URLを使用してください。PHPコードは実行しません。</div></div>
+    <button class="btn"><?= !empty($pause['enabled']) ? '停止ページを更新する' : 'この内容で一時停止する' ?></button>
+  </form>
+  <?php if (!empty($pause['enabled'])): ?>
+  <form method="post" action="/services/<?= $name ?>/pause" style="margin-top:12px" onsubmit="return confirm('サイトの公開を再開しますか？')"><?= Csrf::field() ?><input type="hidden" name="action" value="resume"><button class="btn p">サイトを再開する</button></form>
+  <?php endif; ?>
+  <?php endif; ?></div></div>
+  <?php endif; ?>
   <?php if ($current === null && Auth::can('operator')): ?>
     <div class="note" style="margin-bottom:14px">
       このサイトはまだ管理下のバージョンを持っていません。

@@ -70,6 +70,8 @@ $registry = [
     'deploy.start'    => [$deploy, 'start'],
     'deploy.rollback' => [$deploy, 'rollback'],
     'deploy.adopt'    => [$deploy, 'adopt'],
+    'apache.pause.status' => [$vhost, 'pauseStatus'],
+    'apache.pause'    => [$vhost, 'pause'],
     'apache.render'   => [$vhost, 'preview'],
     'apache.apply'    => [$vhost, 'apply'],
     'apache.reload'   => static fn(array $p): array => $vhost->reload(),

@@ -5,6 +5,8 @@ namespace Pjas\Agentd\Ops;
 
 use Pjas\Agentd\Proc;
 use Pjas\Agentd\Spec;
+use Pjas\Agentd\SitePause;
+require_once dirname(__DIR__) . '/lib/SitePause.php';
 
 /**
  * ヘルスチェック。DNS ではなく 127.0.0.1 に強制解決して、
@@ -35,8 +37,11 @@ final class Health
         ], null, 15);
 
         $status = (int) trim($r['out']);
+        $pause = (new SitePause($this->cfg))->read($spec['name']);
+        $paused = !empty($pause['enabled']);
         return [
-            'ok'     => $status === $spec['health_status'],
+            'paused' => $paused,
+            'ok'     => $status === ($paused ? $pause['code'] : $spec['health_status']),
             'status' => $status,
             'url'    => $url,
             'error'  => $r['code'] === 0 ? '' : trim($r['err']),
@@ -46,6 +51,10 @@ final class Health
     /** 成功するまで、または回数切れまで繰り返す */
     public function poll(array $spec, callable $log): bool
     {
+        if (!empty((new SitePause($this->cfg))->read($spec['name'])['enabled'])) {
+            $log('サイトは一時停止中のため通常ページの動作確認をスキップします（停止状態は維持します）');
+            return true;
+        }
         $tries = (int) $this->cfg['health_retries'];
         for ($i = 1; $i <= $tries; $i++) {
             $r = $this->probe($spec);
