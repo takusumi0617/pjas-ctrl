@@ -15,7 +15,7 @@ final class AgentClient
 {
     /** agent 側 Registry と一致する許可 op。ここに無い op は送信前に落とす。 */
     public const OPS = [
-        'ping',
+        'ping', 'github.validate', 'github.inspect', 'github.configure',
         'service.scan', 'service.create', 'service.destroy',
         'deploy.start', 'deploy.rollback', 'deploy.adopt',
         'apache.pause', 'apache.pause.status',

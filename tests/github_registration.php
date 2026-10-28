@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-foreach (['OpException', 'Spec', 'Paths', 'Proc', 'JobLog', 'GitRepositories'] as $file) require dirname(__DIR__) . '/agent/lib/' . $file . '.php';
+foreach (['OpException', 'Spec', 'Paths', 'Proc', 'JobLog', 'GitRepositories', 'ManifestImport'] as $file) require dirname(__DIR__) . '/agent/lib/' . $file . '.php';
 foreach (['Service', 'Vhost', 'Health', 'Deploy'] as $file) require dirname(__DIR__) . '/agent/ops/' . $file . '.php';
 use Pjas\Domain\GitHubRepository;
 use Pjas\Agentd\GitRepositories;

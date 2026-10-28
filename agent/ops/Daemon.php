@@ -128,6 +128,17 @@ final class Daemon
     }
 
     /** 公開切替後、追従対象の稼働中プログラムだけを再起動する。 */
+    public function enableBoot(string $service, string $unit): void
+    {
+        $this->locked(function () use ($service,$unit): array {
+            $unit = $this->unit($unit);
+            $row = $this->registry()[$unit] ?? null;
+            if (!$row || $row['service'] !== $service || !$row['managed']) throw new OpException('自動起動を設定できないプログラムです');
+            Proc::must([$this->cfg['systemctl'],'enable','--',$unit],null,30);
+            return [];
+        });
+    }
+
     public function restartForSite(string $service, callable $log): void
     {
         if (!is_file($this->dir() . '/registry.json')) return;

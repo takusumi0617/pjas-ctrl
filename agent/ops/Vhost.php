@@ -174,6 +174,24 @@ final class Vhost
         return $out;
     }
 
+    public function applyRepositoryConfig(string $body, array $spec): array
+    {
+        $lock = fopen($this->cfg['apache_sites'] . '/.pjas-vhost.lock','c');
+        if (!$lock || !flock($lock,LOCK_EX)) throw new OpException('公開設定をロックできません');
+        $path = $this->inheritedPath($spec['name']);
+        $old = is_file($path) ? file_get_contents($path) : null;
+        try {
+            if (!preg_match('/^\s*ServerName\s+(\S+)/mi',$body,$host)) throw new OpException('ServerNameがありません');
+            $snapshot = ['body'=>$body,'domain'=>$host[1],'source'=>'.pjas'];
+            $this->inheritedRender($body,$spec,$host[1]);
+            $tmp = $path . '.tmp-' . bin2hex(random_bytes(8));
+            if (file_put_contents($tmp,json_encode($snapshot,JSON_THROW_ON_ERROR)) === false) throw new OpException('Apache設定を保存できません');
+            chmod($tmp,0600); if (!rename($tmp,$path)) throw new OpException('Apache設定を保存できません');
+            try { return $this->applyUnlocked(['service'=>$spec]); }
+            catch (\Throwable $e) { if ($old === null) @unlink($path); else file_put_contents($path,$old); throw $e; }
+        } finally { flock($lock,LOCK_UN); fclose($lock); }
+    }
+
     public function pauseStatus(array $params): array
     {
         $spec = Spec::service($params['service'] ?? null);

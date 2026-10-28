@@ -197,3 +197,5 @@ sudo systemctl daemon-reload
 sudo systemctl restart pjas-agentd
 sudo systemctl reload php8.4-fpm
 ```
+
+`.pjas` があるリポジトリからの一括設定読み込みは [.pjas の仕様](pjas-manifest.md) を参照してください。

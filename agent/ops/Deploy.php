@@ -9,6 +9,7 @@ use Pjas\Agentd\Paths;
 use Pjas\Agentd\Proc;
 use Pjas\Agentd\Spec;
 use Pjas\Agentd\GitRepositories;
+use Pjas\Agentd\ManifestImport;
 
 final class Deploy
 {
@@ -39,7 +40,7 @@ final class Deploy
             'label'         => substr((string) ($params['label'] ?? ''), 0, 60),
             'auto_rollback' => !empty($params['auto_rollback']),
             'maintenance'   => !empty($params['maintenance']),
-            'apply_vhost'   => !empty($params['apply_vhost']) || (!empty($source['public_github']) && $this->paths->currentTag($spec['name']) === null),
+            'apply_vhost'   => !empty($params['apply_vhost']) || !empty($source['manifest_plan']) || (!empty($source['public_github']) && ($this->paths->currentTag($spec['name']) === null || !is_file($this->vhost->confPath($spec['name'])))),
         ];
 
         $pid = pcntl_fork();
@@ -233,7 +234,9 @@ final class Deploy
             $this->switchCurrent($name, $tag, $log);
             if (!empty($opts['apply_vhost'])) {
                 $log->line('初回の公開設定を反映します');
-                $this->vhost->apply(['service' => $spec]);
+                $conf = $source['manifest_plan']['apache'] ?? '';
+                if ($conf !== '') $this->vhost->applyRepositoryConfig($conf,$spec);
+                else $this->vhost->apply(['service' => $spec]);
             }
             $this->reloadRuntime($spec, $log);
 
@@ -242,6 +245,9 @@ final class Deploy
                 $log->line('メンテナンスモード OFF');
             }
 
+            if (!empty($source['manifest_plan'])) {
+                (new ManifestImport($this->cfg))->installPrograms($name,fn($m)=>$log->line($m));
+            }
             // [9] ヘルスチェック
             $healthy = $this->health->poll($spec, fn($m) => $log->line($m));
             $log->set('health', $healthy ? 'ok' : 'ng');
@@ -312,6 +318,8 @@ final class Deploy
             $ref = (string) ($src['ref'] ?? '');
             try { $ref = \Pjas\Domain\GitHubRepository::ref($ref); }
             catch (\InvalidArgumentException $e) { throw new OpException($e->getMessage()); }
+            $plan = (new ManifestImport($this->cfg))->plan($spec['name']);
+            if ($plan && !$plan['done']) $repo['manifest_plan'] = $plan;
             return ['type' => 'git', 'ref' => $ref] + $repo;
         }
 
@@ -376,6 +384,16 @@ final class Deploy
 
     private function fetchGit(string $name, array $src, string $relDir, JobLog $log): array
     {
+        if (!empty($src['manifest_plan'])) {
+            $plan = $src['manifest_plan'];
+            if (!is_dir($plan['checkout'])) throw new OpException('初回設定の取得ファイルがありません');
+            if (!mkdir($relDir,0755,true)) throw new OpException('公開先を作成できません');
+            Proc::must(['/bin/cp','-a','--',$plan['checkout'] . '/.',$relDir],null,120);
+            $this->assertNoEscape($relDir,$log);
+            Proc::must(['/bin/rm','-rf','--',$relDir . '/.git'],null,120);
+            $log->line('.pjasを確認したコミット ' . $plan['sha'] . ' を使用します');
+            return ['source'=>'git:' . $plan['sha'],'sha256'=>$plan['sha'],'size'=>0];
+        }
         $args = GitRepositories::cloneArgs($src, $relDir);
         if (!empty($src['public_github'])) {
             $env = ['PATH' => '/usr/bin:/bin', 'GIT_TERMINAL_PROMPT' => '0', 'GIT_ASKPASS' => '/bin/false', 'GIT_CONFIG_NOSYSTEM' => '1', 'GIT_CONFIG_GLOBAL' => '/dev/null'];

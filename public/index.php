@@ -28,6 +28,7 @@ $r->get('/services', [$svc, 'index']);
 $r->get('/services/new', [$svc, 'newForm'], 'owner');
 $r->get('/services/import', [$svc, 'importForm'], 'owner');
 $r->post('/services/import', [$svc, 'import'], 'owner');
+$r->post('/services/github-preview', [$svc, 'githubPreview'], 'owner');
 $r->post('/services', [$svc, 'create'], 'owner');
 $r->get('/services/{name}', [$svc, 'show']);
 $r->post('/services/{name}/settings', [$svc, 'updateSettings'], 'owner');

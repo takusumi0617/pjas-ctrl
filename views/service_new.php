@@ -15,6 +15,14 @@ $v = static fn(string $k, string $d = '') => View::e((string) ($in[$k] ?? $d));
   <div class="note err flash"><?php foreach ($errors as $e): ?>・<?= View::e($e) ?><br><?php endforeach; ?></div>
 <?php endif; ?>
 
+<div class="card"><div class="card-h">GitHubの .pjas から設定を読み込む</div><div class="card-b">
+<form method="post" action="/services/github-preview"><?= Csrf::field() ?>
+<div class="field"><label>公開GitHubリポジトリ</label><input name="github_repo" required value="<?= $v('github_repo') ?>" placeholder="所有者/リポジトリ"></div>
+<div class="field"><label>ブランチ・タグ（空欄なら既定ブランチ）</label><input name="github_ref" value="<?= $v('github_ref') ?>"></div>
+<button class="btn">設定を読み込んで確認する</button><div class="hint">この段階ではサイト登録やプログラムの実行はしません。</div></form>
+</div></div>
+<?php if (isset($manifest_preview)): ?><div class="note"><?= $manifest_preview['found'] ? '.pjasを読み込みました。下の設定を確認・修正してください。' : '.pjasはありません。通常どおり下の項目を入力して登録できます。' ?>
+確認したコミット: <?= View::e($manifest_preview['sha']) ?></div><?php endif; ?>
 <form method="post" action="/services">
   <?= Csrf::field() ?>
 
@@ -110,6 +118,16 @@ $v = static fn(string $k, string $d = '') => View::e((string) ($in[$k] ?? $d));
     </div>
   </div>
 
+  <?php if (!empty($in['manifest_token'])): ?>
+  <div class="card"><div class="card-h">.pjas の設定と追加プログラム</div><div class="card-b">
+  <input type="hidden" name="manifest_token" value="<?= $v('manifest_token') ?>">
+  <div class="field"><label>読み込んだ設定（JSON・編集可能）</label><textarea name="manifest_json" rows="18" class="mono"><?= $v('manifest_json') ?></textarea></div>
+  <p class="hint">サイト名・ドメイン・公開フォルダ・準備処理・共有パスには上の入力欄を使います。このJSONではデーモン・cronなどを編集できます。起動指定のあるプログラムは初回公開で実行します。</p>
+  <?php if (!empty($manifest_preview['apache'])): ?><details open><summary>リポジトリのApache設定全文</summary><pre><?= View::e($manifest_preview['apache']) ?></pre></details><?php endif; ?>
+  <p>Apache設定のサイト内パスは登録先のcurrentに、証明書は共通のCloudflare証明書に置き換えます。独自設定を含むため、内容を確認してください。</p>
+  <label class="inline"><input type="checkbox" name="manifest_confirm" required value="1">.pjasとApache設定、追加するプログラムの内容を確認し、この設定で登録する</label>
+  </div></div>
+  <?php endif; ?>
   <div class="row" style="margin-top:16px">
     <a class="btn" href="/services">キャンセル</a><span class="spacer"></span>
     <button class="btn p">この内容で登録する</button>

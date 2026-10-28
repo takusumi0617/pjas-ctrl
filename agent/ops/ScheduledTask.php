@@ -23,7 +23,7 @@ final class ScheduledTask
 
         $service = Spec::name($task['service'] ?? '');
         $schedule = Spec::cronSchedule($task['schedule'] ?? '');
-        $command = Spec::cronCommand($task['command'] ?? '');
+        $command = str_replace('{{site_root}}', $this->paths->current($service), Spec::cronCommand($task['command'] ?? ''));
         $webUser = (string) $this->cfg['web_user'];
         $webGroup = (string) $this->cfg['web_group'];
 

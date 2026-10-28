@@ -39,6 +39,10 @@ final class GitRepositories
         if (!$url) throw new OpException('このサイトにはGitの取得元が登録されていません: ' . $name);
         return ['repo' => (string) $url, 'public_github' => false];
     }
+    public static function publicEnv(): array
+    {
+        return ['PATH'=>'/usr/bin:/bin','GIT_TERMINAL_PROMPT'=>'0','GIT_ASKPASS'=>'/bin/false','GIT_CONFIG_NOSYSTEM'=>'1','GIT_CONFIG_GLOBAL'=>'/dev/null'];
+    }
     public static function cloneArgs(array $source, string $dest): array
     {
         $args = ['/usr/bin/git'];

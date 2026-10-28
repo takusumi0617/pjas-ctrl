@@ -7,6 +7,8 @@ use Pjas\Agent\AgentClient;
 use Pjas\Agent\AgentException;
 use Pjas\Domain\Deployer;
 use Pjas\Domain\GitHubRepository;
+use Pjas\Domain\PjasManifest;
+use Pjas\Domain\ScheduledTaskRepo;
 use Pjas\Domain\JobRepo;
 use Pjas\Domain\ReleaseRepo;
 use Pjas\Domain\ServiceRepo;
@@ -29,13 +31,48 @@ final class ServiceController
         View::render('service_new', ['title' => 'サイト登録', 'errors' => [], 'in' => []]);
     }
 
+    public function githubPreview(): void
+    {
+        $in = ['github_repo'=>(string)($_POST['github_repo'] ?? ''), 'github_ref'=>(string)($_POST['github_ref'] ?? '')];
+        try {
+            $r = AgentClient::call('github.inspect',['repo'=>$in['github_repo'],'ref'=>$in['github_ref']],Auth::actor());
+            if ($r['found']) {
+                $in = array_replace($in,$r['defaults'],['manifest_token'=>$r['token'],'manifest_json'=>$r['json']]);
+                if ($in['domain'] === '' && preg_match('/^\s*ServerName\s+(\S+)/mi',$r['apache'],$host)) $in['domain'] = $host[1];
+            }
+            View::render('service_new',['title'=>'サイト登録','errors'=>[],'in'=>$in,'manifest_preview'=>$r]);
+        } catch (AgentException $e) {
+            View::render('service_new',['title'=>'サイト登録','errors'=>[$e->getMessage()],'in'=>$in]);
+        }
+    }
+
     public function create(): void
     {
+        // 通常の登録ボタンから進んだ場合も、.pjasがあれば先に確認画面を出す。
+        if (!empty($_POST['github_repo']) && empty($_POST['manifest_token'])) {
+            try {
+                $r = AgentClient::call('github.inspect',['repo'=>(string)$_POST['github_repo'],'ref'=>(string)($_POST['github_ref'] ?? '')],Auth::actor());
+                if ($r['found']) {
+                    $in = array_replace($_POST,$r['defaults'],['manifest_token'=>$r['token'],'manifest_json'=>$r['json']]);
+                    if ($in['domain'] === '' && preg_match('/^\s*ServerName\s+(\S+)/mi',$r['apache'],$host)) $in['domain']=$host[1];
+                    View::render('service_new',['title'=>'設定の確認','errors'=>[],'in'=>$in,'manifest_preview'=>$r]);
+                    return;
+                }
+            } catch (AgentException $e) {
+                View::render('service_new',['title'=>'サイト登録','errors'=>[$e->getMessage()],'in'=>$_POST]);
+                return;
+            }
+        }
         try {
             $v = ServiceRepo::validate($_POST, true);
             $repo = trim((string) ($_POST['github_repo'] ?? ''));
             $ref = GitHubRepository::ref((string) ($_POST['github_ref'] ?? ''));
             if ($repo !== '') $repo = GitHubRepository::normalize($repo);
+            $manifest = null;
+            if (!empty($_POST['manifest_token'])) {
+                if (empty($_POST['manifest_confirm'])) throw new ValidationException(['.pjasとApache設定を確認してチェックしてください']);
+                $manifest = PjasManifest::parse((string) ($_POST['manifest_json'] ?? ''));
+            }
         } catch (ValidationException|\InvalidArgumentException $e) {
             View::render('service_new', ['title' => 'サイト登録', 'errors' => $e instanceof ValidationException ? $e->errors : [$e->getMessage()], 'in' => $_POST]);
             return;
@@ -43,6 +80,8 @@ final class ServiceController
 
         $actor = Auth::actor();
         try {
+            if ($manifest !== null) AgentClient::call('github.validate', ['service'=>Deployer::spec($v),
+                'token'=>(string)$_POST['manifest_token'],'json'=>(string)$_POST['manifest_json'],'repo'=>$repo],$actor);
             // ディレクトリ雛形 (releases/ shared/ current) は agent が root で作る
             AgentClient::call('service.create', [
                 'github_repo' => $repo,
@@ -60,9 +99,24 @@ final class ServiceController
         Audit::log($actor, 'service.create', $v['name'], ['domain' => $v['domain']]);
         if ($repo !== '') {
             try {
+                if ($manifest !== null) {
+                    $tasks = [];
+                    foreach ($manifest['cron'] as $item) {
+                        $values = ScheduledTaskRepo::validate(['name'=>$item['label'] ?? $item['name'],
+                            'schedule'=>$item['schedule'], 'command'=>PjasManifest::command($item['command'],$manifest,rtrim(Config::get('www_root','/var/www'),'/') . '/' . $v['name']),
+                            'enabled'=>$item['enabled'] ?? true]);
+                        $site = ServiceRepo::findOrFail($v['name']);
+                        $id = ScheduledTaskRepo::create((int)$site['id'],$values,$actor);
+                        $tasks[] = ScheduledTaskRepo::find($id);
+                    }
+                    AgentClient::call('github.configure',['service'=>Deployer::spec(ServiceRepo::findOrFail($v['name'])),
+                        'token'=>(string)$_POST['manifest_token'],'json'=>(string)$_POST['manifest_json'],'tasks'=>$tasks],$actor);
+                    $configured = true;
+                }
                 $job = Deployer::fromGit(ServiceRepo::findOrFail($v['name']), $ref,
                     ['label' => 'GitHubから初回公開', 'apply_vhost' => true, 'auto_rollback' => true], $actor);
             } catch (AgentException|ValidationException $e) {
+                if (isset($tasks) && empty($configured)) foreach ($tasks as $task) ScheduledTaskRepo::delete((int)$task['id']);
                 View::redirect('/services/' . $v['name'], 'サイトは登録済みですが、GitHubからの取得を開始できませんでした: ' . $e->getMessage(), 'err');
             }
             View::redirect('/jobs/' . $job, 'サイトを登録し、GitHubからの取得と初回公開を開始しました');

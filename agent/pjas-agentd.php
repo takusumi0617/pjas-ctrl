@@ -62,7 +62,11 @@ $cron    = new ScheduledTask($cfg, $paths);
 $daemon  = new Daemon($cfg);
 
 /** op 登録表。ここに無いものは実行できない。 */
+$manifest = new \Pjas\Agentd\ManifestImport($cfg);
 $registry = [
+    'github.validate' => [$manifest,'validate'],
+    'github.inspect' => [$manifest,'inspect'],
+    'github.configure' => [$manifest,'configure'],
     'ping'            => static fn(array $p): array => ['pong' => true, 'version' => '1.0.0'],
     'service.scan'    => [$service, 'scan'],
     'service.create'  => [$service, 'create'],
