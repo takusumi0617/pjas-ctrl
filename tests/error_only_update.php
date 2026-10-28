@@ -58,6 +58,10 @@ try {
     rejects(fn()=>$v->apply($p+['current_hash'=>$preview['current_hash']]));
     check(file_get_contents($path)===$original."\n# later edit\n",'設定検査失敗時は手作業の追記も含めて完全復元');
     rejects(fn()=>$v->apply(['service'=>$s,'update_mode'=>'invalid']));
+    $broken=preg_replace('/^[\t ]*ErrorDocument 404 [^\r\n]*\r?\n/m', '', SiteErrors::decorate($original));
+    file_put_contents($path,$broken);
+    $brokenPreview=$v->preview($p);
+    check(!$brokenPreview['errors_available'] && $brokenPreview['preview_error']!=='' && $brokenPreview['current']===$broken,'生成部分が不完全でも現在のconfを検査表示でき、反映は止める');
     unlink($path);
     rejects(fn()=>$v->apply($p+['current_hash'=>hash('sha256','')]));
     check(!$v->preview($p)['errors_available'],'confがない場合は雛形からの作成を案内');

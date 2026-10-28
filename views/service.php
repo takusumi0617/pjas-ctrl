@@ -141,7 +141,8 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
   </form>
   <?php if ($errorsOnly): ?>
     <div class="note" style="margin-bottom:12px">現在の設定ファイルを使って、ctrlの共通エラーページだけを追加・更新します。80・443の独自設定、手作業で追記した内容、独自のエラーページ指定を維持します。</div>
-    <?php if (empty($errors_available) && empty($agentErr)): ?><div class="note">更新する公開設定がありません。「最新の雛形で設定全体を更新」を選び、先に公開設定を作成してください。</div><?php endif; ?>
+    <?php if (!empty($preview_error)): ?><div class="note err"><?= View::e($preview_error) ?>。下のチェックで現在の指定を確認できます。設定は変更していません。</div>
+    <?php elseif (empty($errors_available) && empty($agentErr)): ?><div class="note">更新する公開設定がありません。「最新の雛形で設定全体を更新」を選び、先に公開設定を作成してください。</div><?php endif; ?>
   <?php else: ?>
     <div class="note err" style="margin-bottom:12px">設定全体を再生成します。現在のconfへ手作業で加えた変更は失われる可能性があります。継承モードでは保存した継承元を使います。差分を確認してから反映してください。</div>
   <div class="note" style="margin-bottom:12px">
@@ -168,6 +169,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
   <?php endif; ?>
   <?php endif; ?>
   <div class="note" style="margin-bottom:12px">404・403・500・503など、Apacheが返す標準エラーページを共通デザインで表示します。既存設定を継承したサイトも対象です。独自のエラーページ指定は優先され、アプリが返すエラー本文やCloudflare側のエラーは変更しません。</div>
+  <?php if (empty($agentErr) && isset($error_coverage)) require __DIR__ . '/partials/error_coverage.php'; ?>
   <div class="f2">
     <div class="card"><div class="card-h">これから使うサーバー設定（詳しい人向け）
       <span class="spacer"></span><span class="mono muted"><?= View::e('/etc/apache2/sites-available/pjas-' . $s['name'] . '.conf') ?></span></div>

@@ -143,4 +143,8 @@ label.inline + .hint{margin-left:24px}
 .error-actions .btn{padding:11px 17px;border-radius:11px;font-weight:600}
 .error-page a:focus-visible{outline:3px solid var(--accent);outline-offset:4px}
 .error-footer{border-top:1px solid var(--line);padding-top:20px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--muted)}
+.coverage-host{border:1px solid var(--line);border-radius:8px;margin:10px 0;overflow:hidden}
+.coverage-host summary{padding:10px 12px;cursor:pointer;overflow-wrap:anywhere}
+.coverage-host summary .tag{margin-left:6px}
+.coverage-host small{display:block;margin-top:4px}
 @media(max-width:480px){.error-page{padding:16px}.error-panel{padding:30px 25px;border-radius:22px}}

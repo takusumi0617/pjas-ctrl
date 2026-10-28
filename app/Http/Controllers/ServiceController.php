@@ -254,7 +254,7 @@ final class ServiceController
             );
             try {
                 $cur = AgentClient::call('apache.render', ['service' => Deployer::spec($s), 'migration_source' => (string) ($_GET['migration_source'] ?? ''), 'update_mode'=>$data['update_mode']], Auth::actor());
-                foreach (['migration_sources', 'migration_source', 'migration_hash', 'inherited', 'current_hash', 'errors_available'] as $field) $data[$field] = $cur[$field] ?? null;
+                foreach (['migration_sources', 'migration_source', 'migration_hash', 'inherited', 'current_hash', 'errors_available', 'preview_error'] as $field) $data[$field] = $cur[$field] ?? null;
                 $data['live']    = (string) ($cur['current'] ?? '');
                 $data['managed'] = (bool) ($cur['managed'] ?? false);
                 $data['conflicts'] = (array) ($cur['conflicts'] ?? []);
@@ -266,6 +266,10 @@ final class ServiceController
                 $data['agentErr'] = $e->getMessage();
             }
             $data['diff'] = VhostRenderer::diff($data['live'], $data['rendered']);
+            $data['error_coverage'] = [
+                'current' => \Pjas\Shared\SiteErrors::coverage($data['live']),
+                'planned' => \Pjas\Shared\SiteErrors::coverage($data['rendered']),
+            ];
         }
 
         if ($tab === 'files') {

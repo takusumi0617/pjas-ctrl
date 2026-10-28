@@ -51,6 +51,48 @@ final class SiteErrors
         return $out . "    # end pjas-ctrl standard error pages\n";
     }
 
+    /** このconf内の各VirtualHost直下を確認する。Includeや.htaccessの実行時評価はしない。 */
+    public static function coverage(string $conf): array
+    {
+        $expected = [];
+        foreach (explode("\n", self::directives()) as $line) {
+            if (preg_match('/^\s*ErrorDocument\s+([0-9]{3})\s+(.+)$/', $line, $m)) $expected[(int) $m[1]] = $m[2];
+        }
+        preg_match_all('~^[\t ]*<VirtualHost\s+([^>]+)>[^\S\r\n]*\R(.*?)^[\t ]*</VirtualHost>[^\S\r\n]*(?:\R|$)~ims', $conf, $blocks, PREG_SET_ORDER);
+        $result = [];
+        foreach ($blocks as $block) {
+            $direct = $scoped = [];
+            $depth = 0;
+            $name = '';
+            // 継続行も一つの指示として扱い、本文内の文字列を別指示と誤認しない。
+            $body = preg_replace('/\\\\\r?\n/', ' ', $block[2]);
+            foreach (preg_split('/\R/', $body) as $line) {
+                $line = trim($line);
+                if ($line === '' || str_starts_with($line, '#')) continue;
+                if (preg_match('~^</[a-z][^>]*>~i', $line)) { $depth = max(0, $depth - 1); continue; }
+                if (preg_match('~^<[a-z][^>]*>~i', $line)) { $depth++; continue; }
+                if ($depth === 0 && preg_match('/^ServerName\s+(\S+)/i', $line, $m)) $name = trim($m[1], "\"'");
+                if (!preg_match('/^ErrorDocument\s+([0-9]{3})\s+(.+)$/i', $line, $m)) continue;
+                $code = (int) $m[1];
+                if (!isset(self::MESSAGES[$code])) continue;
+                if ($depth > 0) { $scoped[$code] = true; continue; }
+                // 同じ階層の重複指定は後に書いたものが優先される。
+                $value = trim($m[2]);
+                $direct[$code] = preg_match('/^(?:default|"default"|\'default\')(?:\s*(?:#.*)?)$/i', $value)
+                    ? 'default' : ($value === $expected[$code] ? 'standard' : 'custom');
+            }
+            $codes = [];
+            $covered = 0;
+            foreach (self::MESSAGES as $code => $_) {
+                $status = $direct[$code] ?? (isset($scoped[$code]) ? 'scoped' : 'missing');
+                if (in_array($status, ['standard', 'custom'], true)) $covered++;
+                $codes[$code] = ['status'=>$status, 'scoped'=>isset($scoped[$code])];
+            }
+            $result[] = ['address'=>trim($block[1]), 'server_name'=>$name, 'codes'=>$codes, 'covered'=>$covered];
+        }
+        return $result;
+    }
+
     public static function decorate(string $conf): string
     {
         // 旧版を含め、ctrlが生成した部分だけを置き換える。

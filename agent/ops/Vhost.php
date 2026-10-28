@@ -281,8 +281,12 @@ final class Vhost
 
         if ($this->updateMode($params) === 'errors') {
             $current = $cur === '' ? '' : $this->currentForErrors($spec);
-            return ['rendered'=>$current === '' ? '' : SiteErrors::decorate($current), 'current'=>$current,
-                'current_hash'=>hash('sha256', $current), 'errors_available'=>$current !== '',
+            $rendered = '';
+            $previewError = '';
+            try { $rendered = $current === '' ? '' : SiteErrors::decorate($current); }
+            catch (\InvalidArgumentException $e) { $previewError = $e->getMessage(); }
+            return ['rendered'=>$rendered, 'current'=>$current, 'preview_error'=>$previewError,
+                'current_hash'=>hash('sha256', $current), 'errors_available'=>$current !== '' && $previewError === '',
                 'managed'=>str_starts_with($current, self::MANAGED_HEADER), 'conflicts'=>[],
                 'inherited'=>is_file($this->inheritedPath($spec['name'])), 'migration_sources'=>[]];
         }
