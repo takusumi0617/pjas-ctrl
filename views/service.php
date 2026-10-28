@@ -132,6 +132,17 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
       <span class="mono"><?= View::e(implode(', ', $conflicts)) ?></span>
     <?php endif; ?>
   </div>
+  <?php if (!empty($inherited)): ?>
+    <div class="note">既存設定を継承しています。独自設定を維持し、公開フォルダと証明書を管理します。通常の追加設定欄・PHP設定はこのモードでは生成に使いません。</div>
+  <?php elseif (Auth::can('owner') && !empty($migration_sources)): ?>
+    <div class="card"><div class="card-h">移行時のみ：既存設定を継承する</div><div class="card-b">
+    <p>独自のApache設定を残し、公開フォルダとSSL証明書を置き換えます。まずプレビューで差分を確認してください。</p>
+    <form method="get" action="/services/<?= $name ?>"><input type="hidden" name="tab" value="vhost">
+    <select name="migration_source" required><?php foreach ($migration_sources as $source): ?><option value="<?= View::e($source) ?>" <?= ($migration_source ?? '') === $source ? 'selected' : '' ?>><?= View::e($source) ?></option><?php endforeach; ?></select>
+    <button class="btn">継承する内容を確認</button></form>
+    <?php if (!empty($migration_source)): ?><p>継承元: <?= View::e($migration_source) ?>。下の「反映する」で継承を確定します。</p><?php endif; ?>
+    </div></div>
+  <?php endif; ?>
   <div class="f2">
     <div class="card"><div class="card-h">これから使うサーバー設定（詳しい人向け）
       <span class="spacer"></span><span class="mono muted"><?= View::e('/etc/apache2/sites-available/pjas-' . $s['name'] . '.conf') ?></span></div>
@@ -151,7 +162,10 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
       <span class="spacer"></span>
       <form method="post" action="/services/<?= $name ?>/vhost"
             onsubmit="return confirm('この設定を反映します。サイトを止めずに切り替わります。よろしいですか?')">
-        <?= Csrf::field() ?><button class="btn p">反映する</button></form>
+        <?= Csrf::field() ?>
+        <input type="hidden" name="migration_source" value="<?= View::e($migration_source ?? '') ?>">
+        <input type="hidden" name="migration_hash" value="<?= View::e($migration_hash ?? '') ?>">
+        <?php if (empty($agentErr)): ?><button class="btn p">反映する</button><?php endif; ?></form>
     </div>
   <?php endif; ?>
 

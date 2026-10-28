@@ -157,7 +157,8 @@ final class ServiceController
                 (string) Config::get('tls_key_file', VhostRenderer::DEFAULT_TLS_KEY_FILE),
             );
             try {
-                $cur = AgentClient::call('apache.render', ['service' => Deployer::spec($s)], Auth::actor());
+                $cur = AgentClient::call('apache.render', ['service' => Deployer::spec($s), 'migration_source' => (string) ($_GET['migration_source'] ?? '')], Auth::actor());
+                foreach (['migration_sources', 'migration_source', 'migration_hash', 'inherited'] as $field) $data[$field] = $cur[$field] ?? null;
                 $data['live']    = (string) ($cur['current'] ?? '');
                 $data['managed'] = (bool) ($cur['managed'] ?? false);
                 $data['conflicts'] = (array) ($cur['conflicts'] ?? []);

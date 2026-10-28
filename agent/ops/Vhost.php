@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Pjas\Agentd\Ops;
 
 use Pjas\Agentd\OpException;
+use Pjas\Agentd\InheritedVhost;
 use Pjas\Agentd\Paths;
 use Pjas\Agentd\Proc;
 use Pjas\Agentd\Spec;
@@ -24,6 +25,37 @@ final class Vhost
     public function confPath(string $name): string
     {
         return rtrim((string) $this->cfg['apache_sites'], '/') . "/pjas-{$name}.conf";
+    }
+
+    private function inheritedPath(string $name): string
+    {
+        return rtrim((string) $this->cfg['apache_sites'], '/') . '/.pjas-inherited-' . Spec::name($name) . '.json';
+    }
+
+    private function inheritedRender(string $body, array $spec, ?string $sourceDomain = null): string
+    {
+        return InheritedVhost::render($body, $spec, $this->paths->current($spec['name']),
+            $this->cfg['tls_cert_file'] ?? '/etc/ssl/cloudflare/memo.takusumi.work.pem',
+            $this->cfg['tls_key_file'] ?? '/etc/ssl/cloudflare/memo.takusumi.work.key', $sourceDomain);
+    }
+
+    private function migrationSource(array $params, array $spec): ?array
+    {
+        $source = $params['migration_source'] ?? '';
+        if ($source === '') return null;
+        if (is_file($this->inheritedPath($spec['name']))) throw new OpException('このサイトはすでに設定を継承済みです');
+        if (!is_string($source) || !preg_match('/\A[a-zA-Z0-9][a-zA-Z0-9_.-]*\.conf\z/D', $source)) throw new OpException('移行元ファイル名が不正です');
+        $dir = realpath($this->cfg['apache_sites']);
+        $path = realpath($this->cfg['apache_sites'] . '/' . $source);
+        if (!$dir || !$path || dirname($path) !== $dir || !is_file($path)) throw new OpException('移行元は sites-available の設定ファイルを選んでください');
+        $stat = stat($path);
+        if ($stat['uid'] !== posix_geteuid() || ($stat['mode'] & 0022) !== 0) {
+            throw new OpException('移行元は root 所有で、他のユーザーが書き込めない設定ファイルにしてください');
+        }
+        $body = (string) file_get_contents($path);
+        if (str_starts_with($body, self::MANAGED_HEADER)) throw new OpException('管理下の生成済み設定は移行元に選べません');
+        $rendered = $this->inheritedRender($body, $spec);
+        return ['source' => $source, 'domain' => $spec['domain'], 'body' => $body, 'hash' => hash('sha256', $body), 'rendered' => $rendered];
     }
 
     /** 有効化済みサイトのディレクトリ (既定では sites-available の隣) */
@@ -79,6 +111,11 @@ final class Vhost
 
     public function render(array $spec): string
     {
+        $saved = $this->inheritedPath($spec['name']);
+        if (is_file($saved)) {
+            $snapshot = json_decode((string) file_get_contents($saved), true, 512, JSON_THROW_ON_ERROR);
+            return $this->inheritedRender($snapshot['body'], $spec, $snapshot['domain']);
+        }
         $name    = $spec['name'];
         $domain  = $spec['domain'];
         $docroot = rtrim($this->paths->current($name) . '/' . $spec['docroot'], '/');
@@ -137,9 +174,23 @@ final class Vhost
         $path = $this->confPath($spec['name']);
         $cur  = is_file($path) ? (string) file_get_contents($path) : '';
 
+        $migration = $this->migrationSource($params, $spec);
+        $sources = [];
+        if (!is_file($this->inheritedPath($spec['name']))) {
+            foreach (glob($this->cfg['apache_sites'] . '/*.conf') ?: [] as $candidate) {
+                try {
+                    $m = $this->migrationSource(['migration_source' => basename($candidate)], $spec);
+                    $sources[] = $m['source'];
+                } catch (OpException $e) { /* 不一致・複合サイトは候補に含めない */ }
+            }
+        }
         return [
-            'rendered'  => $this->render($spec),
-            'current'   => $cur,
+            'migration_sources' => $sources,
+            'migration_source' => $migration['source'] ?? '',
+            'migration_hash' => $migration['hash'] ?? '',
+            'inherited' => is_file($this->inheritedPath($spec['name'])),
+            'rendered'  => $migration['rendered'] ?? $this->render($spec),
+            'current'   => $migration['body'] ?? $cur,
             'managed'   => $cur !== '' && str_starts_with($cur, self::MANAGED_HEADER),
             'path'      => $path,
             'conflicts' => self::conflictingSites($this->enabledDir(), (string) $spec['domain'], $path),
@@ -149,10 +200,22 @@ final class Vhost
     /** 書き出し → a2ensite → configtest → graceful。失敗したら元に戻す。 */
     public function apply(array $params): array
     {
+        $lock = fopen($this->cfg['apache_sites'] . '/.pjas-vhost.lock', 'c');
+        if (!$lock || !flock($lock, LOCK_EX)) throw new OpException('公開設定をロックできません');
+        try { return $this->applyUnlocked($params); }
+        finally { flock($lock, LOCK_UN); fclose($lock); }
+    }
+
+    private function applyUnlocked(array $params): array
+    {
         $spec = Spec::service($params['service'] ?? null);
         $name = $spec['name'];
         $path = $this->confPath($name);
-        $conf = $this->render($spec);
+        $migration = $this->migrationSource($params, $spec);
+        if ($migration !== null && !hash_equals($migration['hash'], (string) ($params['migration_hash'] ?? ''))) {
+            throw new OpException('移行元が変更されたか、プレビューが未確認です。もう一度プレビューを開いてください');
+        }
+        $conf = $migration['rendered'] ?? $this->render($spec);
 
         $backup = is_file($path) ? (string) file_get_contents($path) : null;
 
@@ -179,6 +242,15 @@ final class Vhost
             if ($reload['code'] !== 0) {
                 throw new OpException('graceful 失敗: ' . trim($reload['err'] ?: $reload['out']));
             }
+            if ($migration !== null) {
+                $snapshotPath = $this->inheritedPath($name);
+                $tmp = $snapshotPath . '.tmp-' . bin2hex(random_bytes(8));
+                if (file_put_contents($tmp, json_encode($migration, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), LOCK_EX) === false) {
+                    throw new OpException('継承設定を保存できません');
+                }
+                chmod($tmp, 0600);
+                if (!rename($tmp, $snapshotPath)) { @unlink($tmp); throw new OpException('継承設定を保存できません'); }
+            }
             return [
                 'hash'       => hash('sha256', $conf),
                 'configtest' => trim($test['err'] ?: $test['out']) ?: 'Syntax OK',
@@ -186,6 +258,7 @@ final class Vhost
                 'disabled'   => $disabled,
             ];
         } catch (\Throwable $e) {
+            if ($migration !== null) @unlink($this->inheritedPath($name));
             // 失敗したら直前の内容へ戻し、Apache を安全側に保つ
             if ($backup !== null) {
                 file_put_contents($path, $backup);

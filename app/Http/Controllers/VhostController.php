@@ -24,6 +24,8 @@ final class VhostController
         try {
             $r = \Pjas\Agent\AgentClient::call('apache.apply', [
                 'job_id'  => $job,
+                'migration_source' => (string) ($_POST['migration_source'] ?? ''),
+                'migration_hash' => (string) ($_POST['migration_hash'] ?? ''),
                 'service' => Deployer::spec($s),
             ], $actor);
         } catch (AgentException $e) {
