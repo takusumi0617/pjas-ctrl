@@ -36,6 +36,7 @@ $r->post('/services/{name}/health', [$svc, 'health'], 'viewer');
 
 $dep = new DeployController();
 $r->get('/deploy', [$dep, 'form'], 'operator');
+$r->get('/rollback', [$dep, 'rollbackForm'], 'operator');
 $r->post('/deploy', [$dep, 'deploy'], 'operator');
 $r->post('/services/{name}/rollback', [$dep, 'rollback'], 'operator');
 $r->post('/services/{name}/adopt', [$dep, 'adopt'], 'operator');

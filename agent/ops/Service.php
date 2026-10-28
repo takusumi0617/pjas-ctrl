@@ -22,6 +22,7 @@ final class Service
         $name   = Spec::name($s['name'] ?? '');
         $shared = [];
         foreach ((array) ($s['shared'] ?? []) as $p) {
+            if ($p === '@databases') continue;
             $p = Spec::relPath($p, 'shared');
             if ($p !== '') {
                 $shared[] = $p;
@@ -43,21 +44,7 @@ final class Service
             $this->own($dir, 0755);
         }
 
-        // shared の雛形を用意する (.env のようなファイルは空で作る)
-        foreach ($shared as $p) {
-            $target = $this->paths->shared($name) . '/' . $p;
-            if (file_exists($target)) {
-                continue;
-            }
-            if (str_contains(basename($p), '.')) {
-                @mkdir(dirname($target), 0755, true);
-                touch($target);
-                $this->own($target, 0640);
-            } else {
-                mkdir($target, 0775, true);
-                $this->own($target, 0775);
-            }
-        }
+        // 共有データは初回公開時に実ファイルから初期化する（空ファイルで上書きしない）。
 
         return ['base' => $base, 'created' => true];
     }

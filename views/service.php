@@ -23,6 +23,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
     <button class="btn">いま動作を確認する</button></form>
   <?php if (Auth::can('operator')): ?>
     <a class="btn p" href="/deploy?service=<?= $name ?>">新しいバージョンを公開</a>
+    <a class="btn" href="/rollback?service=<?= $name ?>">以前のバージョンに戻す</a>
   <?php endif; ?>
   <?php if (Auth::can('owner')): ?><button type="button" class="power-toggle <?= !empty($pause['enabled']) ? 'is-paused' : 'is-live' ?>" id="pause-toggle" role="switch" aria-checked="<?= !empty($pause['enabled']) ? 'false' : 'true' ?>" aria-label="サイトの公開状態を変更" aria-haspopup="dialog" aria-controls="pause-dialog" <?= empty($pause['can_pause']) ? 'disabled title="先に公開設定を反映してください"' : '' ?>><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v10M6 5a9 9 0 1 0 12 0"/></svg><span><?= !empty($pause['enabled']) ? '停止中' : '公開中' ?></span><span class="power-track" aria-hidden="true"></span></button><?php endif; ?>
 </div>
@@ -73,7 +74,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
             <div class="muted">最終チェック: <?= View::e((string) ($s['checked_at'] ?? 'まだ確認していません')) ?></div></dd>
         <dt>通信の暗号化</dt><dd><?= $s['tls'] ? 'https を使用' : '使用しない' ?></dd>
         <dt>残す過去バージョン</dt><dd><?= (int) $s['keep_releases'] ?> 件</dd>
-        <dt>引き継ぐファイル</dt><dd class="mono"><?= View::e($s['shared_paths']) ?></dd>
+        <dt>引き継ぐファイル</dt><dd><?= View::e(ServiceRepo::sharedPathsText($s['shared_paths'])) ?><?= in_array('@databases',explode(',',$s['shared_paths']),true) ? ' ＋ DBファイル（自動検出）' : '' ?></dd>
         <dt>公開後に自動実行</dt><dd class="mono"><?= nl2br(View::e($s['hooks'] ?: '—')) ?></dd>
       </dl>
     </div></div>
@@ -306,9 +307,13 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
         <div class="hint">多いほど古い状態に戻せますが、その分ディスクを使います。</div></div>
 
       <div class="field"><label>バージョンをまたいで引き継ぐファイル・フォルダ</label>
-        <textarea name="shared_paths" rows="2"><?= View::e($s['shared_paths']) ?></textarea>
+        <textarea name="shared_paths" rows="2"><?= View::e(ServiceRepo::sharedPathsText($s['shared_paths'])) ?></textarea>
         <div class="hint">設定ファイルや利用者がアップロードした画像など、公開のたびに消えては困るものを指定します
           (カンマまたは改行区切り)。</div></div>
+      <div class="field"><input type="hidden" name="auto_databases_set" value="1">
+        <label class="inline"><input type="checkbox" name="auto_databases" value="1" <?= in_array('@databases',explode(',',$s['shared_paths']),true) ? 'checked' : '' ?>>データベースファイルを自動で引き継ぐ</label>
+        <div class="hint">次の公開・取り込み・ロールバックから適用します。初回のDB移行は書き込みを止めて実行してください。DBの内容は古いバージョンに戻しません。</div>
+      </div>
     </div></div>
 
     <div class="card step"><div class="card-h">詳細設定（分からなければそのままで大丈夫です）</div><div class="card-b">

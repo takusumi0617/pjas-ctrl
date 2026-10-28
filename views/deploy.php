@@ -2,7 +2,7 @@
 use Pjas\Http\Csrf;
 use Pjas\Http\View;
 ?>
-<h1>新しいバージョンを公開</h1>
+<div class="row"><h1>新しいバージョンを公開</h1><span class="spacer"></span><a class="btn" href="/rollback<?= $selected !== '' ? '?service='.urlencode($selected) : '' ?>">以前のバージョンに戻す</a></div>
 <div class="sub">新しいバージョンのファイルを公開します。公開先はいったん別の場所に用意してから最後に切り替えるので、
 途中で失敗してもいまのサイトは止まりません。</div>
 

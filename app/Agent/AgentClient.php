@@ -17,7 +17,7 @@ final class AgentClient
     public const OPS = [
         'ping', 'github.validate', 'github.inspect', 'github.configure',
         'service.scan', 'service.create', 'service.destroy',
-        'deploy.start', 'deploy.rollback', 'deploy.adopt',
+        'deploy.start', 'deploy.rollback', 'deploy.adopt', 'deploy.releases',
         'apache.pause', 'apache.pause.status',
         'apache.render', 'apache.apply', 'apache.reload',
         'fpm.reload',

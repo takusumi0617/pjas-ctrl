@@ -72,6 +72,7 @@ $registry = [
     'service.create'  => [$service, 'create'],
     'service.destroy' => [$service, 'destroy'],
     'deploy.start'    => [$deploy, 'start'],
+    'deploy.releases' => [$deploy, 'releases'],
     'deploy.rollback' => [$deploy, 'rollback'],
     'deploy.adopt'    => [$deploy, 'adopt'],
     'apache.pause.status' => [$vhost, 'pauseStatus'],

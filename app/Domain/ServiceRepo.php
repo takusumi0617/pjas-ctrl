@@ -85,7 +85,11 @@ final class ServiceRepo
                 $err[] = "引き継ぐファイル・フォルダの指定が正しくありません (先頭の / と .. は使えません): {$p}";
             }
         }
-        $out['shared_paths'] = implode(',', $shared);
+        $autoDatabases = array_key_exists('auto_databases_set', $in)
+            ? !empty($in['auto_databases']) : ($isNew || in_array('@databases', $shared, true));
+        $shared = array_values(array_filter($shared, static fn($p) => $p !== '@databases'));
+        if ($autoDatabases) $shared[] = '@databases';
+        $out['shared_paths'] = implode(',', array_unique($shared));
 
         $hooks = array_filter(array_map('trim', explode("\n", (string) ($in['hooks'] ?? ''))));
         foreach ($hooks as $h) {
@@ -128,6 +132,11 @@ final class ServiceRepo
     public static function setState(int $id, string $state): void
     {
         Db::run("UPDATE services SET state = ?, checked_at = datetime('now') WHERE id = ?", [$state, $id]);
+    }
+
+    public static function sharedPathsText(string $paths): string
+    {
+        return implode(',', array_filter(explode(',', $paths), static fn($p) => $p !== '@databases'));
     }
 
     /** 過去の不正な保存値をroot側へ渡さない。次回の設定保存時にDBも正常化される。 */

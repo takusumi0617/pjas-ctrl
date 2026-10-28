@@ -135,17 +135,21 @@ final class Deployer
         return $job;
     }
 
-    public static function rollback(array $service, string $tag, string $actor): int
+    public static function rollback(array $service, string $tag, string $actor, ?string $expectedCurrent = null): int
     {
-        if (ReleaseRepo::find((int) $service['id'], $tag) === null) {
-            throw new ValidationException(['指定されたバージョンが見つかりません']);
+        if ((ReleaseRepo::find((int) $service['id'], $tag)['state'] ?? '') === 'failed') {
+            throw new ValidationException(['失敗したバージョンには戻せません']);
         }
         $job = JobRepo::create((int) $service['id'], 'rollback', $actor, $tag);
-        AgentClient::call('deploy.rollback', [
-            'job_id'  => $job,
-            'service' => self::spec($service),
-            'tag'     => $tag,
-        ], $actor);
+        try {
+            $params = ['job_id'=>$job,'service'=>self::spec($service),'tag'=>$tag];
+            if ($expectedCurrent !== null) $params['expected_current'] = $expectedCurrent;
+            AgentClient::call('deploy.rollback',$params,$actor);
+        } catch (\Throwable $e) {
+            \Pjas\Support\Db::run("UPDATE jobs SET state='failed', detail=?, finished_at=datetime('now') WHERE id=?",[$e->getMessage(),$job]);
+            Audit::log($actor,'service.rollback',$service['name'],['job'=>$job,'tag'=>$tag],'failed');
+            throw $e;
+        }
         Audit::log($actor, 'service.rollback', $service['name'], ['job' => $job, 'tag' => $tag]);
         return $job;
     }

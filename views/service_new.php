@@ -84,9 +84,13 @@ $v = static fn(string $k, string $d = '') => View::e((string) ($in[$k] ?? $d));
         <div class="hint">この数だけ過去のバージョンをサーバーに残します。多いほど古い状態に戻せますが、その分ディスクを使います。</div></div>
 
       <div class="field"><label>バージョンをまたいで引き継ぐファイル・フォルダ</label>
-        <textarea name="shared_paths" rows="2"><?= $v('shared_paths', '.env,storage') ?></textarea>
+        <textarea name="shared_paths" rows="2"><?= View::e(ServiceRepo::sharedPathsText((string)($in['shared_paths'] ?? '.env,storage'))) ?></textarea>
         <div class="hint">設定ファイルや利用者がアップロードした画像など、公開のたびに消えては困るものを指定します
           （カンマまたは改行区切り）。通常は初期値のままで大丈夫です。</div></div>
+      <div class="field"><input type="hidden" name="auto_databases_set" value="1">
+        <label class="inline"><input type="checkbox" name="auto_databases" value="1" <?= !array_key_exists('auto_databases_set',$in) || !empty($in['auto_databases']) ? 'checked' : '' ?>>データベースファイルを自動で引き継ぐ</label>
+        <div class="hint">.db・.sqlite・.sqlite3やSQLite形式のファイルを検出し、更新・ロールバックをまたいで同じデータを使います。初回に既存DBを移す場合は、DBへの書き込みを止めてから実行してください。</div>
+      </div>
     </div>
   </div>
 

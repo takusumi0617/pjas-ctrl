@@ -27,6 +27,7 @@ $on    = static fn(string $p): string => str_starts_with($path, $p) && ($p !== '
     <a class="nav<?= $on('/services') ?>" href="/services">▣ サイト一覧</a>
     <?php if (Auth::can('operator')): ?>
       <a class="nav<?= $on('/deploy') ?>" href="/deploy">↥ 新しいバージョンを公開</a>
+      <a class="nav<?= $on('/rollback') ?>" href="/rollback">↶ 以前のバージョンに戻す</a>
       <div class="sep">管理</div>
       <?php if (Auth::can('owner')): ?>
         <a class="nav<?= $on('/daemons') ?>" href="/daemons">⚙ 常駐プログラム</a>

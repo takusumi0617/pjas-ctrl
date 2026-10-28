@@ -10,6 +10,8 @@ use Pjas\Agentd\Proc;
 use Pjas\Agentd\Spec;
 use Pjas\Agentd\GitRepositories;
 use Pjas\Agentd\ManifestImport;
+use Pjas\Agentd\SharedDatabases;
+require_once dirname(__DIR__) . '/lib/SharedDatabases.php';
 
 final class Deploy
 {
@@ -60,49 +62,71 @@ final class Deploy
         return ['job_id' => $jobId, 'pid' => $pid];
     }
 
-    /** ロールバックも同じ経路 (current の張り替えとリロードだけ) */
+    public function releases(array $params): array
+    {
+        $name = Spec::name($params['service']['name'] ?? '');
+        $tags = [];
+        foreach ($this->paths->releaseTags($name) as $tag) {
+            $path = $this->paths->release($name, $tag);
+            if (is_dir($path) && !is_link($path)) { $this->paths->assertInside($name, $path); $tags[] = $tag; }
+        }
+        return ['current'=>$this->paths->currentTag($name), 'tags'=>$tags];
+    }
+
+    private function lockSite(string $name)
+    {
+        $path = rtrim($this->cfg['apache_sites'], '/') . '/.pjas-deploy-' . Spec::name($name) . '.lock';
+        if (is_link($path)) throw new OpException('公開作業のロックが不正です');
+        $lock = fopen($path, 'c');
+        if (!$lock || !flock($lock, LOCK_EX)) throw new OpException('このサイトの公開作業をロックできません');
+        return $lock;
+    }
+
     public function rollback(array $params): array
     {
         $jobId = (int) ($params['job_id'] ?? 0);
-        $spec  = Spec::service($params['service'] ?? null);
-        $tag   = Spec::tag($params['tag'] ?? '');
-        $name  = $spec['name'];
-
-        if (!is_dir($this->paths->release($name, $tag))) {
-            throw new OpException("リリースディレクトリがありません: {$tag}");
-        }
-
+        if ($jobId <= 0) throw new OpException('job_id がありません');
+        $spec = Spec::service($params['service'] ?? null);
+        $tag = Spec::tag($params['tag'] ?? '');
+        $available = $this->releases(['service'=>$spec]);
+        if (!in_array($tag, $available['tags'], true)) throw new OpException('戻せるバージョンがサーバーに残っていません');
+        if ($available['current'] === $tag) throw new OpException('そのバージョンはすでに公開中です');
+        $expected = (string) ($params['expected_current'] ?? $available['current'] ?? '');
+        if ($expected !== '') Spec::tag($expected);
         $pid = pcntl_fork();
-        if ($pid < 0) {
-            throw new OpException('ロールバックプロセスを起動できません');
-        }
+        if ($pid < 0) throw new OpException('ロールバックプロセスを起動できません');
         if ($pid === 0) {
             posix_setsid();
-            $log  = new JobLog($jobId, (string) $this->cfg['job_dir']);
-            $prev = $this->paths->currentTag($name);
-            try {
-                $log->line("rollback {$name}: {$prev} → {$tag}");
-                $this->switchCurrent($name, $tag, $log);
-                $this->reloadRuntime($spec, $log);
-                if ($this->health->poll($spec, fn($m) => $log->line($m))) {
-                    $log->set('health', 'ok');
-                } else {
-                    $log->set('health', 'ng');
-                }
-                $log->set('release', ['tag' => $tag, 'state' => 'current', 'source' => 'rollback']);
-                $log->finish('succeeded', "current → {$tag}");
-            } catch (\Throwable $e) {
-                if ($prev !== null && $this->paths->currentTag($name) !== $prev) {
-                    try {
-                        $this->switchCurrent($name, $prev, $log);
-                        $this->reloadRuntime($spec, $log);
-                    } catch (\Throwable $restoreError) { $log->line('復元処理のエラー: ' . $restoreError->getMessage()); }
-                }
-                $log->finish('failed', $e->getMessage());
-            }
+            $this->runRollback($jobId, $spec, $tag, $expected);
             exit(0);
         }
-        return ['job_id' => $jobId, 'pid' => $pid];
+        return ['job_id'=>$jobId, 'pid'=>$pid];
+    }
+
+    private function runRollback(int $jobId, array $spec, string $tag, string $expected): void
+    {
+        $log = new JobLog($jobId, (string) $this->cfg['job_dir']);
+        $name = $spec['name']; $prev = null; $lock = null;
+        try {
+            $lock = $this->lockSite($name);
+            $prev = $this->paths->currentTag($name);
+            if (($prev ?? '') !== $expected) throw new OpException('公開中のバージョンが変わりました。画面を開き直して戻す内容を確認してください');
+            if (!in_array($tag, $this->releases(['service'=>$spec])['tags'], true)) throw new OpException('戻せるバージョンがサーバーに残っていません');
+            $log->line("rollback {$name}: {$prev} → {$tag}（共有データは最新の状態を維持）");
+            $this->linkShared($name, $spec, $this->paths->release($name, $tag), $log);
+            $this->switchCurrent($name, $tag, $log);
+            $this->reloadRuntime($spec, $log);
+            if (!$this->health->poll($spec, fn($m)=>$log->line($m))) throw new OpException('戻したバージョンの動作確認に失敗したため、元のバージョンへ復帰します');
+            $log->set('health','ok');
+            $log->set('release',['tag'=>$tag,'state'=>'current','source'=>'rollback']);
+            $log->finish('succeeded', "current → {$tag}");
+        } catch (\Throwable $e) {
+            if ($prev !== null && $this->paths->currentTag($name) !== $prev) {
+                try { $this->switchCurrent($name,$prev,$log); $this->reloadRuntime($spec,$log); }
+                catch (\Throwable $restoreError) { $log->line('復元処理のエラー: '.$restoreError->getMessage()); }
+            }
+            $log->finish('failed',$e->getMessage());
+        } finally { if ($lock) { flock($lock,LOCK_UN); fclose($lock); } }
     }
 
     /**
@@ -131,7 +155,10 @@ final class Deploy
         if ($pid === 0) {
             posix_setsid();
             $log = new JobLog($jobId, (string) $this->cfg['job_dir']);
+            $lock = null;
             try {
+                $lock = $this->lockSite($name);
+                if ($this->paths->currentTag($name) !== null) throw new OpException('すでに公開済みです');
                 $log->line("adopt {$name}: " . $this->paths->base($name) . ' の中身を取り込みます');
 
                 $tag = date('Ymd-His');
@@ -146,6 +173,7 @@ final class Deploy
                     );
                 }
 
+                $this->linkShared($name, $spec, $this->paths->release($name, $adopted['tag']), $log);
                 $this->switchCurrent($name, $adopted['tag'], $log);
                 $log->set('adopted', ['tag' => $adopted['tag'], 'state' => 'current'] + $adopted['release']);
                 (new Daemon($this->cfg))->migrateForSite($name, $plan, fn($m) => $log->line($m));
@@ -159,7 +187,7 @@ final class Deploy
                 $log->finish('succeeded', "既存ファイルを releases/{$adopted['tag']} として取り込みました");
             } catch (\Throwable $e) {
                 $log->finish('failed', $e->getMessage());
-            }
+            } finally { if ($lock) { flock($lock,LOCK_UN); fclose($lock); } }
             exit(0);
         }
         return ['job_id' => $jobId, 'pid' => $pid];
@@ -168,6 +196,14 @@ final class Deploy
     // ---------------------------------------------------------------- 本体
 
     private function run(int $jobId, array $spec, array $source, array $opts): void
+    {
+        $lock = null;
+        try { $lock = $this->lockSite($spec['name']); $this->runUnlocked($jobId,$spec,$source,$opts); }
+        catch (\Throwable $e) { (new JobLog($jobId,(string)$this->cfg['job_dir']))->finish('failed',$e->getMessage()); throw $e; }
+        finally { if ($lock) { flock($lock,LOCK_UN); fclose($lock); } }
+    }
+
+    private function runUnlocked(int $jobId, array $spec, array $source, array $opts): void
     {
         $name = $spec['name'];
         $tag  = date('Ymd-His');
@@ -190,6 +226,7 @@ final class Deploy
                 if ($adopted !== null) {
                     // current を取り込んだリリースへ向けておくと、この後どこで失敗しても
                     // 管理下のパス (current/<docroot>) で既存サイトが配信され続ける。
+                    $this->linkShared($name,$spec,$this->paths->release($name,$adopted['tag']),$log);
                     $this->switchCurrent($name, $adopted['tag'], $log);
                     $prev = $adopted['tag'];
                     $log->line("引き継ぎ完了: releases/{$adopted['tag']} (自動ロールバック先になります)");
@@ -581,19 +618,47 @@ final class Deploy
 
     private function linkShared(string $name, array $spec, string $relDir, JobLog $log): void
     {
+        $data = new SharedDatabases($this->cfg,$this->paths);
+        $current = $this->paths->currentTag($name) === null ? null : $this->paths->assertInside($name,$this->paths->current($name));
+        // 最初のstorageや.envを空の雛形で潰さず、公開中→新規同梱の順で初期化する。
+        foreach ($spec['shared'] as $p) {
+            $sharedPath = $data->preparePath($name,$p);
+            if (file_exists($sharedPath)) continue;
+            foreach (array_filter([$current,$relDir]) as $root) {
+                $source = $root . '/' . $p;
+                if (!file_exists($source) || is_link($source)) continue;
+                $this->paths->assertInside($name,$source);
+                if (!rename($source,$sharedPath)) throw new OpException('共有データの初期化に失敗しました: '.$p);
+                if ($current !== null && $root === $current && !symlink($sharedPath,$source)) {
+                    if (!file_exists($source) && !is_link($source)) @rename($sharedPath,$source);
+                    throw new OpException('現在の共有データをつなげません');
+                }
+                Proc::must(['/bin/chown','-Rh',$this->cfg['web_user'].':'.$this->cfg['web_group'],$sharedPath],null,120);
+                break;
+            }
+        }
+        if (!empty($spec['auto_databases'])) {
+            $files = SharedDatabases::discover($relDir);
+            if ($current !== null) $files = array_merge($files,SharedDatabases::discover($current));
+            $files = array_merge($files,SharedDatabases::discover($this->paths->shared($name)));
+            (new SharedDatabases($this->cfg,$this->paths))->link($name,$relDir,$files,$current,$log);
+        }
         foreach ($spec['shared'] as $p) {
             $sharedPath  = $this->paths->shared($name) . '/' . $p;
             $releasePath = $relDir . '/' . $p;
 
+            clearstatcache(true);
+            if (realpath($releasePath) !== false && realpath($releasePath) === realpath($sharedPath)) continue;
+
             if (!file_exists($sharedPath)) {
                 @mkdir(dirname($sharedPath), 0755, true);
-                if (is_file($releasePath)) {
-                    copy($releasePath, $sharedPath);     // 初回はリリース同梱を引き継ぐ
-                } elseif (str_contains(basename($p), '.')) {
+                if (is_link($releasePath)) throw new OpException('共有データの初期値がシンボリックリンクです。実体のパスを指定してください: '.$p);
+                if (str_contains(basename($p), '.')) {
                     touch($sharedPath);
                 } else {
                     mkdir($sharedPath, 0775, true);
                 }
+                if (!chown($sharedPath,$this->cfg['web_user']) || !chgrp($sharedPath,$this->cfg['web_group'])) throw new OpException('共有データの所有者を設定できません');
                 $log->line("shared を初期化しました: {$p}");
             }
             if (file_exists($releasePath) || is_link($releasePath)) {
@@ -675,9 +740,11 @@ final class Deploy
         if ($spec['runtime'] !== 'static') {
             $r = Proc::run([$this->cfg['systemctl'], 'reload', $spec['runtime']], null, 60);
             $log->proc("systemctl reload {$spec['runtime']}", $r);
+            if ($r['code'] !== 0) throw new OpException('PHPの再読み込みに失敗しました');
         }
         $r = Proc::run([$this->cfg['apachectl'], 'graceful'], null, 60);
         $log->proc('apachectl graceful', $r);
+        if ($r['code'] !== 0) throw new OpException('Apacheの再読み込みに失敗しました');
         (new Daemon($this->cfg))->restartForSite($spec['name'], fn($m) => $log->line($m));
     }
 

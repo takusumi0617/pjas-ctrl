@@ -168,13 +168,23 @@ final class Spec
             throw new OpException("AllowOverride が不正です: {$ao}");
         }
 
+        $autoDatabases = !empty($s['auto_databases']);
         $shared = [];
         foreach ((array) ($s['shared'] ?? []) as $p) {
+            if ($p === '@databases') { $autoDatabases = true; continue; }
             $p = self::relPath($p, 'shared');
             if ($p !== '') {
                 $shared[] = $p;
             }
         }
+        // 親フォルダのリンク後に子パスを削除すると実体を消してしまうため、重複を畳む。
+        usort($shared, static fn($a,$b) => strlen($a) <=> strlen($b));
+        $parents = [];
+        foreach (array_unique($shared) as $p) {
+            foreach ($parents as $parent) if (str_starts_with($p, $parent . '/')) continue 2;
+            $parents[] = $p;
+        }
+        $shared = $parents;
         $hooks = [];
         foreach ((array) ($s['hooks'] ?? []) as $h) {
             $hooks[] = self::hook((string) $h);
@@ -189,6 +199,7 @@ final class Spec
             'extra_conf'     => self::extraConf($s['extra_conf'] ?? ''),
             'tls'            => !empty($s['tls']),
             'shared'         => $shared,
+            'auto_databases' => $autoDatabases,
             'hooks'          => $hooks,
             'keep_releases'  => max(1, min(50, (int) ($s['keep_releases'] ?? 5))),
             'health_path'    => '/' . ltrim(preg_replace('/[^\x21-\x7e]/', '', (string) ($s['health_path'] ?? '/healthz')) ?? '', '/'),
