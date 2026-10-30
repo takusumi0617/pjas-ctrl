@@ -246,6 +246,7 @@ final class Deploy
 
             // [6] after_deploy フック (www-data として実行)
             foreach ($spec['hooks'] as $argv) {
+                $argv = Spec::runtimeHook($argv, $spec['runtime']);
                 $log->line('hook: ' . implode(' ', $argv));
                 $r = Proc::run($argv, $relDir, (int) $this->cfg['hook_timeout'], (string) $this->cfg['web_user'],
                     ['HOME' => $this->paths->shared($name), 'PATH' => '/usr/local/bin:/usr/bin:/bin']);

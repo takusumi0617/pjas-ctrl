@@ -23,6 +23,9 @@ final class Spec
 
     /** after_deploy フックの許可リスト (web 側 app/Domain/Hooks.php と同一) */
     public const ALLOWED_HOOKS = [
+        '/^\/usr\/bin\/php8\.[1-4] \/usr\/bin\/composer install( --no-dev)?( -o| --optimize-autoloader)?( --no-interaction)?$/',
+        '/^\/usr\/bin\/php8\.[1-4] \/usr\/bin\/composer dump-autoload( -o| --optimize)?$/',
+        '/^\/usr\/bin\/php8\.[1-4] artisan (migrate --force|config:cache|route:cache|view:cache|storage:link|optimize|optimize:clear)$/',
         '/^composer install( --no-dev)?( -o| --optimize-autoloader)?( --no-interaction)?$/',
         '/^composer dump-autoload( -o| --optimize)?$/',
         '/^php artisan (migrate --force|config:cache|route:cache|view:cache|storage:link|optimize|optimize:clear)$/',
@@ -121,6 +124,29 @@ final class Spec
         throw new OpException("許可されていないフックです: {$cmd}");
     }
 
+    /** Resolve validated hooks using the site's PHP, including previously saved hooks. */
+    public static function runtimeHook(array $argv, string $runtime): array
+    {
+        if (!array_is_list($argv) || $argv === []) throw new OpException('フックの引数配列が不正です');
+        foreach ($argv as $arg) {
+            if (!is_string($arg) || $arg === '' || preg_match('/\s/', $arg)) throw new OpException('フックの引数配列が不正です');
+        }
+        $argv = self::hook(implode(' ', $argv));
+        if (!in_array($runtime, self::RUNTIMES, true)) throw new OpException('ランタイムが不正です');
+        if ($runtime === 'static') {
+            if (str_starts_with($argv[0], '/usr/bin/php8.')) throw new OpException('PHPフックにはPHPランタイムを指定してください');
+            return $argv;
+        }
+        $php = '/usr/bin/' . substr($runtime, 0, -4);
+        if (str_starts_with($argv[0], '/usr/bin/php8.')) {
+            if ($argv[0] !== $php) throw new OpException('フックのPHPとサイトのランタイムが異なります');
+            return $argv;
+        }
+        if ($argv[0] === 'composer') return array_merge([$php, '/usr/bin/composer'], array_slice($argv, 1));
+        if ($argv[0] === 'php') $argv[0] = $php;
+        return $argv;
+    }
+
     public static function extraConf(mixed $v): string
     {
         $v = is_string($v) ? $v : '';
@@ -187,7 +213,13 @@ final class Spec
         $shared = $parents;
         $hooks = [];
         foreach ((array) ($s['hooks'] ?? []) as $h) {
-            $hooks[] = self::hook((string) $h);
+            if (is_array($h)) {
+                if (!array_is_list($h) || $h === []) throw new OpException('フックの引数配列が不正です');
+                foreach ($h as $arg) if (!is_string($arg) || $arg === '' || preg_match('/\s/', $arg)) throw new OpException('フックの引数配列が不正です');
+                $h = implode(' ', $h);
+            }
+            if (!is_string($h)) throw new OpException('フックが不正です');
+            $hooks[] = self::hook($h);
         }
 
         return [
