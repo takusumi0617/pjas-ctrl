@@ -99,7 +99,7 @@ final class Daemon
         $cwd = $this->workingDirectory($row['service'], $subdir);
         $expanded = DaemonDefinition::expand($command, $current);
         // シェルを経由せず systemd 本来の ExecStart として実行する。
-        $override = "# managed by pjas-ctrl\n[Service]\nWorkingDirectory=\"" . str_replace('%', '%%', $cwd) . "\"\nExecStart=\nExecStart=" . $expanded . "\n";
+        $override = "# managed by pjas-ctrl\n[Service]\nWorkingDirectory=" . str_replace('%', '%%', $cwd) . "\nExecStart=\nExecStart=" . $expanded . "\n";
         foreach ($info['path_settings'] as $key => $values) {
             $mapped = array_map(fn($v) => DaemonDefinition::template($v, rtrim($this->cfg['www_root'], '/') . '/' . $sourceService), $values);
             if (!array_filter($mapped, static fn($v) => str_contains($v, '{{site_root}}'))) continue;
@@ -251,9 +251,9 @@ final class Daemon
                 foreach ([$user, $group] as $v) if (!preg_match('/\A[a-z_][a-z0-9_-]*\z/iD', $v)) throw new OpException('実行ユーザー設定が不正です');
                 $current = $this->cfg['www_root'] . '/' . $service . '/current';
                 $cwd = $this->workingDirectory($service, $row['working_subdir']);
-                // パスは systemd の引数として引用し、% 指定子の展開を防ぐ。
+                // ExecStart の引数は引用する。WorkingDirectory は引用せず、% 指定子だけをエスケープする。
                 $quote = static fn(string $p): string => '"' . str_replace(['\\', '"', '%', "\n", "\r"], ['\\\\', '\\"', '%%', '', ''], $p) . '"';
-                $body = "# managed by pjas-ctrl\n[Unit]\nDescription=PJAS site worker\nAfter=network.target\n\n[Service]\nType=simple\nUser={$user}\nGroup={$group}\nWorkingDirectory=" . $quote($cwd) . "\nExecStart=/bin/bash " . $quote($scriptPath) . "\nRestart=on-failure\nRestartSec=5\nNoNewPrivileges=true\nProtectSystem=full\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\n";
+                $body = "# managed by pjas-ctrl\n[Unit]\nDescription=PJAS site worker\nAfter=network.target\n\n[Service]\nType=simple\nUser={$user}\nGroup={$group}\nWorkingDirectory=" . str_replace('%', '%%', $cwd) . "\nExecStart=/bin/bash " . $quote($scriptPath) . "\nRestart=on-failure\nRestartSec=5\nNoNewPrivileges=true\nProtectSystem=full\nProtectHome=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\n";
                 try {
                     $this->write($scriptPath, "#!/bin/bash\n" . DaemonDefinition::expand($command, $current) . "\n", 0644);
                     $this->write($unitPath, $body);

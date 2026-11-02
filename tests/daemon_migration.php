@@ -46,7 +46,7 @@ try {
     symlink($dir . '/site-a/releases/20261028-000001', $dir . '/site-a/current');
     $d->migrateForSite('site-a', $plan, static fn($message) => null);
     $override = file_get_contents($dir . '/units/worker.service.d/zzzz-pjas-ctrl.conf');
-    check(str_contains($override, 'WorkingDirectory="' . $dir . '/site-a/current"') && str_contains($override, '/site-a/current/websocket/server.php'), '既存デーモンの作業・起動パスをcurrentへ変更');
+    check(str_contains($override, 'WorkingDirectory=' . $dir . '/site-a/current' . "\n") && str_contains($override, '/site-a/current/websocket/server.php'), '既存デーモンの作業・起動パスをcurrentへ変更');
     check(str_contains($override, 'EnvironmentFile=-' . $dir . '/site-a/current/.env') && str_contains($override, 'ExecStartPre=/usr/bin/test -f ' . $dir . '/site-a/current/websocket/server.php'), 'サイト内の環境変数ファイル参照と起動前コマンドも追従');
     check(file_get_contents($dir . '/original') === $definition, '環境変数ファイルを含む元サービス定義を維持');
     $calls = file_get_contents($dir . '/calls');

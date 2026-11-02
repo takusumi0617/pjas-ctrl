@@ -40,6 +40,7 @@ try {
     $unit = $row['unit'];
     $body = file_get_contents($dir . '/units/' . $unit);
     check(str_contains($body, 'User=www-data') && str_contains($body, '/site-a/current') && str_contains($body, 'Restart=on-failure'), '新規サービスはサイト内で非特権ユーザー実行');
+    check(str_contains($body, 'WorkingDirectory=' . $dir . '/site-a/current' . "\n") && !str_contains($body, 'WorkingDirectory="'), 'WorkingDirectoryのパスに引用符を含めない');
     $d->save(['service' => 'site-a', 'original_unit' => $unit, 'label' => '編集後', 'command' => 'exec sleep 120']);
     check(str_contains(file_get_contents($dir . '/data/' . $unit . '.sh'), 'exec sleep 120'), '登録した実行内容を編集');
     rejects(fn() => $d->save(['service' => 'site-b', 'original_unit' => $unit, 'label' => '他サイト', 'command' => 'exec sleep 1']));
