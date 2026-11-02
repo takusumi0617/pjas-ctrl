@@ -76,12 +76,13 @@ final class Deploy
     {
         $spec=Spec::service($params['service']??null);$source=$this->validateSource($spec,(array)($params['source']??[]));
         if($source['type']==='prepared')throw new OpException('準備済みのファイルを再取得できません');
+        $guard=$this->lockSite($spec['name']);
         $review=new \Pjas\Agentd\ReleaseReview($this->cfg,$this->paths);$token=bin2hex(random_bytes(16));$dir=$review->directory($token);mkdir($dir,0700);
         $log=new JobLog((int)($params['job_id']??0),$this->cfg['job_dir']);
         try{$meta=$source['type']==='git'?$this->fetchGit($spec['name'],$source,$dir.'/tree',$log):$this->extractArchive($spec['name'],$source,$dir.'/tree',$log);
             $result=$review->publicPlan($review->save($token,$spec,$source,$meta,(array)($params['options']??[])));$log->set('review',$result);$log->finish('succeeded','公開準備ができました。変更点の確認へ進んでください');return $result;
         }catch(\Throwable $e){Proc::run(['/bin/rm','-rf','--',$dir],null,120);throw $e;}
-        finally{if($source['type']==='upload')@unlink($source['path']);}
+        finally{if($source['type']==='upload')@unlink($source['path']);flock($guard,LOCK_UN);fclose($guard);}
     }
 
     public function releases(array $params): array
@@ -101,6 +102,7 @@ final class Deploy
         if (is_link($path)) throw new OpException('公開作業のロックが不正です');
         $lock = fopen($path, 'c');
         if (!$lock || !flock($lock, LOCK_EX)) throw new OpException('このサイトの公開作業をロックできません');
+        try{\Pjas\Agentd\SiteLifecycleGuard::active($this->cfg,$name);}catch(\Throwable $e){flock($lock,LOCK_UN);fclose($lock);throw $e;}
         return $lock;
     }
 

@@ -69,6 +69,7 @@ final class Service
         $found = [];
 
         foreach (array_diff(scandir($root) ?: [], ['.', '..']) as $name) {
+            if(str_starts_with($name,'.'))continue;
             $base = $root . '/' . $name;
             if (!is_dir($base) || is_link($base) || isset($known[$name])) {
                 continue;
@@ -144,16 +145,7 @@ final class Service
     /** サービスを削除する (releases と shared を残したままアーカイブに退避) */
     public function destroy(array $params): array
     {
-        $name = Spec::name(($params['service']['name'] ?? ''));
-        $base = $this->paths->base($name);
-        if (!is_dir($base)) {
-            throw new OpException("サービスディレクトリがありません: {$base}");
-        }
-        $dest = $base . '.removed-' . date('Ymd-His');
-        if (!rename($base, $dest)) {
-            throw new OpException("退避に失敗しました: {$base}");
-        }
-        return ['archived_to' => $dest];
+        throw new OpException('安全な削除確認のため、サイトの設定画面から削除してください');
     }
 
     private function own(string $path, int $mode): void

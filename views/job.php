@@ -13,6 +13,7 @@ use Pjas\Support\Labels;
   <span class="spacer"></span>
   <?php if ($service): ?><a class="btn" href="/services/<?= View::e($service) ?>"><?= View::e($service) ?> の画面に戻る</a><?php endif; ?>
 </div>
+<?php if(str_starts_with($job['type'],'site-')&&\Pjas\Http\Auth::can('owner')):?><p><a class="btn p" href="/retired-sites">削除済みサイトで結果・復元を確認する</a></p><?php endif;?>
 <div class="sub">
   <?= View::e($job['actor']) ?> · 開始 <?= View::e($job['started_at']) ?>
   <?= $job['finished_at'] ? ' · 終了 ' . View::e($job['finished_at']) : '' ?>

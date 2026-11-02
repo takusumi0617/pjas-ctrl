@@ -15,6 +15,7 @@ final class AgentClient
 {
     /** agent 側 Registry と一致する許可 op。ここに無い op は送信前に落とす。 */
     public const OPS = [
+        'site.plan','site.status','site.start','site.cleanup',
         'ops.run','ops.settings','ops.save','ops.notify','ops.resources','ops.certificate','ops.logs',
         'github.app.status','github.app.save','github.app.convert','github.app.test','github.webhook.verify','github.connection',
         'backup.list','backup.create','backup.restore','backup.download','backup.key','backup.prune',

@@ -34,6 +34,7 @@ $on    = static fn(string $p): string => str_starts_with($path, $p) && ($p !== '
       <div class="sep">管理</div>
       <?php if (Auth::can('owner')): ?>
         <a class="nav<?= $on('/connections') ?>" href="/connections">⇄ 接続設定と初回準備</a>
+        <a class="nav<?= $on('/retired-sites') ?>" href="/retired-sites">削除済みサイト</a>
         <a class="nav<?= $on('/users') ?>" href="/users">♙ 利用者とサイトの権限</a>
         <a class="nav<?= $on('/daemons') ?>" href="/daemons">⚙ 常駐プログラム</a>
         <a class="nav<?= $on('/scheduled-tasks') ?>" href="/scheduled-tasks">◷ 定期処理</a>

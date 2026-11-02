@@ -10,7 +10,7 @@ final class Automation
     {
         if(!empty($verified['ping'])||!empty($verified['ignored']))return 0;
         if(Db::run('INSERT OR IGNORE INTO webhook_deliveries(delivery) VALUES (?)',[$verified['delivery']])!==1)return 0;$queued=0;
-        foreach(Db::all('SELECT s.*,p.settings,p.updated_by FROM services s JOIN site_policies p ON p.service_id=s.id') as $site){
+        foreach(Db::all('SELECT s.*,p.settings,p.updated_by FROM services s JOIN site_policies p ON p.service_id=s.id WHERE s.id NOT IN (SELECT service_id FROM service_lifecycle WHERE state<>\'active\')') as $site){
             $policy=json_decode($site['settings'],true);if(empty($policy['webhook_enabled'])||($policy['branch']??'')!==$verified['branch'])continue;
             if(!Auth::userCanSite((int)$site['updated_by'],(int)$site['id'],'operator'))continue;
             $connection=AgentClient::call('github.connection',['service'=>Deployer::spec($site)],'webhook');
@@ -38,6 +38,7 @@ final class Automation
             if(Db::run("UPDATE publication_queue SET state='starting' WHERE id=? AND state='queued'",[$row['id']])!==1)continue;
             try{
                 $site=ServiceRepo::findOrFail(Db::one('SELECT name FROM services WHERE id=?',[$row['service_id']])['name']);
+                if(Db::one("SELECT service_id FROM service_lifecycle WHERE service_id=? AND state<>'active'",[$site['id']]))throw new \InvalidArgumentException('サイトの管理は終了しています');
                 if(!Auth::userCanSite((int)$row['requested_by'],(int)$site['id'],'operator'))throw new \InvalidArgumentException('予約した利用者の公開権限が変更されたため実行しません');
                 $source=json_decode($row['source'],true,512,JSON_THROW_ON_ERROR);$actor='queue:'.$row['id'].':'.$row['actor'];
                 $job=match($source['type']){'prepared'=>Deployer::fromPrepared($site,$source['token'],$source['options']??[],$actor),'git'=>Deployer::fromGit($site,$source['sha'],$source['options']??[],$actor),default=>throw new \InvalidArgumentException('予約の取得元が不正です')};
@@ -68,7 +69,7 @@ final class Automation
             }catch(\Throwable $e){Alerting::check('monitor:'.$site['id'],(int)$site['id'],false,$site['name'].' の運用確認に失敗しました: '.$e->getMessage(),$policy['notifications']);}
         }
         $cleanup=Db::one("SELECT value FROM app_state WHERE name='preparations.cleanup'");
-        if(!$cleanup||(int)$cleanup['value']<$now-86400)try{AgentClient::call('deploy.cleanup',[],'monitor');Db::run("INSERT INTO app_state(name,value) VALUES ('preparations.cleanup',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value",[(string)$now]);}catch(AgentException){}
+        if(!$cleanup||(int)$cleanup['value']<$now-86400)try{AgentClient::call('deploy.cleanup',[],'monitor');AgentClient::call('site.cleanup',[],'monitor');Db::run("INSERT INTO app_state(name,value) VALUES ('preparations.cleanup',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value",[(string)$now]);}catch(AgentException){}
         Db::run('DELETE FROM login_attempts WHERE reset_at<?',[$now-86400]);Db::run("DELETE FROM webhook_deliveries WHERE received_at<datetime('now','-30 days')");
         Db::run("INSERT INTO app_state(name,value) VALUES ('tick.last',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value",[gmdate('c',$now)]);return $stats;
     }

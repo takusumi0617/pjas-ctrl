@@ -252,6 +252,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
   </table></div>
 
 <?php elseif ($tab === 'settings'): ?>
+<?php if(Auth::can('owner')):?><details class="card"><summary class="card-h">サイトの管理を終了する・削除する</summary><div class="card-b"><p>残すものを確認してから、管理解除または30日間復元できる削除を選べます。</p><a class="btn d" href="/services/<?= $name ?>/delete">削除方法と影響を確認する</a></div></details><?php endif;?>
   <div class="sub">このサイトの設定です。公開アドレスや公開フォルダを変えたときは、保存したあと
     「公開設定」タブで反映してください。</div>
   <?php if (!Auth::can('owner')): ?>

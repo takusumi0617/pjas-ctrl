@@ -76,7 +76,7 @@ final class Auth
     public static function userCanSite(int $id,int $serviceId,string $role='viewer'): bool
     {
         $u=Db::one('SELECT role,scope_all,enabled FROM users WHERE id=?',[$id]);if(!$u||!$u['enabled'])return false;
-        if($u['role']==='owner')return true;if((self::RANK[$u['role']]??0)<(self::RANK[$role]??99))return false;
+        if($u['role']==='owner')return true;if(Db::one("SELECT service_id FROM service_lifecycle WHERE service_id=? AND state<>'active'",[$serviceId]))return false;if((self::RANK[$u['role']]??0)<(self::RANK[$role]??99))return false;
         if($u['scope_all'])return true;$grant=Db::one('SELECT role FROM service_access WHERE user_id=? AND service_id=?',[$id,$serviceId]);return (self::RANK[$grant['role']??'']??0)>=(self::RANK[$role]??99);
     }
     public static function canSite(string $name,string $role='viewer'): bool

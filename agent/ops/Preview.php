@@ -33,7 +33,7 @@ final class Preview
     public function publish(array $params): array
     {
         $name=Spec::name($params['service']['name']??'');$lock=$this->store->lock('preview-'.$name);
-        try{return $this->publishUnlocked($params);}finally{flock($lock,LOCK_UN);fclose($lock);}
+        try{\Pjas\Agentd\SiteLifecycleGuard::active($this->cfg,$name);return $this->publishUnlocked($params);}finally{flock($lock,LOCK_UN);fclose($lock);}
     }
     private function publishUnlocked(array $params): array
     {

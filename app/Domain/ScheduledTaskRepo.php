@@ -12,7 +12,7 @@ final class ScheduledTaskRepo
     {
         return Db::all(
             'SELECT t.*, s.name AS service FROM scheduled_tasks t
-             JOIN services s ON s.id = t.service_id ORDER BY s.name, t.id'
+             JOIN services s ON s.id = t.service_id WHERE s.id NOT IN (SELECT service_id FROM service_lifecycle WHERE state<>\'active\') ORDER BY s.name, t.id'
         );
     }
 

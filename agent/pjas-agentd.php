@@ -107,6 +107,10 @@ $registry = [
     'ping'            => static fn(array $p): array => ['pong' => true, 'version' => '1.0.0'],
     'service.scan'    => [$service, 'scan'],
     'service.create'  => [$service, 'create'],
+    'site.plan'=>[(new \Pjas\Agentd\Ops\SiteLifecycle($cfg,$paths)),'plan'],
+    'site.status'=>[(new \Pjas\Agentd\Ops\SiteLifecycle($cfg,$paths)),'status'],
+    'site.start'=>[(new \Pjas\Agentd\Ops\SiteLifecycle($cfg,$paths)),'start'],
+    'site.cleanup'=>[(new \Pjas\Agentd\Ops\SiteLifecycle($cfg,$paths)),'cleanupStart'],
     'service.destroy' => [$service, 'destroy'],
     'deploy.start'    => [$deploy, 'start'],
     'deploy.releases' => [$deploy, 'releases'],
@@ -196,6 +200,7 @@ exit(0);
  */
 function handle(string $line, array $registry): array
 {
+    global $cfg;
     $req = json_decode(trim($line), true);
     if (!is_array($req) || !isset($req['op'])) {
         return ['ok' => false, 'error' => 'リクエストを解釈できません'];
@@ -210,8 +215,16 @@ function handle(string $line, array $registry): array
         return ['ok' => false, 'error' => "未登録の op です: {$op}"];
     }
 
-    $started = microtime(true);
+    $started = microtime(true);$siteLock=null;
     try {
+        $target=$params['service']??($params['task']['service']??null);if(is_array($target))$target=$target['name']??null;
+        if(is_string($target)&&!str_starts_with($op,'site.')){
+            if(in_array($op,['github.configure','github.connection','cron.apply','cron.delete','daemon.save','daemon.action','apache.apply','apache.pause','fs.write','service.create','service.destroy','preview.save'],true)){
+                $path=$cfg['apache_sites'].'/.pjas-deploy-'.\Pjas\Agentd\Spec::name($target).'.lock';if(is_link($path))throw new OpException('作業ロックが不正です');$siteLock=fopen($path,'c');
+                if(!$siteLock||!flock($siteLock,LOCK_EX|LOCK_NB))throw new OpException('このサイトは別の作業中です。終了後にやり直してください');
+            }
+            \Pjas\Agentd\SiteLifecycleGuard::active($cfg,$target);
+        }
         $data = ($registry[$op])($params);
         syslog(LOG_INFO, sprintf('%s ok actor=%s %.1fms', $op, $actor, (microtime(true) - $started) * 1000));
         return ['ok' => true, 'data' => is_array($data) ? $data : []];
@@ -221,5 +234,5 @@ function handle(string $line, array $registry): array
     } catch (\Throwable $e) {
         syslog(LOG_ERR, "{$op} error actor={$actor}: " . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
         return ['ok' => false, 'error' => '内部エラーが発生しました (syslog を確認してください)'];
-    }
+    }finally{if(is_resource($siteLock)){flock($siteLock,LOCK_UN);fclose($siteLock);}}
 }

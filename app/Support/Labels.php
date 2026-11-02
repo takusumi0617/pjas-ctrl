@@ -36,7 +36,7 @@ final class Labels
     public static function jobType(string $v): string
     {
         return match ($v) {
-            'backup' => 'データのバックアップ',
+            'site-delete'=>'サイトの管理終了・削除','site-restore'=>'サイトの復元','backup' => 'データのバックアップ',
             'data-restore' => 'データの復元',
             'preview' => '試験公開の準備',
             'prepare'  => '公開前の確認',

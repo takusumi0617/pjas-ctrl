@@ -14,7 +14,7 @@ final class ServiceRepo
     /** @return array<int,array<string,mixed>> */
     public static function all(): array
     {
-                $rows=array_map(self::withSafeDefaults(...), Db::all('SELECT * FROM services ORDER BY name'));
+                $rows=array_map(self::withSafeDefaults(...), Db::all('SELECT * FROM services WHERE id NOT IN (SELECT service_id FROM service_lifecycle WHERE state<>\'active\') ORDER BY name'));
         if(class_exists(\Pjas\Http\Auth::class)&&($u=\Pjas\Http\Auth::user())!==null)$rows=array_values(array_filter($rows,static fn($s)=>\Pjas\Http\Auth::userCanSite((int)$u['id'],(int)$s['id'])));
         return $rows;
     }
@@ -28,7 +28,8 @@ final class ServiceRepo
     public static function findOrFail(string $name): array
     {
         $s = self::find($name);
-        if ($s === null) {
+        if ($s === null || \Pjas\Support\Db::one("SELECT service_id FROM service_lifecycle WHERE service_id=? AND state<>'active'",[$s['id']])) {
+            if(PHP_SAPI!=='cli'){\Pjas\Http\View::error(404,'このサイトは見つからないか、管理を終了しています。管理者は「削除済みサイト」を確認してください。');exit;}
             throw new \RuntimeException("サイトが見つかりません: {$name}");
         }
         if(class_exists(\Pjas\Http\Auth::class))\Pjas\Http\Auth::requireSite($name);

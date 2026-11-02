@@ -35,6 +35,11 @@ $r->add('POST','/hooks/github',[(new \Pjas\Http\Controllers\WebhookController())
 
 $r->get('/', [new DashboardController(), 'index']);
 
+$lifecycle=new \Pjas\Http\Controllers\SiteLifecycleController();
+$r->get('/retired-sites',[$lifecycle,'index'],'owner');
+$r->get('/services/{name}/delete',[$lifecycle,'form'],'owner');
+$r->post('/services/{name}/delete',[$lifecycle,'action'],'owner');
+
 $svc = new ServiceController();
 $r->get('/services', [$svc, 'index']);
 $r->get('/services/new', [$svc, 'newForm'], 'owner');

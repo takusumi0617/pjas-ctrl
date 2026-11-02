@@ -3,6 +3,7 @@ declare(strict_types=1);
 namespace Pjas\Agentd\Ops;
 use Pjas\Agentd\{ControlStore,EncryptedFile,Paths,Spec,Proc,OpException,SharedDatabases,JobLog,SitePause};
 require_once dirname(__DIR__).'/lib/ControlStore.php';
+require_once dirname(__DIR__).'/lib/SiteLifecycleGuard.php';
 require_once dirname(__DIR__).'/lib/EncryptedFile.php';
 require_once dirname(__DIR__).'/lib/SharedDatabases.php';
 
@@ -19,7 +20,7 @@ final class Backups
     }
     private function lock(string $name,bool $wait=true)
     {
-        $path=rtrim($this->cfg['apache_sites'],'/').'/.pjas-deploy-'.Spec::name($name).'.lock';if(is_link($path))throw new OpException('ロックが不正です');$fp=fopen($path,'c');if(!$fp)throw new OpException('公開作業をロックできません');if(!flock($fp,$wait?LOCK_EX:(LOCK_EX|LOCK_NB))){fclose($fp);if(!$wait)return null;throw new OpException('公開作業をロックできません');}return $fp;
+        $path=rtrim($this->cfg['apache_sites'],'/').'/.pjas-deploy-'.Spec::name($name).'.lock';if(is_link($path))throw new OpException('ロックが不正です');$fp=fopen($path,'c');if(!$fp)throw new OpException('公開作業をロックできません');if(!flock($fp,$wait?LOCK_EX:(LOCK_EX|LOCK_NB))){fclose($fp);if(!$wait)return null;throw new OpException('公開作業をロックできません');}try{\Pjas\Agentd\SiteLifecycleGuard::active($this->cfg,$name);}catch(\Throwable $e){flock($fp,LOCK_UN);fclose($fp);throw $e;}return $fp;
     }
     private function records(string $name): array
     {

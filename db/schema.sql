@@ -150,3 +150,10 @@ CREATE TABLE IF NOT EXISTS webhook_commits (
 );
 
 CREATE TABLE IF NOT EXISTS job_notifications (job_id INTEGER PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE);
+
+CREATE TABLE IF NOT EXISTS service_lifecycle (
+ service_id INTEGER PRIMARY KEY REFERENCES services(id),
+ state TEXT NOT NULL, mode TEXT NOT NULL, job_id INTEGER REFERENCES jobs(id),
+ expires INTEGER NOT NULL DEFAULT 0, detail TEXT NOT NULL DEFAULT '',
+ updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

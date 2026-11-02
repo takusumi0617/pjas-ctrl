@@ -83,6 +83,15 @@ final class JobRepo
             [$state, $detail, in_array($state, ['succeeded', 'failed'], true) ? ($st['finished_at'] ?? date('Y-m-d H:i:s')) : null, $id]
         );
 
+        if(in_array($job['type'],['site-delete','site-restore'],true)&&$job['service_id']&&in_array($state,['succeeded','failed'],true)){
+            $result=$st['result']??[];$next=$state==='succeeded'?($result['state']??'failed'):'failed';
+            Db::run("UPDATE service_lifecycle SET state=?,expires=?,detail=?,updated_at=datetime('now') WHERE service_id=? AND job_id=?",[$next,(int)($result['expires']??0),$detail,$job['service_id'],$id]);
+            if($state==='succeeded'){
+                if($job['type']==='site-delete'){ $policy=SitePolicy::get((int)$job['service_id']);$policy['backup_enabled']=false;$policy['webhook_enabled']=false;SitePolicy::write((int)$job['service_id'],$policy); }
+                if(($result['mode']??'')==='delete')Db::run('UPDATE scheduled_tasks SET enabled=0 WHERE service_id=?',[$job['service_id']]);
+            }
+        }
+
         // 初回デプロイで既存ファイルを引き継いだ場合、そのリリースも履歴に載せる
         // (切り戻し先として選べるようにするため。release より先に入れて順序を保つ)
         if (!empty($st['adopted']) && $job['service_id']) {
