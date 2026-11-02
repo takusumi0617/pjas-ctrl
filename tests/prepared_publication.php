@@ -1,0 +1,20 @@
+<?php
+declare(strict_types=1);require __DIR__.'/support/features.php';
+use Pjas\Agentd\{Paths,Spec,Proc,SitePause,ReleaseReview};use Pjas\Agentd\Ops\{Service,Deploy,Vhost,Health};
+[$dir,$cfg]=fixture('prepared');$paths=new Paths($cfg['www_root']);$spec=Spec::service(['name'=>'demo','domain'=>'demo.example.com','runtime'=>'static','docroot'=>'public','shared'=>['.env','@databases']]);
+try{
+ (new Service($cfg,$paths))->create(['service'=>$spec]);$vhost=new Vhost($cfg,$paths);$deploy=new Deploy($cfg,$paths,$vhost,new Health($cfg));
+ // Initial unmanaged files exercise adoption after review without invalidating its baseline.
+ mkdir($paths->base('demo').'/public');file_put_contents($paths->base('demo').'/public/index.html','existing');file_put_contents($vhost->confPath('demo'),"<VirtualHost *:80>\nServerName demo.example.com\n</VirtualHost>\n");(new SitePause($cfg))->write('demo',['enabled'=>true,'code'=>503,'html'=>'pause']);
+ mkdir($dir.'/upload/public',0755,true);file_put_contents($dir.'/upload/public/index.html','reviewed');$archive=$cfg['upload_dir'].'/test.tar.gz';Proc::must(['/bin/tar','-czf',$archive,'-C',$dir.'/upload','.']);
+ $r=$deploy->prepare(['service'=>$spec,'job_id'=>1,'source'=>['type'=>'upload','path'=>$archive,'sha256'=>hash_file('sha256',$archive),'name'=>'test.tar.gz'],'options'=>['label'=>'reviewed','auto_rollback'=>true]]);
+ check($paths->currentTag('demo')===null&&!is_file($archive)&&file_get_contents($paths->base('demo').'/public/index.html')==='existing','公開準備では既存ファイルを変更せず、検疫用アップロードを削除する');
+ $job=$deploy->start(['service'=>$spec,'job_id'=>2,'source'=>['type'=>'prepared','token'=>$r['token']],'auto_rollback'=>true]);pcntl_waitpid($job['pid'],$status);
+ $state=json_decode(file_get_contents($cfg['job_dir'].'/2.json'),true);if($state['state']!=='succeeded')throw new RuntimeException($state['detail'].' / '.file_get_contents($cfg['job_dir'].'/2.log'));check($state['state']==='succeeded'&&file_get_contents($paths->current('demo').'/public/index.html')==='reviewed','初回サイトも確認済みのファイルで公開できる');
+ check(!empty($state['backup'])&&!empty($state['adopted'])&&is_file($dir.'/control/backups/demo/'.$state['backup'].'.pjas'),'公開直前のデータ保存と既存コードの引き継ぎを両立する');
+ $current=$paths->currentTag('demo');$target=$state['adopted']['tag'];$rollback=$deploy->rollback(['service'=>$spec,'job_id'=>3,'tag'=>$state['adopted']['tag'],'expected_current'=>$current]);pcntl_waitpid($rollback['pid'],$status);$state=json_decode(file_get_contents($cfg['job_dir'].'/3.json'),true);if($state['state']!=='succeeded')throw new RuntimeException($state['detail'].' / '.file_get_contents($cfg['job_dir'].'/3.log'));check($state['state']==='succeeded'&&$paths->currentTag('demo')===$target&&file_get_contents($paths->current('demo').'/public/index.html')==='existing','確認済み公開の後も以前のコードへ切り戻せる');
+ $review=new ReleaseReview($cfg,$paths);$secondToken=bin2hex(random_bytes(16));$secondTree=$review->directory($secondToken);mkdir($secondTree.'/tree/public',0700,true);file_put_contents($secondTree.'/tree/public/index.html','second');$review->save($secondToken,$spec,['type'=>'upload'],['source'=>'upload:second','sha256'=>'second','size'=>6]);
+ $taken=[];for($i=0;$i<10;$i++){$tag=date('Ymd-His',time()+$i);$taken[]=$tag;$path=$paths->release('demo',$tag);if(!file_exists($path)){mkdir($path,0755);file_put_contents($path.'/marker','keep');}}
+ $publish=$deploy->start(['service'=>$spec,'job_id'=>5,'source'=>['type'=>'prepared','token'=>$secondToken],'auto_rollback'=>true]);pcntl_waitpid($publish['pid'],$status);$state=json_decode(file_get_contents($cfg['job_dir'].'/5.json'),true);check($state['state']==='succeeded'&&!in_array($paths->currentTag('demo'),$taken,true)&&file_get_contents($paths->current('demo').'/public/index.html')==='second','同じ秒の公開先があっても既存コードを上書きせず新しい保存先を作る');
+ $review=new ReleaseReview($cfg,$paths);$file=$review->directory($r['token']).'/plan.json';$expired=json_decode(file_get_contents($file),true);$expired['expires']=time()-1;file_put_contents($file,json_encode($expired));check($review->cleanup()['removed']===1&&!is_dir(dirname($file)),'期限切れの公開準備を削除して容量を回収する');
+}finally{cleanup($dir);}

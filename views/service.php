@@ -21,9 +21,10 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
   <span class="spacer"></span>
   <form method="post" action="/services/<?= $name ?>/health"><?= Csrf::field() ?>
     <button class="btn">いま動作を確認する</button></form>
-  <?php if (Auth::can('operator')): ?>
+  <?php if (Auth::canSite($s['name'],'operator')): ?>
     <a class="btn p" href="/deploy?service=<?= $name ?>">新しいバージョンを公開</a>
     <a class="btn" href="/rollback?service=<?= $name ?>">以前のバージョンに戻す</a>
+    <a class="btn" href="/services/<?= $name ?>/operations">バックアップ・運用</a>
   <?php endif; ?>
   <?php if (Auth::can('owner')): ?><button type="button" class="power-toggle <?= !empty($pause['enabled']) ? 'is-paused' : 'is-live' ?>" id="pause-toggle" role="switch" aria-checked="<?= !empty($pause['enabled']) ? 'false' : 'true' ?>" aria-label="サイトの公開状態を変更" aria-haspopup="dialog" aria-controls="pause-dialog" <?= empty($pause['can_pause']) ? 'disabled title="先に公開設定を反映してください"' : '' ?>><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v10M6 5a9 9 0 1 0 12 0"/></svg><span><?= !empty($pause['enabled']) ? '停止中' : '公開中' ?></span><span class="power-track" aria-hidden="true"></span></button><?php endif; ?>
 </div>
@@ -46,7 +47,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
 <?php if (!empty($pause['enabled'])): ?><div class="note">このサイトは一時停止中です。HTTP <?= (int) $pause['code'] ?> と指定したHTMLを返しています。</div><?php endif; ?>
 
 <?php if ($tab === 'overview'): ?>
-  <?php if ($current === null && Auth::can('operator')): ?>
+  <?php if ($current === null && Auth::canSite($s['name'],'operator')): ?>
     <div class="note" style="margin-bottom:14px">
       このサイトはまだ管理下のバージョンを持っていません。
       すでにサーバーにファイルが置かれている場合は、それをそのまま最初のバージョンとして取り込めます
@@ -113,7 +114,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
               'failed'   => '<span class="tag t-err">失敗</span>',
               default    => '<span class="tag t-mut">保管中</span>' } ?></td>
         <td>
-          <?php if ($r['state'] !== 'current' && $r['state'] !== 'failed' && Auth::can('operator')): ?>
+          <?php if ($r['state'] !== 'current' && $r['state'] !== 'failed' && Auth::canSite($s['name'],'operator')): ?>
             <form method="post" action="/services/<?= $name ?>/rollback"
                   onsubmit="return confirm('公開中のバージョンを「<?= View::e($r['label'] ?: $r['tag']) ?>」に戻します。よろしいですか?')">
               <?= Csrf::field() ?>

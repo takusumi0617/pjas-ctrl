@@ -24,6 +24,10 @@ final class AuditController
             $sql .= ' AND action LIKE ?';
             $args[] = "{$action}%";
         }
+        if(!\Pjas\Http\Auth::can('owner')){
+            $names=array_column(\Pjas\Domain\ServiceRepo::all(),'name');
+            $sql.=' AND (actor=?'.($names?' OR target IN ('.implode(',',array_fill(0,count($names),'?')).')':'').')';$args[]=\Pjas\Http\Auth::actor();$args=array_merge($args,$names);
+        }
         $sql .= ' ORDER BY id DESC LIMIT 200';
 
         View::render('audit', [

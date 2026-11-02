@@ -38,7 +38,7 @@ final class ServiceController
         try {
             $selection = RegistrationSource::read($in);
             if (!$selection['manifest']) throw new \InvalidArgumentException('GitHubを選び「.pjasから設定を読み込む」にチェックしてください');
-            $r = AgentClient::call('github.inspect',['repo'=>$selection['repo'],'ref'=>$selection['ref']],Auth::actor());
+            $r = AgentClient::call('github.inspect',['repo'=>$selection['repo'],'ref'=>$selection['ref'],'auth'=>$selection['auth']],Auth::actor());
             if ($r['found']) {
                 $in = array_replace($in,$r['defaults'],['manifest_token'=>$r['token'],'manifest_json'=>$r['json']]);
                 if ($in['domain'] === '' && preg_match('/^\s*ServerName\s+(\S+)/mi',$r['apache'],$host)) $in['domain'] = $host[1];
@@ -58,7 +58,7 @@ final class ServiceController
         // チェックした場合だけ読み込み、取得元を切り替えたときは残ったtokenを無視する。
         if ($selection['manifest'] && $selection['token'] === '') {
             try {
-                $r = AgentClient::call('github.inspect',['repo'=>(string)$_POST['github_repo'],'ref'=>(string)($_POST['github_ref'] ?? '')],Auth::actor());
+                $r = AgentClient::call('github.inspect',['repo'=>(string)$_POST['github_repo'],'ref'=>(string)($_POST['github_ref'] ?? ''),'auth'=>$selection['auth']],Auth::actor());
                 if ($r['found']) {
                     $in = array_replace($_POST,$r['defaults'],['manifest_token'=>$r['token'],'manifest_json'=>$r['json']]);
                     if ($in['domain'] === '' && preg_match('/^\s*ServerName\s+(\S+)/mi',$r['apache'],$host)) $in['domain']=$host[1];
@@ -89,10 +89,11 @@ final class ServiceController
         $actor = Auth::actor();
         try {
             if ($manifest !== null) AgentClient::call('github.validate', ['service'=>Deployer::spec($v),
-                'token'=>(string)$_POST['manifest_token'],'json'=>(string)$_POST['manifest_json'],'repo'=>$repo,'ref'=>$ref],$actor);
+                'token'=>(string)$_POST['manifest_token'],'json'=>(string)$_POST['manifest_json'],'repo'=>$repo,'ref'=>$ref,'auth'=>$selection['auth']],$actor);
             // ディレクトリ雛形 (releases/ shared/ current) は agent が root で作る
             AgentClient::call('service.create', [
                 'github_repo' => $repo,
+                'github_auth' => $selection['auth'],
                 'service' => [
                     'name'   => $v['name'],
                     'shared' => array_values(array_filter(explode(',', $v['shared_paths']))),

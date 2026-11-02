@@ -36,7 +36,11 @@ final class JobRepo
             $sql .= ' WHERE j.service_id = ?';
             $arg[] = $serviceId;
         }
-        $sql .= ' ORDER BY j.id DESC LIMIT ' . $limit;
+        if(class_exists(\Pjas\Http\Auth::class)&&($user=\Pjas\Http\Auth::user())!==null&&$user['role']!=='owner'){
+            $ids=array_column(ServiceRepo::all(),'id');$sql.=$serviceId===null?' WHERE ':' AND ';
+            $sql.=$ids?'j.service_id IN ('.implode(',',array_fill(0,count($ids),'?')).')':'1=0';$arg=array_merge($arg,$ids);
+        }
+        $sql .= ' ORDER BY j.id DESC LIMIT ' . max(1,min(200,$limit));
         return Db::all($sql, $arg);
     }
 
@@ -86,6 +90,10 @@ final class JobRepo
         }
         if (!empty($st['release']) && $job['service_id']) {
             ReleaseRepo::syncFromAgent((int) $job['service_id'], $st['release'], (string) $job['actor']);
+        }
+        if($state==='succeeded'&&$job['type']==='data-restore'&&!empty($st['result']['databases'])&&$job['service_id']){
+            $s=Db::one('SELECT shared_paths FROM services WHERE id=?',[$job['service_id']]);
+            if($s&&!in_array('@databases',explode(',',$s['shared_paths']),true))Db::run('UPDATE services SET shared_paths=? WHERE id=?',[trim($s['shared_paths'].',@databases',','),$job['service_id']]);
         }
         if (!empty($st['health']) && $job['service_id']) {
             ServiceRepo::setState((int) $job['service_id'], $st['health'] === 'ok' ? 'healthy' : 'unhealthy');

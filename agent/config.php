@@ -1,6 +1,10 @@
 <?php
 // pjas-agentd 設定 (root で読まれる)。web 側 config.php と整合させること。
 return [
+    'control_dir'   => '/var/lib/pjas-control',
+    'preview_root'  => '/var/www/pjas-previews',
+    'preview_user'  => 'pjas-preview',
+    'php_fpm_bin'   => '/usr/sbin/php-fpm8.4',
     'socket'        => '/run/pjas-agent.sock',
     'socket_group'  => 'pjas',      // web ユーザーが所属するグループ
     'socket_mode'   => 0660,

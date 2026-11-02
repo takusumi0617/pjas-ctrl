@@ -20,6 +20,18 @@ $auth = new AuthController();
 $r->get('/login', [$auth, 'showLogin'], 'public');
 $r->add('POST', '/login', [$auth, 'login'], 'public');
 $r->post('/logout', [$auth, 'logout'], 'viewer');
+$r->get('/login/verify',[$auth,'showVerify'],'public');
+$r->post('/login/verify',[$auth,'verify'],'public');
+$security=new \Pjas\Http\Controllers\SecurityController();
+$r->get('/security',[$security,'index']);$r->post('/security',[$security,'action'],'viewer');
+$users=new \Pjas\Http\Controllers\UsersController();
+$r->get('/users',[$users,'index'],'owner');$r->post('/users',[$users,'save'],'owner');
+$ops=new \Pjas\Http\Controllers\OperationsController();
+$r->get('/operations',[$ops,'index']);
+$r->get('/connections',[$ops,'connections'],'owner');$r->post('/connections',[$ops,'saveConnection'],'owner');
+$r->post('/connections/github/start',[$ops,'githubStart'],'owner');$r->get('/connections/github/callback',[$ops,'githubCallback'],'owner');
+$r->get('/services/{name}/operations',[$ops,'site'],'operator');$r->post('/services/{name}/operations',[$ops,'action'],'operator');
+$r->add('POST','/hooks/github',[(new \Pjas\Http\Controllers\WebhookController()),'receive'],'webhook');
 
 $r->get('/', [new DashboardController(), 'index']);
 
@@ -38,6 +50,8 @@ $dep = new DeployController();
 $r->get('/deploy', [$dep, 'form'], 'operator');
 $r->get('/rollback', [$dep, 'rollbackForm'], 'operator');
 $r->post('/deploy', [$dep, 'deploy'], 'operator');
+$r->post('/deploy/review',[$dep,'review'],'operator');$r->get('/deploy/review',[$dep,'showReview'],'operator');
+$r->post('/deploy/confirm',[$dep,'confirm'],'operator');$r->get('/services/{name}/review-file',[$dep,'reviewFile'],'operator');
 $r->post('/services/{name}/rollback', [$dep, 'rollback'], 'operator');
 $r->post('/services/{name}/adopt', [$dep, 'adopt'], 'operator');
 

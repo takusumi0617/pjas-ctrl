@@ -1,0 +1,12 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+if(PHP_SAPI!=='cli')exit(1);
+require dirname(__DIR__).'/agent/lib/OpException.php';require dirname(__DIR__).'/agent/lib/EncryptedFile.php';
+if(count($argv)!==4){fwrite(STDERR,"使い方: php8.4 bin/pjas-decrypt-backup バックアップ.pjas 暗号鍵.txt 出力.tar.gz\n鍵の内容をコマンドに直接入力しないでください。\n");exit(1);}
+$newOutput=false;
+try{
+ $key=base64_decode(trim((string)file_get_contents($argv[2])),true);if($key===false||strlen($key)!==32)throw new RuntimeException('32バイトの暗号鍵を保存したファイルを指定してください');
+ if(file_exists($argv[3])||is_link($argv[3]))throw new RuntimeException('出力先は既存ファイルと異なる名前を指定してください');
+ $newOutput=true;Pjas\Agentd\EncryptedFile::decrypt($argv[1],$argv[3],$key);echo "復号しました。復号後のファイルは秘密情報を含むため、取り扱いに注意してください。\n";
+}catch(Throwable $e){if($newOutput&&is_file($argv[3])&&!is_link($argv[3]))@unlink($argv[3]);fwrite(STDERR,$e->getMessage()."\n");exit(1);}

@@ -26,8 +26,11 @@ final class AuthController
             View::render('login', ['error' => 'メールアドレスまたはパスワードが違います'], true);
             return;
         }
-        View::redirect('/');
+        View::redirect(Auth::pending()?'/login/verify':'/');
     }
+
+    public function showVerify(): void { if(!Auth::pending())View::redirect('/login');View::render('verify_login',['error'=>null],true); }
+    public function verify(): void { if(!Auth::completeSecondFactor((string)($_POST['code']??''))){View::render('verify_login',['error'=>'コードを確認してください。認証アプリの新しい6桁コード、または未使用の復旧コードを入力します。'],true);return;}View::redirect('/'); }
 
     public function logout(): void
     {

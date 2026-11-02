@@ -1,0 +1,2 @@
+<?php use Pjas\Http\View; ?><h1>ファイルの変更点</h1><p class="sub mono"><?= View::e($path) ?></p><div class="card"><div class="card-b"><?php if($result['binary']):?><p>画像・バイナリ、リンク、または128KBを超えるファイルのため、本文の差分は表示しません。</p><?php else:?><pre class="diff"><?php foreach($result['diff'] as [$sign,$line]):?><span class="<?= $sign==='+'?'add':($sign==='-'?'del':'ctx') ?>"><?= View::e(($sign==='@'?'':$sign.' ').$line) ?></span>
+<?php endforeach;?></pre><?php endif;?></div></div><p>確認画面へはブラウザーの戻る操作で戻れます。</p>

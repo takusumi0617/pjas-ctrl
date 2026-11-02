@@ -6,7 +6,7 @@ use Pjas\Http\View;
 <div class="sub">新しいバージョンのファイルを公開します。公開先はいったん別の場所に用意してから最後に切り替えるので、
 途中で失敗してもいまのサイトは止まりません。</div>
 
-<form method="post" action="/deploy" enctype="multipart/form-data">
+<form method="post" action="/deploy/review" enctype="multipart/form-data">
   <?= Csrf::field() ?>
 
   <div class="card step">
@@ -82,7 +82,7 @@ use Pjas\Http\View;
   <div class="card step">
     <div class="card-h"><span class="step-n">4</span>内容を確認して実行</div>
     <div class="card-b">
-      <p class="muted" style="margin:0 0 12px">「公開を開始」を押すと、次の順番で自動的に進みます。
+      <p class="muted" style="margin:0 0 12px">「変更点を確認」を押すと、ファイルを取得して変更一覧を表示します。確認後にすぐ公開するか、日時を予約できます。公開は次の順番で進みます。
         進み具合は次の画面でそのまま確認できます。</p>
       <ol class="flow">
         <li><b>ファイルを安全チェックする</b><span>種類・サイズを確認し、不正なファイルが混じっていないか調べます</span></li>
@@ -116,7 +116,7 @@ use Pjas\Http\View;
     </div>
   </div>
 
-  <div class="row" style="margin-top:16px"><span class="spacer"></span><button class="btn p">公開を開始</button></div>
+  <div class="row" style="margin-top:16px"><span class="spacer"></span><button class="btn p">変更点を確認</button></div>
 </form>
 
 <script src="/assets/deploy.js" defer></script>

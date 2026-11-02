@@ -36,6 +36,10 @@ final class Labels
     public static function jobType(string $v): string
     {
         return match ($v) {
+            'backup' => 'データのバックアップ',
+            'data-restore' => 'データの復元',
+            'preview' => '試験公開の準備',
+            'prepare'  => '公開前の確認',
             'deploy'   => '公開',
             'rollback' => '前のバージョンに戻す',
             'adopt'    => '既存ファイルの取り込み',

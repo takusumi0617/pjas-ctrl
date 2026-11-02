@@ -8,6 +8,9 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   role          TEXT NOT NULL DEFAULT 'viewer',   -- owner | operator | viewer
   totp_secret   TEXT,
+  totp_last_step INTEGER NOT NULL DEFAULT -1,
+  scope_all INTEGER NOT NULL DEFAULT 1,
+  enabled INTEGER NOT NULL DEFAULT 1,
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -99,3 +102,51 @@ CREATE INDEX IF NOT EXISTS idx_jobs_service ON jobs(service_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_rel_service  ON releases(service_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_at     ON audit_log(id DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_service ON scheduled_tasks(service_id, id);
+
+CREATE TABLE IF NOT EXISTS service_access (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK(role IN ('viewer','operator')),
+  PRIMARY KEY(user_id,service_id)
+);
+CREATE TABLE IF NOT EXISTS recovery_codes (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  hash TEXT NOT NULL,
+  PRIMARY KEY(user_id,hash)
+);
+CREATE TABLE IF NOT EXISTS login_attempts (
+  bucket TEXT PRIMARY KEY, attempts INTEGER NOT NULL DEFAULT 0, reset_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS site_policies (
+  service_id INTEGER PRIMARY KEY REFERENCES services(id) ON DELETE CASCADE,
+  settings TEXT NOT NULL DEFAULT '{}', updated_by INTEGER REFERENCES users(id), updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS publication_queue (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+  requested_by INTEGER REFERENCES users(id), actor TEXT NOT NULL,
+  source TEXT NOT NULL, publish_at TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'queued', job_id INTEGER REFERENCES jobs(id), detail TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(service_id,source,publish_at)
+);
+CREATE INDEX IF NOT EXISTS idx_publication_due ON publication_queue(state,publish_at);
+CREATE TABLE IF NOT EXISTS webhook_deliveries (
+  delivery TEXT PRIMARY KEY, received_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS monitor_state (
+  check_key TEXT PRIMARY KEY, service_id INTEGER REFERENCES services(id) ON DELETE CASCADE,
+  ok INTEGER NOT NULL, detail TEXT NOT NULL, checked_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS alerts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, service_id INTEGER REFERENCES services(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL, message TEXT NOT NULL, resolved INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), notified_at TEXT, notification_error TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS app_state (name TEXT PRIMARY KEY,value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS webhook_commits (
+ service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+ sha TEXT NOT NULL, received_at TEXT NOT NULL DEFAULT (datetime('now')),
+ PRIMARY KEY(service_id,sha)
+);
+
+CREATE TABLE IF NOT EXISTS job_notifications (job_id INTEGER PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE);

@@ -22,6 +22,7 @@ final class Paths
     /** current が指しているリリースタグ */
     public function currentTag(string $name): ?string
     {
+        clearstatcache(true);
         $link = $this->current($name);
         if (!is_link($link)) {
             return null;
@@ -48,6 +49,7 @@ final class Paths
     /** 解決後のパスがサービス配下にあることを保証する */
     public function assertInside(string $name, string $path): string
     {
+        clearstatcache(true);
         $base = realpath($this->base($name));
         $real = realpath($path);
         if ($base === false || $real === false || !str_starts_with($real . '/', $base . '/')) {

@@ -30,10 +30,10 @@ final class Router
             }
             $args = array_filter($mt, 'is_string', ARRAY_FILTER_USE_KEY);
 
-            if ($method === 'POST') {
+            if ($method === 'POST' && $role !== 'webhook') {
                 Csrf::check();
             }
-            if ($role !== 'public') {
+            if (!in_array($role,['public','webhook'],true)) {
                 Auth::require($role ?? 'viewer');
             }
             $handler($args);

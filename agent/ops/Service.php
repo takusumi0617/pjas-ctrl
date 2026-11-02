@@ -30,7 +30,7 @@ final class Service
         }
 
         if (!empty($params['github_repo'])) {
-            (new GitRepositories($this->cfg))->register($name, (string) $params['github_repo']);
+            (new GitRepositories($this->cfg))->register($name, (string) $params['github_repo'], (string)($params['github_auth'] ?? 'public'));
         }
         $base = $this->paths->base($name);
         if (is_link($base)) {

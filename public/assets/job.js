@@ -18,6 +18,7 @@ if (meta.dataset.state === 'succeeded' || meta.dataset.state === 'failed') {
   };
   es.addEventListener('done', (e) => {
     es.close();
+    if(meta.dataset.type==='prepare'){window.location.reload();return;}
     streamState.textContent = '完了';
     stateEl.innerHTML = e.data === 'succeeded'
       ? '<span class="tag t-ok">成功</span>'

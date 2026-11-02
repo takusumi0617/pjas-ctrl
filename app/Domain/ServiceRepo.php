@@ -14,7 +14,9 @@ final class ServiceRepo
     /** @return array<int,array<string,mixed>> */
     public static function all(): array
     {
-        return array_map(self::withSafeDefaults(...), Db::all('SELECT * FROM services ORDER BY name'));
+                $rows=array_map(self::withSafeDefaults(...), Db::all('SELECT * FROM services ORDER BY name'));
+        if(class_exists(\Pjas\Http\Auth::class)&&($u=\Pjas\Http\Auth::user())!==null)$rows=array_values(array_filter($rows,static fn($s)=>\Pjas\Http\Auth::userCanSite((int)$u['id'],(int)$s['id'])));
+        return $rows;
     }
 
     public static function find(string $name): ?array
@@ -29,6 +31,7 @@ final class ServiceRepo
         if ($s === null) {
             throw new \RuntimeException("サイトが見つかりません: {$name}");
         }
+        if(class_exists(\Pjas\Http\Auth::class))\Pjas\Http\Auth::requireSite($name);
         return $s;
     }
 

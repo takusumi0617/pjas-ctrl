@@ -446,6 +446,34 @@ final class Vhost
         }
     }
 
+    public function restore(array $params): array
+    {
+        $spec=Spec::service($params['service']??null);$name=$spec['name'];$path=$this->confPath($name);
+        $old=$this->currentForErrors($spec);$history=new ApacheHistory($this->cfg);$revision=(string)($params['revision']??'');$conf=$history->snapshot($name,$revision);
+        if(!empty((new SitePause($this->cfg))->read($name)['enabled'])||str_contains($conf,'# paused service:'))throw new OpException('停止中の設定は復元できません。公開状態の通常設定を選んでください');
+        preg_match_all('/^[\t ]*ServerName\s+(\S+)/mi',$conf,$hosts);
+        if(!$hosts[1])throw new OpException('履歴に公開アドレスがありません');
+        foreach($hosts[1] as $host)if(strtolower($host)!==$spec['domain'])throw new OpException('現在の公開アドレスと一致する履歴を選んでください');
+        if(($params['action']??'preview')==='preview')return ['current'=>$old,'rendered'=>$conf,'current_hash'=>hash('sha256',$old),'git_diff'=>ApacheHistory::diff($old,$conf),'revision'=>$revision];
+        if(($params['action']??'')!=='restore')throw new OpException('復元操作が不正です');
+        $lock=fopen($this->cfg['apache_sites'].'/.pjas-vhost.lock','c');if(!$lock||!flock($lock,LOCK_EX))throw new OpException('公開設定をロックできません');
+        $snapshot=$this->inheritedPath($name);$previousSnapshot=is_file($snapshot)?file_get_contents($snapshot):null;
+        try{
+            if(!empty((new SitePause($this->cfg))->read($name)['enabled']))throw new OpException('一時停止中は公開設定を復元できません');
+            $old=$this->currentForErrors($spec);
+            if(!hash_equals(hash('sha256',$old),(string)($params['current_hash']??'')))throw new OpException('確認後に公開設定が変わりました。もう一度変更点を確認してください');
+            $history->save($name,$old,'before',(string)($params['_actor']??'system'));
+            try{
+                $temp=$path.'.restore-'.bin2hex(random_bytes(8));file_put_contents($temp,$conf);chmod($temp,0644);if(!rename($temp,$path))throw new OpException('公開設定を復元できません');
+                $this->reload();
+                file_put_contents($snapshot,json_encode(['body'=>$conf,'domain'=>$spec['domain'],'source'=>'history:'.$revision],JSON_THROW_ON_ERROR));chmod($snapshot,0600);
+            }catch(\Throwable $e){file_put_contents($path,$old);if($previousSnapshot===null)@unlink($snapshot);else file_put_contents($snapshot,$previousSnapshot);Proc::run([$this->cfg['apachectl'],'graceful'],null,60);throw new OpException($e->getMessage().'（復元前の設定へ戻しました）');}
+            $result=['restored'=>$revision];
+            try{$result['history_revision']=$history->save($name,$conf,'applied',(string)($params['_actor']??'system'));}catch(OpException $e){$result['warning']='設定は復元しましたが復元後の履歴保存に失敗しました。復元前の履歴は保存されています';}
+            return $result;
+        }finally{flock($lock,LOCK_UN);fclose($lock);}
+    }
+
     private function a2dissite(): string
     {
         return (string) ($this->cfg['a2dissite'] ?? '/usr/sbin/a2dissite');

@@ -12,6 +12,8 @@ use Pjas\Agentd\GitRepositories;
 use Pjas\Agentd\ManifestImport;
 use Pjas\Agentd\SharedDatabases;
 require_once dirname(__DIR__) . '/lib/SharedDatabases.php';
+require_once dirname(__DIR__) . '/lib/ReleaseReview.php';
+require_once __DIR__.'/Backups.php';
 
 final class Deploy
 {
@@ -42,7 +44,7 @@ final class Deploy
             'label'         => substr((string) ($params['label'] ?? ''), 0, 60),
             'auto_rollback' => !empty($params['auto_rollback']),
             'maintenance'   => !empty($params['maintenance']),
-            'apply_vhost'   => !empty($params['apply_vhost']) || !empty($source['manifest_plan']) || (!empty($source['public_github']) && ($this->paths->currentTag($spec['name']) === null || !is_file($this->vhost->confPath($spec['name'])))),
+            'apply_vhost'   => !is_file($this->vhost->confPath($spec['name'])) || !empty($params['apply_vhost']) || !empty($source['manifest_plan']) || (!empty($source['public_github']) && ($this->paths->currentTag($spec['name']) === null || !is_file($this->vhost->confPath($spec['name'])))),
         ];
 
         $pid = pcntl_fork();
@@ -60,6 +62,26 @@ final class Deploy
             exit(0);
         }
         return ['job_id' => $jobId, 'pid' => $pid];
+    }
+
+    public function prepareStart(array $params): array
+    {
+        $id=(int)($params['job_id']??0);if($id<=0)throw new OpException('作業番号がありません');
+        $spec=Spec::service($params['service']??null);$this->validateSource($spec,(array)($params['source']??[]));
+        $pid=pcntl_fork();if($pid<0)throw new OpException('公開準備を起動できません');
+        if($pid===0){posix_setsid();try{$this->prepare($params);}catch(\Throwable $e){(new JobLog($id,$this->cfg['job_dir']))->finish('failed',$e->getMessage());}exit(0);}return ['job_id'=>$id,'pid'=>$pid];
+    }
+
+    public function prepare(array $params): array
+    {
+        $spec=Spec::service($params['service']??null);$source=$this->validateSource($spec,(array)($params['source']??[]));
+        if($source['type']==='prepared')throw new OpException('準備済みのファイルを再取得できません');
+        $review=new \Pjas\Agentd\ReleaseReview($this->cfg,$this->paths);$token=bin2hex(random_bytes(16));$dir=$review->directory($token);mkdir($dir,0700);
+        $log=new JobLog((int)($params['job_id']??0),$this->cfg['job_dir']);
+        try{$meta=$source['type']==='git'?$this->fetchGit($spec['name'],$source,$dir.'/tree',$log):$this->extractArchive($spec['name'],$source,$dir.'/tree',$log);
+            $result=$review->publicPlan($review->save($token,$spec,$source,$meta,(array)($params['options']??[])));$log->set('review',$result);$log->finish('succeeded','公開準備ができました。変更点の確認へ進んでください');return $result;
+        }catch(\Throwable $e){Proc::run(['/bin/rm','-rf','--',$dir],null,120);throw $e;}
+        finally{if($source['type']==='upload')@unlink($source['path']);}
     }
 
     public function releases(array $params): array
@@ -112,6 +134,7 @@ final class Deploy
             $prev = $this->paths->currentTag($name);
             if (($prev ?? '') !== $expected) throw new OpException('公開中のバージョンが変わりました。画面を開き直して戻す内容を確認してください');
             if (!in_array($tag, $this->releases(['service'=>$spec])['tags'], true)) throw new OpException('戻せるバージョンがサーバーに残っていません');
+            if(isset($this->cfg['control_dir'])){$backup=(new Backups($this->cfg,$this->paths))->createUnlocked($spec,'before-rollback');$log->set('backup',$backup['id']);}
             $log->line("rollback {$name}: {$prev} → {$tag}（共有データは最新の状態を維持）");
             $this->linkShared($name, $spec, $this->paths->release($name, $tag), $log);
             $this->switchCurrent($name, $tag, $log);
@@ -206,7 +229,9 @@ final class Deploy
     private function runUnlocked(int $jobId, array $spec, array $source, array $opts): void
     {
         $name = $spec['name'];
-        $tag  = date('Ymd-His');
+        if (($source['type']??'')==='prepared') (new \Pjas\Agentd\ReleaseReview($this->cfg,$this->paths))->load($name,$source['token'],true);
+        $stamp=time();$tag=date('Ymd-His',$stamp);
+        while(file_exists($this->paths->release($name,$tag))||is_link($this->paths->release($name,$tag)))$tag=date('Ymd-His',++$stamp);
         $log  = new JobLog($jobId, (string) $this->cfg['job_dir']);
         $prev = $this->paths->currentTag($name);
         $relDir = $this->paths->release($name, $tag);
@@ -215,6 +240,11 @@ final class Deploy
         $log->line("deploy {$name} tag={$tag} source={$source['type']} 直前=" . ($prev ?? 'なし'));
 
         try {
+            if (isset($this->cfg['control_dir'])) {
+                $log->line('公開前の共有データ・DBを暗号化してバックアップします');
+                $backup=(new Backups($this->cfg,$this->paths))->createUnlocked($spec,'before-deploy');
+                $log->set('backup',$backup['id']);
+            }
             if ($opts['maintenance']) {
                 touch($this->paths->shared($name) . '/maintenance.on');
                 $log->line('メンテナンスモード ON (shared/maintenance.on)');
@@ -234,9 +264,10 @@ final class Deploy
             }
 
             // [1-3] 取り込み・検疫・展開
-            $meta = $source['type'] === 'git'
-                ? $this->fetchGit($name, $source, $relDir, $log)
-                : $this->extractArchive($name, $source, $relDir, $log);
+            if ($source['type']==='prepared') {
+                $plan=(new \Pjas\Agentd\ReleaseReview($this->cfg,$this->paths))->load($name,$source['token'],false);
+                if(!mkdir($relDir,0755,true))throw new OpException('新しい公開先を作成できません');Proc::must(['/bin/cp','-a','--',(new \Pjas\Agentd\ReleaseReview($this->cfg,$this->paths))->directory($source['token']).'/tree/.',$relDir],null,600);$this->assertNoEscape($relDir,$log);$meta=$plan['meta'];
+            } else $meta = $source['type'] === 'git' ? $this->fetchGit($name,$source,$relDir,$log) : $this->extractArchive($name,$source,$relDir,$log);
 
             // [4] shared のリンク
             $this->linkShared($name, $spec, $relDir, $log);
@@ -351,6 +382,11 @@ final class Deploy
     private function validateSource(array $spec, array $src): array
     {
         $type = (string) ($src['type'] ?? '');
+        if ($type==='prepared') {
+            $p=(new \Pjas\Agentd\ReleaseReview($this->cfg,$this->paths))->load($spec['name'],(string)($src['token']??''),true);
+            if ($p['spec']!==$spec) throw new OpException('サイト設定が確認時から変更されています。公開準備をやり直してください');
+            return ['type'=>'prepared','token'=>$p['token']]+array_intersect_key($p['source'],array_flip(['manifest_plan','public_github']));
+        }
         if ($type === 'git') {
             $repo = (new GitRepositories($this->cfg))->resolve($spec['name']);
             $ref = (string) ($src['ref'] ?? '');
@@ -397,13 +433,14 @@ final class Deploy
 
             // 単一トップディレクトリなら、その中身をリリース直下に置く
             $entries = array_values(array_diff(scandir($tmp) ?: [], ['.', '..']));
-            $root    = (count($entries) === 1 && is_dir($tmp . '/' . $entries[0])) ? $tmp . '/' . $entries[0] : $tmp;
+            $root    = (count($entries) === 1 && !in_array($entries[0],self::DOCROOT_NAMES,true) && is_dir($tmp . '/' . $entries[0])) ? $tmp . '/' . $entries[0] : $tmp;
             if ($root !== $tmp) {
                 $log->line("単一トップディレクトリ {$entries[0]}/ をリリース直下として扱います");
             }
 
             if (!rename($root, $relDir)) {
-                throw new OpException('リリースディレクトリへの移動に失敗しました');
+                if(!mkdir($relDir,0755,true))throw new OpException('準備フォルダを作成できません');
+                Proc::must(['/bin/cp','-a','--',$root.'/.',$relDir],null,600);
             }
             if (is_dir($tmp)) {
                 Proc::run(['/bin/rm', '-rf', '--', $tmp], null, 60);
@@ -432,12 +469,8 @@ final class Deploy
             $log->line('.pjasを確認したコミット ' . $plan['sha'] . ' を使用します');
             return ['source'=>'git:' . $plan['sha'],'sha256'=>$plan['sha'],'size'=>0];
         }
-        $args = GitRepositories::cloneArgs($src, $relDir);
-        if (!empty($src['public_github'])) {
-            $env = ['PATH' => '/usr/bin:/bin', 'GIT_TERMINAL_PROMPT' => '0', 'GIT_ASKPASS' => '/bin/false', 'GIT_CONFIG_NOSYSTEM' => '1', 'GIT_CONFIG_GLOBAL' => '/dev/null'];
-            $result = Proc::run($args, null, 600, null, $env);
-            if ($result['code'] !== 0) throw new OpException('公開GitHubから取得できませんでした。URL・公開設定・ブランチ名を確認してください: ' . trim($result['err'] ?: $result['out']));
-        } else { Proc::must($args, null, 600); }
+        $result = (new GitRepositories($this->cfg))->clone($src,$relDir);
+        if ($result['code']!==0) throw new OpException('Gitから取得できませんでした。接続方法・権限・バージョン名を確認してください: '.trim($result['err']?:$result['out']));
         $this->assertNoEscape($relDir, $log);
         $sha = trim(Proc::must(['/usr/bin/git', 'rev-parse', 'HEAD'], $relDir, 30));
         Proc::run(['/bin/rm', '-rf', '--', $relDir . '/.git'], null, 120);
@@ -617,7 +650,7 @@ final class Deploy
 
     // ---------------------------------------------------------------- 配置
 
-    private function linkShared(string $name, array $spec, string $relDir, JobLog $log): void
+    public function linkShared(string $name, array $spec, string $relDir, JobLog $log): void
     {
         $data = new SharedDatabases($this->cfg,$this->paths);
         $current = $this->paths->currentTag($name) === null ? null : $this->paths->assertInside($name,$this->paths->current($name));

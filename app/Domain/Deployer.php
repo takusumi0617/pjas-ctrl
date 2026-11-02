@@ -36,31 +36,8 @@ final class Deployer
      */
     public static function fromUpload(array $service, array $file, array $opts, string $actor): int
     {
-        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-            throw new ValidationException(['ファイルのアップロードに失敗しました (エラーコード ' . ($file['error'] ?? '?') . ')']);
-        }
-        if ($file['size'] > (int) Config::get('max_upload')) {
-            throw new ValidationException(['ファイルの大きさが上限を超えています']);
-        }
-        if (!preg_match(self::ARCHIVE_RE, (string) $file['name'])) {
-            throw new ValidationException(['.zip / .tar.gz / .tgz の圧縮ファイルだけアップロードできます']);
-        }
-        if (!is_uploaded_file($file['tmp_name'])) {
-            throw new ValidationException(['アップロードされたファイルを受け取れませんでした']);
-        }
-
-        $dir = rtrim((string) Config::get('upload_dir'), '/');
-        if (!is_dir($dir) && !@mkdir($dir, 0770, true)) {
-            throw new \RuntimeException("アップロード先を作成できません: {$dir}");
-        }
-        $ext  = preg_match('/\.zip$/i', $file['name']) ? 'zip' : 'tar.gz';
-        $stage = $dir . '/' . bin2hex(random_bytes(12)) . '.' . $ext;
-        if (!move_uploaded_file($file['tmp_name'], $stage)) {
-            throw new \RuntimeException('アップロードファイルを保存できません');
-        }
-        chmod($stage, 0640);
-
-        $sha = hash_file('sha256', $stage);
+        if(class_exists(\Pjas\Http\Auth::class))\Pjas\Http\Auth::requireSite($service['name'],'operator');
+        $source=self::stageUpload($file);$stage=$source['path'];$sha=$source['sha256'];
         $job = JobRepo::create((int) $service['id'], 'deploy', $actor, basename((string) $file['name']));
 
         try {
@@ -86,9 +63,49 @@ final class Deployer
         return $job;
     }
 
+    public static function stageUpload(array $file): array
+    {
+        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            throw new ValidationException(['ファイルのアップロードに失敗しました (エラーコード ' . ($file['error'] ?? '?') . ')']);
+        }
+        if ($file['size'] > (int) Config::get('max_upload')) {
+            throw new ValidationException(['ファイルの大きさが上限を超えています']);
+        }
+        if (!preg_match(self::ARCHIVE_RE, (string) $file['name'])) {
+            throw new ValidationException(['.zip / .tar.gz / .tgz の圧縮ファイルだけアップロードできます']);
+        }
+        if (!is_uploaded_file($file['tmp_name'])) {
+            throw new ValidationException(['アップロードされたファイルを受け取れませんでした']);
+        }
+
+        $dir = rtrim((string) Config::get('upload_dir'), '/');
+        if (!is_dir($dir) && !@mkdir($dir, 0770, true)) {
+            throw new \RuntimeException("アップロード先を作成できません: {$dir}");
+        }
+        $ext  = preg_match('/\.zip$/i', $file['name']) ? 'zip' : 'tar.gz';
+        $stage = $dir . '/' . bin2hex(random_bytes(12)) . '.' . $ext;
+        if (!move_uploaded_file($file['tmp_name'], $stage)) {
+            throw new \RuntimeException('アップロードファイルを保存できません');
+        }
+        chmod($stage, 0640);
+
+        return ['type'=>'upload','path'=>$stage,'sha256'=>hash_file('sha256',$stage),'name'=>basename((string)$file['name'])];
+    }
+    public static function fromPrepared(array $service,string $token,array $opts,string $actor): int
+    {
+        \Pjas\Http\Auth::requireSite($service['name'],'operator');
+        if(!preg_match('/\A[a-f0-9]{32}\z/D',$token))throw new ValidationException(['公開準備の番号が不正です']);
+        $job=JobRepo::create((int)$service['id'],'deploy',$actor,(string)($opts['label']??'確認済みバージョン'));
+        try{AgentClient::call('deploy.start',['job_id'=>$job,'service'=>self::spec($service),'source'=>['type'=>'prepared','token'=>$token],
+            'label'=>(string)($opts['label']??''),'auto_rollback'=>!empty($opts['auto_rollback']),'maintenance'=>!empty($opts['maintenance'])],$actor);}
+        catch(\Throwable $e){\Pjas\Support\Db::run("UPDATE jobs SET state='failed',detail=?,finished_at=datetime('now') WHERE id=?",[$e->getMessage(),$job]);throw $e;}
+        Audit::log($actor,'service.deploy',$service['name'],['job'=>$job,'source'=>'prepared']);return $job;
+    }
+
     /** 登録済みの取得元からブランチ・タグを取得する。HEADは既定ブランチ。 */
     public static function fromGit(array $service, string $ref, array $opts, string $actor): int
     {
+        if(class_exists(\Pjas\Http\Auth::class))\Pjas\Http\Auth::requireSite($service['name'],'operator');
         try { $ref = GitHubRepository::ref($ref); }
         catch (\InvalidArgumentException $e) { throw new ValidationException([$e->getMessage()]); }
         $job = JobRepo::create((int) $service['id'], 'deploy', $actor, 'git:' . $ref);
@@ -116,6 +133,7 @@ final class Deployer
      */
     public static function adopt(array $service, string $actor, array $daemons = []): int
     {
+        if(class_exists(\Pjas\Http\Auth::class))\Pjas\Http\Auth::requireSite($service['name'],'operator');
         if (ReleaseRepo::current((int) $service['id']) !== null) {
             throw new ValidationException(['すでに公開中のバージョンがあります。取り込みは初回のみ行えます']);
         }
@@ -137,6 +155,7 @@ final class Deployer
 
     public static function rollback(array $service, string $tag, string $actor, ?string $expectedCurrent = null): int
     {
+        if(class_exists(\Pjas\Http\Auth::class))\Pjas\Http\Auth::requireSite($service['name'],'operator');
         if ((ReleaseRepo::find((int) $service['id'], $tag)['state'] ?? '') === 'failed') {
             throw new ValidationException(['失敗したバージョンには戻せません']);
         }

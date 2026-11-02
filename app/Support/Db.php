@@ -21,6 +21,7 @@ final class Db
                 PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             ]);
+            @chmod($path,0600);
             self::$pdo->exec('PRAGMA foreign_keys = ON');
             self::$pdo->exec('PRAGMA busy_timeout = 5000');
         }
@@ -30,6 +31,10 @@ final class Db
     public static function migrate(string $schemaFile): void
     {
         self::conn()->exec(file_get_contents($schemaFile));
+        $columns = array_column(self::all('PRAGMA table_info(users)'), 'name');
+        foreach (['totp_last_step'=>'INTEGER NOT NULL DEFAULT -1','scope_all'=>'INTEGER NOT NULL DEFAULT 1','enabled'=>'INTEGER NOT NULL DEFAULT 1'] as $name=>$definition) {
+            if (!in_array($name,$columns,true)) self::conn()->exec("ALTER TABLE users ADD COLUMN {$name} {$definition}");
+        }
     }
 
     /** @return array<int,array<string,mixed>> */

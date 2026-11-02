@@ -148,3 +148,8 @@ label.inline + .hint{margin-left:24px}
 .coverage-host summary .tag{margin-left:6px}
 .coverage-host small{display:block;margin-top:4px}
 @media(max-width:480px){.error-page{padding:16px}.error-panel{padding:30px 25px;border-radius:22px}}
+.auth-page{min-height:100vh;display:grid;place-items:center;padding:24px}.auth-panel{width:min(100%,420px);padding:32px;background:var(--panel);border:1px solid var(--line);border-radius:20px}.table-scroll{overflow-x:auto}.card>summary{cursor:pointer}.hint{overflow-wrap:anywhere}.card small{display:block}#totp-qr{padding:12px;background:#fff;width:204px;border-radius:12px;margin:18px 0}#totp-qr img,#totp-qr canvas{display:block}
+
+/* Narrow screens use a labelled menu, so all actions remain reachable. */
+.app{grid-template-columns:232px minmax(0,1fr)}.main,.side,.card,.field{min-width:0}.side-links{display:flex;flex-direction:column;flex:1;gap:4px;min-width:0}.side-toggle{display:none}.table-scroll{max-width:100%;overflow:auto}select{max-width:100%;min-width:0}pre{max-width:100%;overflow:auto}td{overflow-wrap:anywhere}
+@media(max-width:820px){.app{grid-template-columns:minmax(0,1fr)}.side{flex-direction:row;flex-wrap:wrap;justify-content:space-between;overflow:visible;align-items:center}.side-toggle{display:inline-flex}.side .side-links{display:none;flex-basis:100%}.side.is-open .side-links{display:flex}.side .sep,.side .foot{display:block}.side .foot{margin-top:12px}.side .nav{white-space:normal}.main{max-width:100%}.card>table,details>table{display:block;max-width:100%;overflow:auto}.tabs{gap:4px}.tabs .tab{padding:7px 9px}}

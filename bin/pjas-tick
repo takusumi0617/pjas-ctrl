@@ -1,0 +1,8 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+require dirname(__DIR__).'/app/bootstrap.php';
+use Pjas\Support\Config;
+if(PHP_SAPI!=='cli')exit(1);
+$lock=fopen(dirname((string)Config::get('db')).'/tick.lock','c');if(!$lock||!flock($lock,LOCK_EX|LOCK_NB))exit(0);
+try{echo json_encode(Pjas\Domain\Automation::tick(),JSON_UNESCAPED_UNICODE)."\n";}catch(Throwable $e){fwrite(STDERR,$e->getMessage()."\n");exit(1);}finally{flock($lock,LOCK_UN);fclose($lock);}

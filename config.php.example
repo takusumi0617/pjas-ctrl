@@ -26,4 +26,7 @@ return [
 
     // 管理画面の表示名
     'site_name'     => 'pjas-ctrl',
+    'timezone'      => 'Asia/Tokyo',
+    'force_https'   => true,
+    'security_key'  => '/var/lib/pjas/security.key',
 ];

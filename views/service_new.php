@@ -21,14 +21,15 @@ $v = static fn(string $k, string $d = '') => View::e((string) ($in[$k] ?? $d));
   <div class="card step"><div class="card-h">公開するファイルを選ぶ</div><div class="card-b">
     <div class="field"><label for="source">ファイルの取得元</label><select name="source" id="source">
       <option value="upload" <?= $selectedSource === 'upload' ? 'selected' : '' ?>>パソコンから圧縮ファイルをアップロードする (.zip / .tar.gz)</option>
-      <option value="git" <?= $selectedSource === 'git' ? 'selected' : '' ?>>公開GitHubリポジトリから取得する</option>
+      <option value="git" <?= $selectedSource === 'git' ? 'selected' : '' ?>>GitHubリポジトリから取得する</option>
     </select></div>
     <fieldset id="f-upload" class="source-fields" <?= $selectedSource === 'git' ? 'hidden disabled' : '' ?>>
       <div class="field"><label>アップロードするファイル</label><input type="file" name="archive" accept=".zip,.tar.gz,.tgz"><div class="hint">ファイルを選ぶと登録後に初回公開を行います。空欄ならサイトの登録だけを行います。</div></div>
     </fieldset>
     <fieldset id="f-git" class="source-fields" <?= $selectedSource !== 'git' ? 'hidden disabled' : '' ?>>
-      <div class="field"><label>公開GitHubリポジトリ</label><input name="github_repo" value="<?= $v('github_repo') ?>" placeholder="https://github.com/所有者/リポジトリ" <?= $selectedSource === 'git' ? 'required' : '' ?>></div>
+      <div class="field"><label>GitHubリポジトリ</label><input name="github_repo" value="<?= $v('github_repo') ?>" placeholder="https://github.com/所有者/リポジトリ" <?= $selectedSource === 'git' ? 'required' : '' ?>></div>
       <div class="field"><label>取得するブランチ・タグ（任意）</label><input name="github_ref" value="<?= $v('github_ref') ?>" placeholder="空欄ならリポジトリの既定ブランチ"></div>
+      <div class="field"><label>GitHubへの接続方法</label><select name="github_auth"><option value="public" <?= ($in['github_auth']??'public')==='public'?'selected':'' ?>>公開リポジトリ（認証なし）</option><option value="github_app" <?= ($in['github_auth']??'')==='github_app'?'selected':'' ?>>GitHub App（非公開にも対応）</option></select><div class="hint">非公開の場合は先に管理メニューの「接続設定」でGitHub Appを登録し、対象リポジトリを許可します。</div></div>
       <label class="inline"><input type="checkbox" name="read_manifest" id="read-manifest" value="1" <?= !empty($in['read_manifest']) ? 'checked' : '' ?>>.pjasから設定を読み込む</label>
       <div class="hint">チェックした場合だけ、サイト名・Apache設定・デーモン・cronなどを読み込みます。</div>
       <button class="btn" type="submit" id="manifest-load" formaction="/services/github-preview" formnovalidate <?= empty($in['read_manifest']) ? 'hidden disabled' : '' ?>>設定を読み込んで確認する</button>

@@ -63,7 +63,44 @@ $daemon  = new Daemon($cfg);
 
 /** op 登録表。ここに無いものは実行できない。 */
 $manifest = new \Pjas\Agentd\ManifestImport($cfg);
+$operations=new \Pjas\Agentd\Ops\Operations($cfg,$paths);
+$backups=new \Pjas\Agentd\Ops\Backups($cfg,$paths);
+$githubApp=new \Pjas\Agentd\GitHubApp($cfg);
+$review=new \Pjas\Agentd\ReleaseReview($cfg,$paths);
+$preview=new \Pjas\Agentd\Ops\Preview($cfg,$paths);
+$repositories=new \Pjas\Agentd\GitRepositories($cfg);
 $registry = [
+    'ops.run'=>[(new \Pjas\Agentd\Ops\AsyncTasks($cfg,$paths)),'start'],
+    'ops.settings'=>[$operations,'settings'],
+    'ops.save'=>[$operations,'saveSettings'],
+    'ops.notify'=>[$operations,'notify'],
+    'ops.resources'=>[$operations,'resources'],
+    'ops.certificate'=>[$operations,'certificate'],
+    'ops.logs'=>[$operations,'logs'],
+    'github.app.status'=>static fn(array $p):array=>$githubApp->status(),
+    'github.app.save'=>[$githubApp,'save'],
+    'github.app.convert'=>[$githubApp,'convert'],
+    'github.app.test'=>[$githubApp,'test'],
+    'github.webhook.verify'=>[$githubApp,'verifyRequest'],
+    'github.connection'=>[$repositories,'connection'],
+    'backup.list'=>[$backups,'listing'],
+    'backup.create'=>[$backups,'create'],
+    'backup.restore'=>[$backups,'restore'],
+    'backup.download'=>[$backups,'download'],
+    'backup.key'=>[$backups,'keyInfo'],
+    'backup.prune'=>[$backups,'prune'],
+    'deploy.cleanup'=>[$review,'cleanup'],
+    'deploy.prepare'=>[$deploy,'prepareStart'],
+    'deploy.review'=>[$review,'details'],
+    'deploy.preparations'=>[$review,'listing'],
+    'deploy.diff'=>[$review,'diff'],
+    'apache.restore'=>[$vhost,'restore'],
+    'apache.history'=>static fn(array $p):array=>['history'=>(new \Pjas\Agentd\ApacheHistory($cfg))->listing(\Pjas\Agentd\Spec::name($p['service']['name']??''))],
+    'preview.save'=>[$preview,'save'],
+    'preview.status'=>[$preview,'status'],
+    'preview.publish'=>[$preview,'publish'],
+    'preview.credentials'=>[$preview,'credentials'],
+    'preview.remove'=>[$preview,'remove'],
     'github.validate' => [$manifest,'validate'],
     'github.inspect' => [$manifest,'inspect'],
     'github.configure' => [$manifest,'configure'],

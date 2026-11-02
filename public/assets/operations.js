@@ -1,0 +1,5 @@
+(() => {
+ document.querySelectorAll('[data-switch]').forEach(select=>{const sync=()=>{document.querySelectorAll('[data-switch-panel="'+select.dataset.switch+'"]').forEach(panel=>{const active=panel.dataset.switchValue===select.value;panel.hidden=!active;if(panel.tagName==='FIELDSET')panel.disabled=!active;else panel.querySelectorAll('input,select').forEach(input=>input.disabled=!active);});};select.addEventListener('change',sync);sync();});
+ document.querySelectorAll('[data-generate-for]').forEach(button=>button.addEventListener('click',()=>{const input=document.getElementById(button.dataset.generateFor);const bytes=new Uint8Array(32);crypto.getRandomValues(bytes);input.value=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');input.type='text';input.focus();}));
+ document.querySelectorAll('form[method="post"]').forEach(form=>form.addEventListener('submit',event=>{if(!form.reportValidity())return;const submit=event.submitter;if(!submit)return;setTimeout(()=>{submit.disabled=true;submit.dataset.originalText=submit.textContent;submit.textContent='処理しています…';},0);}));
+})();

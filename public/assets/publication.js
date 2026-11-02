@@ -1,0 +1,1 @@
+(() => {const mode=document.getElementById('publication-mode'), time=document.getElementById('publication-time');if(!mode||!time)return;const sync=()=>{time.hidden=mode.value!=='scheduled';time.querySelector('input').required=!time.hidden;time.querySelector('input').disabled=time.hidden;};mode.addEventListener('change',sync);sync();})();

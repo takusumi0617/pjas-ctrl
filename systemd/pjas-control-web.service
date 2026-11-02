@@ -1,0 +1,16 @@
+[Unit]
+Description=Isolated HTTP frontend for pjas-ctrl
+After=php8.4-fpm.service pjas-agentd.service
+Requires=php8.4-fpm.service
+[Service]
+Type=simple
+ExecStart=/usr/sbin/apache2 -f /etc/pjas-control/apache.conf -DFOREGROUND
+Restart=on-failure
+RuntimeDirectory=pjas-control-web
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ReadWritePaths=/run/pjas-control-web /var/log/pjas
+[Install]
+WantedBy=multi-user.target

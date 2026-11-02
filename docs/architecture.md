@@ -9,7 +9,7 @@
 
 | 原則 | 内容 |
 |---|---|
-| 権限分離 | Web UI は `www-data` で動き **root を持たない**。特権操作は専用デーモン `pjas-agentd` (root) に Unix ソケット経由で依頼する |
+| 権限分離 | Web UI は専用の `pjas-control` で動き **root を持たない**。特権操作は専用デーモン `pjas-agentd` (root) に Unix ソケット経由で依頼する |
 | ホワイトリスト実行 | エージェントは「操作名 + 型付きパラメータ」しか受け取らない。任意コマンド文字列は一切通さない |
 | 原子的デプロイ | `releases/<timestamp>` に展開 → 検証 → `current` シンボリックリンクを付け替え。ロールバックはリンクを戻すだけ |
 | 設定はテンプレート生成 | Apache vhost は手書きさせず、テンプレート + 変数から生成 → `apachectl configtest` → `graceful` |
@@ -27,7 +27,7 @@
                  └──────────────┬──────────────┘
                                 │ HTTP(S) 内部 API
                  ┌──────────────▼──────────────┐
-                 │  pjas-ctrl API (www-data)    │
+                 │  pjas-ctrl (pjas-control)    │
                  │  ジョブ登録 / 検証 / 監査     │
                  └──────┬───────────────┬──────┘
                         │ SQLite        │ Unix domain socket
@@ -233,3 +233,8 @@ releases/current 切替とロールバック、vhost 生成と差分承認・con
 
 未実装（次の段）: TOTP 二要素認証、API トークン認証での外部 API、shared/.env の画面編集、
 vhost 変更の第二承認フロー、リリースごとのメトリクス表示。
+
+
+## 追加した運用機能
+
+GitHub App・暗号化バックアップ・公開前の差分確認・日時指定公開・試験公開・サイトごとの権限・TOTPなどの実装と初回準備は [運用機能の使い方](operations.md) を参照してください。管理画面は専用のPHP-FPMとHTTPサービスへ分け、本番サイトのwww-dataを特権RPCグループから外します。GitHub Appの秘密鍵・バックアップ用鍵はroot専用領域、TOTPの暗号鍵は管理画面専用領域へ保管します。

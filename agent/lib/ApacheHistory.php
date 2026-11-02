@@ -110,6 +110,16 @@ final class ApacheHistory
         return trim(self::git(['rev-parse', '--verify', 'HEAD'], $dir)['out']);
     }
 
+    public function snapshot(string $name,string $revision): string
+    {
+        if(!preg_match('/\A[a-f0-9]{40}\z/D',$revision))throw new OpException('履歴番号が不正です');
+        $dir=$this->repository($name,false);if($dir===null)throw new OpException('Git履歴がありません');
+        self::git(['merge-base','--is-ancestor',$revision,'HEAD'],$dir);
+        $state=json_decode(self::git(['show',$revision.':state.json'],$dir)['out'],true,512,JSON_THROW_ON_ERROR);
+        if(($state['service']??'')!==$name||empty($state['present']))throw new OpException('この履歴には復元する公開設定がありません');
+        return self::git(['show',$revision.':apache.conf'],$dir)['out'];
+    }
+
     public function listing(string $name): array
     {
         $dir = $this->repository($name, false);

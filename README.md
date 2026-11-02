@@ -5,6 +5,8 @@
 
 設計の詳細は [docs/architecture.md](docs/architecture.md)、
 導入手順は [docs/install.md](docs/install.md)。
+GitHub App・バックアップ・予約公開など13機能の初回準備と使い方は
+[docs/operations.md](docs/operations.md) を参照してください。
 
 ## 構成
 
@@ -29,7 +31,7 @@ tests/             web と agent の vhost 生成一致テスト
 
 ## 権限の境界
 
-- 管理画面と API は `www-data` で動き、**root 権限を持たない**
+- 管理画面は専用の `pjas-control` ユーザーで動き、**root 権限を持たない**
 - root 操作は `pjas-agentd` に Unix ソケット経由の RPC で依頼する
 - 送れるのは登録済み op 名 + パラメータのみ。**任意コマンド文字列も設定ファイル本文も送れない**
 - agent は受け取った値を `agent/lib/Spec.php` で再検証する。web 側の検証は UX のためのもので、権限判断はしない
@@ -54,12 +56,12 @@ tests/             web と agent の vhost 生成一致テスト
 ## よく使う操作
 
 ```bash
-sudo -u www-data bin/pjasctl services
-sudo -u www-data bin/pjasctl deploy billing ./billing-1.8.2.zip --label v1.8.2
-sudo -u www-data bin/pjasctl adopt billing            # 既存ファイルをそのまま管理下に置く
-sudo -u www-data bin/pjasctl rollback billing 20260814-183012
-sudo -u www-data bin/pjasctl vhost billing            # 差分表示
-sudo -u www-data bin/pjasctl vhost billing --apply    # 適用
+sudo -u pjas-control bin/pjasctl services
+sudo -u pjas-control bin/pjasctl deploy billing ./billing-1.8.2.zip --label v1.8.2
+sudo -u pjas-control bin/pjasctl adopt billing            # 既存ファイルをそのまま管理下に置く
+sudo -u pjas-control bin/pjasctl rollback billing 20260814-183012
+sudo -u pjas-control bin/pjasctl vhost billing            # 差分表示
+sudo -u pjas-control bin/pjasctl vhost billing --apply    # 適用
 ```
 
 ## テスト

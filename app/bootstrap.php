@@ -19,15 +19,17 @@ spl_autoload_register(static function (string $class): void {
 Config::load(PJAS_ROOT . '/config.php');
 
 if (PHP_SAPI !== 'cli') {
+    ini_set('session.use_strict_mode','1');
     session_name((string) Config::get('session_name', 'pjasctrl'));
     session_set_cookie_params([
         'httponly' => true,
         'samesite' => 'Lax',
-        'secure'   => (($_SERVER['HTTPS'] ?? '') !== '') || (($_SERVER['SERVER_PORT'] ?? '') === '443'),
+        'secure'   => (bool)Config::get('force_https',true) || (($_SERVER['HTTPS'] ?? '') !== '') || (($_SERVER['SERVER_PORT'] ?? '') === '443'),
         'path'     => '/',
     ]);
     session_start();
 
+    header('Cache-Control: no-store');
     header('X-Frame-Options: DENY');
     header('X-Content-Type-Options: nosniff');
     header('Referrer-Policy: same-origin');

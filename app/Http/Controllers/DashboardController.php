@@ -28,6 +28,9 @@ final class DashboardController
             'week'      => (int) (Db::one("SELECT COUNT(*) c FROM jobs WHERE type='deploy' AND started_at > datetime('now','-7 days')")['c'] ?? 0),
         ];
 
+        if(!\Pjas\Http\Auth::can('owner')){
+            $ids=array_column($services,'id');$counts['week']=$ids?(int)Db::one("SELECT COUNT(*) c FROM jobs WHERE type='deploy' AND started_at>datetime('now','-7 days') AND service_id IN (".implode(',',array_fill(0,count($ids),'?')).')',$ids)['c']:0;
+        }
         View::render('dashboard', [
             'title'    => 'ホーム',
             'services' => $services,

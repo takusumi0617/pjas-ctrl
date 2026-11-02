@@ -93,13 +93,24 @@ post_max_size = 520M
 max_execution_time = 0        ; SSE ストリーム用 (fastcgi_read_timeout も伸ばす)
 ```
 
+## 6.5. 管理画面の分離と追加機能の初回準備
+
+ログイン前に次を実行します。既存環境の更新時も必要です。
+
+```bash
+sudo php8.4 /opt/pjas-ctrl/bin/pjas-install-features --check
+sudo php8.4 /opt/pjas-ctrl/bin/pjas-install-features --apply
+```
+
+これ以降、管理画面は専用の `pjas-control` で動きます。管理DB・ソケットを本番の `www-data` から分け、自動確認・予約公開を有効にします。CLIも `sudo -u pjas-control` で実行してください。設定の退避・復旧、GitHub App・試験公開・通知の準備は [運用機能の使い方](operations.md) にまとめています。
+
 ## 7. 動作確認
 
 1. `https://ctrl.example.com/` にログイン
 2. サイドバーの agent 表示が「稼働中」であること
 3. サービスを 1 つ登録 → 「Apache 設定」タブで差分を確認して適用
 4. 小さな zip をデプロイ → ジョブ画面にログが流れ、`current` が張り替わること
-5. `sudo -u www-data php bin/pjasctl services` が同じ状態を返すこと
+5. `sudo -u pjas-control php bin/pjasctl services` が同じ状態を返すこと
 
 ## 8. 運用メモ
 
@@ -108,7 +119,7 @@ max_execution_time = 0        ; SSE ストリーム用 (fastcgi_read_timeout も
 - **既存サービスの取り込み**: 先に `releases/<tag>/` へ現物を移し `current` を張ってから
   pjas-ctrl に登録すると、以降のデプロイとロールバックが揃う
 - **agent が落ちている場合**: 画面は閲覧できるが、デプロイと Apache 操作はすべて拒否される
-- **定期処理**: コード更新後に `sudo -u www-data php8.4 bin/pjas-migrate` でDBを更新する。
+- **定期処理**: コード更新後に `sudo -u pjas-control php8.4 bin/pjas-migrate` でDBを更新する。
   定期処理は `/etc/cron.d/pjas-task-*`、実行内容は `/var/lib/pjas/cron/`、ログは `/var/log/pjas/cron/` に保存される
 
 ## 常駐プログラムの管理

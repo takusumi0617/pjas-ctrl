@@ -19,6 +19,8 @@ use Pjas\Support\Labels;
   <?= $job['detail'] ? ' · ' . View::e($job['detail']) : '' ?>
 </div>
 
+<?php if(!empty($prepared) && \Pjas\Http\Auth::canSite($service,'operator')): ?><div class="note ok">公開準備ができました。<a class="btn p" href="/deploy/review?service=<?= urlencode($service) ?>&amp;token=<?= View::e($prepared['token']) ?>">変更点を確認して次へ進む</a></div><?php endif; ?>
+<?php if($service && in_array($job['type'],['backup','data-restore','preview'],true) && \Pjas\Http\Auth::canSite($service,'operator')): ?><p><a class="btn p" href="/services/<?= View::e($service) ?>/operations?section=<?= $job['type']==='preview'?'preview':'backups' ?>"><?= $job['type']==='preview'?'試験URL・ログイン情報を確認する':'バックアップ・復元の結果を確認する' ?></a></p><?php endif; ?>
 <div class="card"><div class="card-h">進み具合<span class="spacer"></span>
   <span class="mono muted" id="stream-state">接続しています…</span></div>
   <div class="card-b">
@@ -27,5 +29,5 @@ use Pjas\Support\Labels;
   </div>
 </div>
 
-<div id="job-meta" data-id="<?= (int) $job['id'] ?>" data-state="<?= View::e($job['state']) ?>" hidden></div>
+<div id="job-meta" data-id="<?= (int) $job['id'] ?>" data-state="<?= View::e($job['state']) ?>" data-type="<?= View::e($job['type']) ?>" hidden></div>
 <script src="/assets/job.js" defer></script>

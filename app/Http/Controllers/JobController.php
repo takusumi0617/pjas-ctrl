@@ -11,11 +11,16 @@ final class JobController
 {
     public function show(array $a): void
     {
-        $job = JobRepo::sync((int) $a['id']);
+        $job = JobRepo::find((int) $a['id']);
         if ($job === null) {
             View::error(404, '指定された作業の記録が見つかりません。ホームから作業の一覧を確認してください。');
             return;
         }
+        if($job['service_id']){ $site=Db::one('SELECT name FROM services WHERE id=?',[$job['service_id']]);if($site)\Pjas\Http\Auth::requireSite($site['name']); }
+        if(!$job['service_id']&&!\Pjas\Http\Auth::can('owner')){View::error(403);return;}
+        $job=JobRepo::sync((int)$a['id'])??$job;
+        $prepared=null;
+        if($job['type']==='prepare'&&$job['state']==='succeeded'&&is_file(JobRepo::statusPath((int)$job['id'])))$prepared=json_decode(file_get_contents(JobRepo::statusPath((int)$job['id'])),true)['review']??null;
         $svc = $job['service_id']
             ? Db::one('SELECT name FROM services WHERE id = ?', [$job['service_id']])['name'] ?? ''
             : '';
@@ -23,6 +28,7 @@ final class JobController
             'title'   => "作業 #{$job['id']}",
             'job'     => $job,
             'service' => $svc,
+            'prepared'=> $prepared,
             'log'     => JobRepo::log((int) $job['id']),
         ]);
     }
@@ -31,7 +37,10 @@ final class JobController
     public function stream(array $a): void
     {
         $id = (int) $a['id'];
-        if (JobRepo::find($id) === null) {
+        $job=JobRepo::find($id);
+        if($job&&$job['service_id']){ $site=Db::one('SELECT name FROM services WHERE id=?',[$job['service_id']]);if($site)\Pjas\Http\Auth::requireSite($site['name']); }
+        if($job&&!$job['service_id']&&!\Pjas\Http\Auth::can('owner')){View::error(403);return;}
+        if ($job === null) {
             http_response_code(404);
             return;
         }
