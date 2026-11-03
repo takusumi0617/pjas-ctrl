@@ -28,6 +28,9 @@ final class SiteLifecycle
         $r=$this->record(Spec::name($p['service']['name']??''));
         return array_intersect_key($r,array_flip(['state','mode','expires','deleted_at','backup','error']));
     }
+    private function references(string $text,string $base):bool{
+        return preg_match('~'.preg_quote($base,'~').'(?=/|[\\s"\x27]|$)~',$text)===1;
+    }
     public function plan(array $p):array{
         $n=$this->name($p);$base=$this->paths->base($n);$conf=$this->cfg['apache_sites'].'/pjas-'.$n.'.conf';
         if(is_link($base)||!is_dir($base))throw new OpException('サイトの保存先が見つからないか、通常のフォルダではありません');
@@ -36,11 +39,11 @@ final class SiteLifecycle
         $blockers=[];if(!empty($this->store->read('preview-state-'.$n)))$blockers[]='先に試験公開の画面から試験URLの公開を終了してください';
         foreach(glob(($this->cfg['apache_sites_enabled']??dirname($conf).'/../sites-enabled').'/*.conf')?:[] as $f){
             if(basename($f)===basename($conf))continue;
-            if(str_contains((string)file_get_contents($f),$base))$blockers[]='別の公開設定がこのサイトのファイルを使っています: '.basename($f);
+            if($this->references((string)file_get_contents($f),$base))$blockers[]='別の公開設定がこのサイトのファイルを使っています: '.basename($f);
         }
         $known=array_column($daemons,'unit');
-        foreach(glob($this->cfg['daemon_unit_dir'].'/*.service')?:[] as $f){if(!in_array(basename($f),$known,true)&&str_contains((string)file_get_contents($f),$base))$blockers[]='関連付け外の常駐プログラムが使っています: '.basename($f);}
-        foreach(glob($this->cfg['cron_dir'].'/*')?:[] as $f){if(is_file($f)&&str_contains((string)file_get_contents($f),$base))$blockers[]='管理対象外の定期処理が使っています: '.basename($f);}
+        foreach(glob($this->cfg['daemon_unit_dir'].'/*.service')?:[] as $f){if(!in_array(basename($f),$known,true)&&$this->references((string)file_get_contents($f),$base))$blockers[]='関連付け外の常駐プログラムが使っています: '.basename($f);}
+        foreach(glob($this->cfg['cron_dir'].'/*')?:[] as $f){if(is_file($f)&&$this->references((string)file_get_contents($f),$base))$blockers[]='管理対象外の定期処理が使っています: '.basename($f);}
         return ['service'=>$n,'paused'=>!empty((new \Pjas\Agentd\SitePause($this->cfg))->read($n)['enabled']),'daemons'=>array_map(static fn($r)=>['unit'=>$r['unit'],'label'=>$r['label'],'managed'=>(bool)$r['managed']],$daemons),'tasks'=>$tasks,'blockers'=>$blockers,'fingerprint'=>hash('sha256',json_encode([$daemons,$tasks,$blockers,is_file($conf)?hash_file('sha256',$conf):null]))];
     }
     public function start(array $p):array{
