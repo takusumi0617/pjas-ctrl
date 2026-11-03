@@ -63,7 +63,9 @@ final class Fs
         if (filesize($file) > self::MAX_READ) {
             throw new OpException('ファイルが大きすぎます (256KB まで)');
         }
-        $body = (string) file_get_contents($file);
+        $r=\Pjas\Agentd\Proc::run(['/usr/bin/python3',dirname(__DIR__).'/lib/read_text.py',$file,(string)self::MAX_READ],null,30,$this->cfg['web_user'],['PATH'=>'/usr/bin:/bin','LANG'=>'C.UTF-8']);
+        if($r['code']!==0)throw new OpException('ファイルを実行ユーザーの権限で読み取れません');
+        $body=$r['out'];
         if (!mb_check_encoding($body, 'UTF-8')) {
             throw new OpException('テキストファイルではありません');
         }
@@ -93,15 +95,13 @@ final class Fs
             $this->paths->assertInside($name, dirname($file));
         }
 
-        // 一時ファイル → rename で原子的に置き換える
-        $tmp = $file . '.pjas-tmp';
-        if (file_put_contents($tmp, $content) === false || !rename($tmp, $file)) {
-            @unlink($tmp);
-            throw new OpException('書き込みに失敗しました');
-        }
-        chown($file, (string) $this->cfg['web_user']);
-        chgrp($file, (string) $this->cfg['web_group']);
-        chmod($file, 0640);
+        // Open the private input as root, then pass only its descriptor to the unprivileged writer.
+        $store=new \Pjas\Agentd\ControlStore($this->cfg);$input=$store->directory('work').'/write-'.bin2hex(random_bytes(16));
+        $fp=fopen($input,'x');if(!$fp)throw new OpException('書き込みの準備に失敗しました');chmod($input,0600);fwrite($fp,$content);fclose($fp);
+        try{
+            $r=\Pjas\Agentd\Proc::run(['/usr/bin/python3',dirname(__DIR__).'/lib/write_shared.py',$this->paths->base($name),$rel],null,30,$this->cfg['web_user'],['PATH'=>'/usr/bin:/bin','LANG'=>'C.UTF-8'],$input);
+            if($r['code']!==0)throw new OpException('共有ファイルを書き込めません。保存先と権限を確認してください');
+        }finally{@unlink($input);}
 
         return ['path' => $rel, 'bytes' => strlen($content)];
     }

@@ -13,7 +13,7 @@ use Pjas\Agentd\ManifestImport;
 use Pjas\Agentd\SharedDatabases;
 require_once dirname(__DIR__) . '/lib/SharedDatabases.php';
 require_once dirname(__DIR__) . '/lib/ReleaseReview.php';
-require_once __DIR__.'/Backups.php';
+require_once __DIR__.'/Backups.php';require_once dirname(__DIR__).'/lib/SiteLayout.php';
 
 final class Deploy
 {
@@ -102,7 +102,7 @@ final class Deploy
         if (is_link($path)) throw new OpException('公開作業のロックが不正です');
         $lock = fopen($path, 'c');
         if (!$lock || !flock($lock, LOCK_EX)) throw new OpException('このサイトの公開作業をロックできません');
-        try{\Pjas\Agentd\SiteLifecycleGuard::active($this->cfg,$name);}catch(\Throwable $e){flock($lock,LOCK_UN);fclose($lock);throw $e;}
+        try{\Pjas\Agentd\SiteLifecycleGuard::active($this->cfg,$name);\Pjas\Agentd\SiteLayout::protect($this->cfg+['www_root'=>dirname($this->paths->base($name))],$name);}catch(\Throwable $e){flock($lock,LOCK_UN);fclose($lock);throw $e;}
         return $lock;
     }
 
@@ -419,16 +419,13 @@ final class Deploy
 
     private function extractArchive(string $name, array $src, string $relDir, JobLog $log): array
     {
-        $tmp = $this->paths->releases($name) . '/.tmp-' . bin2hex(random_bytes(6));
-        mkdir($tmp, 0755, true);
-
+        $private=new \Pjas\Agentd\ControlStore($this->cfg);
+        $work=$private->directory('work').'/archive-'.bin2hex(random_bytes(16));mkdir($work,0700);
+        $tmp=$work.'/tree';mkdir($tmp,0700);
         try {
-            if (str_ends_with($src['path'], '.zip')) {
-                // -o: 上書き。unzip はエントリ名の先頭 / と .. を取り除く
-                Proc::must(['/usr/bin/unzip', '-q', '-o', $src['path'], '-d', $tmp], null, 300);
-            } else {
-                Proc::must(['/bin/tar', '-xzf', $src['path'], '-C', $tmp, '--no-same-owner', '--no-same-permissions'], null, 300);
-            }
+            if(!copy($src['path'],$work.'/source')||!hash_equals($src['sha256'],hash_file('sha256',$work.'/source')))throw new OpException('圧縮ファイルが確認後に変更されています');
+            chmod($work.'/source',0600);
+            Proc::must(['/usr/bin/python3',dirname(__DIR__).'/lib/extract_archive.py',$work.'/source',$tmp],null,300);
             $log->line('展開しました: ' . basename($src['path']));
 
             $this->assertNoEscape($tmp, $log);
@@ -448,10 +445,11 @@ final class Deploy
                 Proc::run(['/bin/rm', '-rf', '--', $tmp], null, 60);
             }
         } catch (\Throwable $e) {
-            Proc::run(['/bin/rm', '-rf', '--', $tmp], null, 60);
+            Proc::run(['/bin/rm', '-rf', '--', $work], null, 60);
             throw $e;
         }
 
+        Proc::run(['/bin/rm','-rf','--',$work],null,120);
         return [
             'source' => 'upload:' . ($src['name'] ?? basename($src['path'])),
             'sha256' => $src['sha256'],

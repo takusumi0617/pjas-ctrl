@@ -70,9 +70,11 @@ final class Operations
         return ['domain'=>$domain,'names'=>$names,'matches'=>$matches,'valid_from'=>$cert['validFrom_time_t'],'expires'=>$cert['validTo_time_t'],'days'=>(int)floor(($cert['validTo_time_t']-time())/86400),
             'valid'=>$matches&&$cert['validFrom_time_t']<=time()&&$cert['validTo_time_t']>time(),'issuer'=>$cert['issuer']['O']??$cert['issuer']['CN']??''];
     }
-    private function tail(string $file,string $query): string
+    private function tail(string $file,string $query,bool $unprivileged=false): string
     {
-        if(!is_file($file)||!is_readable($file))return 'まだログがありません。';$fp=fopen($file,'rb');$size=filesize($file);if($size>128*1024)fseek($fp,-128*1024,SEEK_END);$body=stream_get_contents($fp);fclose($fp);
+        if(!is_file($file)||!is_readable($file))return 'まだログがありません。';
+        if($unprivileged){$r=Proc::run(['/usr/bin/python3',dirname(__DIR__).'/lib/read_text.py',$file,'131072','tail'],null,20,$this->cfg['web_user'],['PATH'=>'/usr/bin:/bin','LANG'=>'C.UTF-8']);if($r['code']!==0)throw new OpException('ログを実行ユーザーの権限で読み取れません');$lines=preg_split('/\R/',$r['out']);if($query!=='')$lines=array_filter($lines,static fn($l)=>stripos($l,$query)!==false);return self::redact(implode("\n",array_slice($lines,-300)));}
+        $fp=fopen($file,'rb');$size=filesize($file);if($size>128*1024)fseek($fp,-128*1024,SEEK_END);$body=stream_get_contents($fp);fclose($fp);
         $lines=preg_split('/\R/',$body);if($size>128*1024)array_shift($lines);
         if($query!=='')$lines=array_values(array_filter($lines,static fn($l)=>stripos($l,$query)!==false));
         $text=implode("\n",array_slice($lines,-300));
@@ -109,6 +111,6 @@ final class Operations
             $file=rtrim($this->cfg['cron_log_dir']??'/var/log/pjas/cron','/').'/task-'.$id.'.log';
         }else throw new OpException('ログの種類を選んでください');
         if(is_link($file))throw new OpException('ログの保存先が不正です');
-        return ['content'=>$this->tail($file,$query)];
+        return ['content'=>$this->tail($file,$query,in_array($source,['app','cron'],true))];
     }
 }

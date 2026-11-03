@@ -33,13 +33,14 @@ final class Backups
     public function copyDataFile(string $source,string $dest): void
     {
         if(!is_dir(dirname($dest)))mkdir(dirname($dest),0700,true);
-        if(self::sqlite($source)){
-            if(!class_exists('SQLite3'))throw new OpException('SQLiteのバックアップにはPHP SQLite3拡張が必要です');
-            $db=new \SQLite3($source,SQLITE3_OPEN_READONLY);$db->busyTimeout(10000);$copy=new \SQLite3($dest);
-            try{if(!$db->backup($copy))throw new OpException('SQLiteを安全にバックアップできません');}finally{$copy->close();$db->close();}
-        }elseif(!copy($source,$dest))throw new OpException('共有ファイルをバックアップできません');
-        chmod($dest,0600);
+        if(file_exists($dest)||is_link($dest))throw new OpException('バックアップ先が既に存在します');
+        $fp=fopen($dest,'x');if(!$fp)throw new OpException('バックアップ先を作成できません');chmod($dest,0600);fclose($fp);
+        try{
+            $r=Proc::run(['/usr/bin/python3',dirname(__DIR__).'/lib/copy_data.py',$source],null,600,$this->cfg['web_user'],['PATH'=>'/usr/bin:/bin','LANG'=>'C.UTF-8'],null,$dest);
+            if($r['code']!==0)throw new OpException('共有データを安全に読み取れません。実行ユーザーの読み取り権限を確認してください');
+        }catch(\Throwable $e){@unlink($dest);throw $e;}
     }
+
     public function snapshotData(string $name,string $dest,bool $environment=true,array $spec=[]): array
     {
         $shared=$this->paths->shared($name);if(is_link($shared))throw new OpException('共有フォルダが不正です');$count=0;$databases=[];

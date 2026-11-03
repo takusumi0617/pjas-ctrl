@@ -50,6 +50,7 @@ final class Paths
     public function assertInside(string $name, string $path): string
     {
         clearstatcache(true);
+        if(is_link($this->base($name)))throw new OpException('サイトの保存先がリンクになっています');
         $base = realpath($this->base($name));
         $real = realpath($path);
         if ($base === false || $real === false || !str_starts_with($real . '/', $base . '/')) {

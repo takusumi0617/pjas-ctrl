@@ -26,10 +26,11 @@ final class UsersController
             try{
                 $old=$id?Db::one('SELECT * FROM users WHERE id=?',[$id]):null;if($id&&!$old)throw new \InvalidArgumentException('利用者が見つかりません');
                 if($old&&$old['role']==='owner'&&$old['enabled']&&(!$enabled||$role!=='owner')&&(int)Db::one("SELECT COUNT(*) n FROM users WHERE role='owner' AND enabled=1")['n']<=1)throw new \InvalidArgumentException('少なくとも1人の有効な管理者を残してください');
-                if($id){Db::run('UPDATE users SET email=?,role=?,scope_all=?,enabled=? WHERE id=?',[$email,$role,(int)$all,(int)$enabled,$id]);if($pw!=='')Db::run('UPDATE users SET password_hash=? WHERE id=?',[password_hash($pw,PASSWORD_DEFAULT),$id]);}
+                if($id){Db::run('UPDATE users SET email=?,role=?,scope_all=?,enabled=?,auth_version=auth_version+1 WHERE id=?',[$email,$role,(int)$all,(int)$enabled,$id]);if($pw!=='')Db::run('UPDATE users SET password_hash=? WHERE id=?',[password_hash($pw,PASSWORD_DEFAULT),$id]);}
                 else $id=Db::insert('INSERT INTO users(email,password_hash,role,scope_all,enabled) VALUES (?,?,?,?,?)',[$email,password_hash($pw,PASSWORD_DEFAULT),$role,(int)$all,(int)$enabled]);
                 Db::run('DELETE FROM service_access WHERE user_id=?',[$id]);foreach($grants as $siteId=>$grant)Db::run('INSERT INTO service_access(user_id,service_id,role) VALUES (?,?,?)',[$id,$siteId,$grant]);Db::conn()->exec('COMMIT');
             }catch(\Throwable $e){Db::conn()->exec('ROLLBACK');throw $e;}
+            if($id===(int)$actor['id'])Auth::refreshProof($id);
             Audit::log($actor['email'],'user.save',(string)$id,['role'=>$role,'enabled'=>$enabled,'scope_all'=>$all]);View::redirect('/users','利用者とサイトの権限を保存しました');
         }catch(\InvalidArgumentException|\PDOException $e){View::redirect('/users', $e instanceof \PDOException?'保存できませんでした。同じメールアドレスが登録されていないか確認してください':$e->getMessage(),'err');}
     }

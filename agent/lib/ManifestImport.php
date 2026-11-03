@@ -149,9 +149,11 @@ final class ManifestImport
     public static function apache(string $body, array $m, array $spec, string $www): string
     {
         // Apache全文は管理者がプレビューで確認する。サーバー全体や外部ファイルの読み込みは対象外。
-        if (preg_match('/^\s*(?:Include\w*|LoadModule|LoadFile|User|Group|Perl\w*|Lua\w*|Define|UnDefine)\b/im', $body)
+        if (preg_match('/^\s*(?:Include\w*|LoadModule|LoadFile|User|Group|Perl\w*|Lua\w*|Define|UnDefine|RewriteMap|SSLOpenSSLConfCmd|SSLCryptoDevice|SSLPassPhraseDialog|SSLRandomSeed|SSLSessionCache|SSLStaplingCache|ExtFilterDefine|ScriptLog\w*|SuexecUserGroup|AssignUserID|RUidGid)\b/im', $body)
             || preg_match('/^\s*(?:ErrorLog|CustomLog|TransferLog)\s+["\x27]?\|/im', $body)
             || preg_match('/\\\\\s*\R/', $body)) throw new OpException('リポジトリのconfには外部設定の読み込み・実行・継続行は指定できません');
+        preg_match_all('/^\s*(?:ErrorLog|CustomLog|TransferLog)\s+(?:"([^"\r\n]+)"|([^\s]+))/mi',$body,$logPaths,PREG_SET_ORDER);
+        foreach($logPaths as $match){$path=$match[1]?:($match[2]??'');if(!preg_match('~\A(?:\$\{APACHE_LOG_DIR\}|/var/log/apache2)/[A-Za-z0-9_.-]+\z~D',$path)||str_contains($path,'..'))throw new OpException('リポジトリのログ出力先はApacheのログフォルダ内にしてください');}
         if (!preg_match('/<VirtualHost\b/i',$body)) {
             $body = '<VirtualHost *:' . (!empty($spec['tls']) ? '443' : '80') . ">\nServerName {$spec['domain']}\n" . $body . "\n</VirtualHost>\n";
         }

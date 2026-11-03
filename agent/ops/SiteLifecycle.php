@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 namespace Pjas\Agentd\Ops;
+require_once dirname(__DIR__,2).'/shared/SensitiveFiles.php';
 use Pjas\Agentd\{ControlStore,Paths,Spec,Proc,OpException,JobLog,SiteLifecycleGuard};
 
 /** Tombstones and recovery material are root-only; the site ID and its audit history stay in the web DB. */
@@ -71,7 +72,7 @@ final class SiteLifecycle
     }
     private function restoreFiles(array $files,bool $absent=false):void{
         foreach($files as $f){$p=$f['path'];if($absent&&(file_exists($p)||is_link($p)))throw new OpException('同名の設定があるため復元できません: '.basename($p));}
-        foreach($files as $f){if(!copy($f['copy'],$f['path']))throw new OpException('設定を復元できません');chmod($f['path'],$f['mode']);}
+        foreach($files as $f){$content=file_get_contents($f['copy']);if(str_starts_with($f['path'],$this->cfg['apache_sites'].'/')&&str_ends_with($f['path'],'.conf')){$content=\Pjas\Shared\SensitiveFiles::decorate($content);(new Vhost($this->cfg,$this->paths))->assertControlHostSafe($content);}if(file_put_contents($f['path'],$content)===false)throw new OpException('設定を復元できません');chmod($f['path'],$f['mode']);}
     }
     public function delete(array $p):array{
         $n=$this->name($p);$mode=$p['mode']??'';if(!in_array($mode,['detach','delete'],true))throw new OpException('削除方法を選んでください');
@@ -121,7 +122,7 @@ final class SiteLifecycle
             if(is_dir($previewSource)&&(file_exists($previewTarget)||is_link($previewTarget)))throw new OpException('試験環境の保存先が既にあります。上書きせず中断しました');
             if(in_array($m['state'],['failed','deleting'],true)&&is_dir($base)&&!is_link($base)){
                 if(file_exists($this->payload($n))||[stat($base)['dev'],stat($base)['ino']]!==($m['identity']??null))throw new OpException('元の保存先と一致しません。上書きせず中断しました');
-                foreach($m['files'] as $f)if(is_link($f['path'])||(is_file($f['path'])&&!hash_equals($f['hash'],hash_file('sha256',$f['path']))))throw new OpException('失敗後に設定が変更されています。上書きせず中断しました');
+                foreach($m['files'] as $f)if(is_link($f['path'])||(is_file($f['path'])&&!hash_equals($f['hash'],hash_file('sha256',$f['path']))&&!hash_equals(hash('sha256',\Pjas\Shared\SensitiveFiles::decorate(file_get_contents($f['copy']))),hash_file('sha256',$f['path']))))throw new OpException('失敗後に設定が変更されています。上書きせず中断しました');
                 $mutated=true;$this->restoreFiles(array_filter($m['files'],fn($f)=>!str_starts_with($f['path'],$this->cfg['cron_dir'].'/')));
                 if($m['enabled'])Proc::must([$this->cfg['a2ensite'],'-q','pjas-'.$n],null,30);
                 (new Vhost($this->cfg,$this->paths))->reload();

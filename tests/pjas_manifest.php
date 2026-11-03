@@ -46,6 +46,8 @@ try {
 
  rejects(fn()=>ManifestImport::apache($conf."\nInclude /etc/passwd\n",$m,$spec,$cfg['www_root']));
  rejects(fn()=>ManifestImport::apache(str_replace('UnknownDirective preserve','ErrorLog |/bin/sh',$conf),$m,$spec,$cfg['www_root']));
+ ManifestImport::apache(str_replace('UnknownDirective preserve','ErrorLog ${APACHE_LOG_DIR}/site-error.log',$conf),$m,$spec,$cfg['www_root']);
+ foreach(['RewriteMap injected prg:/tmp/program root:root','SSLOpenSSLConfCmd Engine /tmp/module.so','ErrorLog /var/lib/pjas/security.key'] as $unsafe)rejects(fn()=>ManifestImport::apache(str_replace('UnknownDirective preserve',$unsafe,$conf),$m,$spec,$cfg['www_root']));check(true,'リポジトリのconfで外部プログラム・SSLエンジン・管理情報へのログ書き込みを拒否');
  $token=str_repeat('a',32); $checkout=$dir.'/repos/previews/'.$token;mkdir($checkout.'/deploy',0755,true);
  file_put_contents($checkout.'/.pjas',json_encode($manifest));file_put_contents($checkout.'/deploy/site.conf',$conf);file_put_contents($checkout.'/index.html','reviewed commit');
  file_put_contents($checkout.'.json',json_encode(['repo'=>'https://github.com/owner/repo.git','sha'=>str_repeat('b',40)]));

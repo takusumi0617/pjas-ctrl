@@ -18,9 +18,18 @@ final class Auth
         if (empty($_SESSION['uid'])) {
             return null;
         }
-        return Db::one('SELECT id, email, role, scope_all FROM users WHERE id = ? AND enabled=1', [$_SESSION['uid']]);
+        $u=Db::one('SELECT id,email,role,scope_all,password_hash,totp_secret,auth_version FROM users WHERE id=? AND enabled=1',[$_SESSION['uid']]);
+        if(!$u)return null;
+        if(PHP_SAPI!=='cli'&&(!isset($_SESSION['auth_proof'])||!hash_equals(self::proof($u),$_SESSION['auth_proof']))){unset($_SESSION['uid'],$_SESSION['reauth_at'],$_SESSION['auth_proof']);return null;}
+        unset($u['password_hash'],$u['totp_secret'],$u['auth_version']);return $u;
     }
 
+    private static function proof(array $u):string{return hash('sha256',json_encode([$u['password_hash'],$u['totp_secret']??null,$u['auth_version']??0],JSON_THROW_ON_ERROR));}
+    public static function refreshProof(int $id):void{
+        if((int)($_SESSION['uid']??0)!==$id)throw new \InvalidArgumentException('ログイン状態を確認してください');
+        $row=Db::one('SELECT password_hash,totp_secret,auth_version FROM users WHERE id=? AND enabled=1',[$id]);
+        if(!$row)throw new \InvalidArgumentException('ログイン状態を確認してください');$_SESSION['auth_proof']=self::proof($row);
+    }
     public static function actor(): string
     {
         return self::user()['email'] ?? 'anonymous';
@@ -28,15 +37,17 @@ final class Auth
 
     public static function attempt(string $email, string $password): bool
     {
+        if(strlen($email)>254||strlen($password)>1024)return false;
         $email=strtolower(trim($email));$bucket='login:'.($_SERVER['REMOTE_ADDR']??'cli').':'.$email;
-        if(!RateLimit::hit($bucket,12,300)||!RateLimit::hit('login-ip:'.($_SERVER['REMOTE_ADDR']??'cli'),60,300))return false;
-        $u = Db::one('SELECT id, password_hash, totp_secret FROM users WHERE lower(email) = ? AND enabled=1', [$email]);
+        if(!RateLimit::hit('login-ip:'.($_SERVER['REMOTE_ADDR']??'cli'),60,300)||!RateLimit::hit($bucket,12,300))return false;
+        $u = Db::one('SELECT id, password_hash, totp_secret, auth_version FROM users WHERE lower(email) = ? AND enabled=1', [$email]);
         if (!$u || !password_verify($password, $u['password_hash'])) {
             Audit::log($email, 'auth.login', '', [], 'failed');
             return false;
         }
         RateLimit::clear($bucket);
         unset($_SESSION['pending_uid'],$_SESSION['pending_at'],$_SESSION['totp_setup'],$_SESSION['totp_setup_at'],$_SESSION['new_recovery_codes']);
+        $_SESSION['auth_proof']=self::proof($u);
         if(!empty($u['totp_secret'])){unset($_SESSION['uid']);$_SESSION['pending_uid']=(int)$u['id'];$_SESSION['pending_at']=time();return true;}
         session_regenerate_id(true);
         $_SESSION['reauth_at']=time();$_SESSION['csrf']=bin2hex(random_bytes(32));
@@ -54,7 +65,7 @@ final class Auth
     {
         if(!self::pending())return false;$id=(int)$_SESSION['pending_uid'];
         if(!RateLimit::hit('totp-user:'.$id,30,300)||!RateLimit::hit('totp:'.$id.':'.($_SERVER['REMOTE_ADDR']??'cli'),12,300))return false;
-        $u=Db::one('SELECT * FROM users WHERE id=? AND enabled=1',[$id]);if(!$u||empty($u['totp_secret']))return false;
+        $u=Db::one('SELECT * FROM users WHERE id=? AND enabled=1',[$id]);if(!$u||empty($u['totp_secret'])||!hash_equals(self::proof($u),$_SESSION['auth_proof']??''))return false;
         $code=trim($code);$step=Totp::matchStep(Secrets::decrypt($u['totp_secret']),$code,null,(int)$u['totp_last_step']);
         $ok=$step!==null ? Db::run('UPDATE users SET totp_last_step=? WHERE id=? AND totp_last_step<?',[$step,$id,$step])===1 : self::consumeRecovery($id,$code);
         if(!$ok){Audit::log($u['email'],'auth.second-factor','',[],'failed');return false;}
@@ -62,7 +73,7 @@ final class Auth
     }
     public static function consumeRecovery(int $id,string $code): bool
     {
-        $code=strtoupper(str_replace('-','',trim($code)));if(!preg_match('/\A[A-F0-9]{12}\z/D',$code))return false;
+        $code=strtoupper(str_replace('-','',trim($code)));if(!preg_match('/\A(?:[A-F0-9]{12}|[A-F0-9]{32})\z/D',$code))return false;
         return Db::run('DELETE FROM recovery_codes WHERE user_id=? AND hash=?',[$id,hash('sha256',$code)])===1;
     }
     public static function reauthenticate(string $password,bool $force=false): void

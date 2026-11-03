@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 namespace Pjas\Domain;
+require_once dirname(__DIR__,2).'/shared/SensitiveFiles.php';
 
 require_once dirname(__DIR__, 2) . '/shared/SiteErrors.php';
 use Pjas\Shared\SiteErrors;
@@ -123,7 +124,7 @@ final class VhostRenderer
             $out .= $body;
             $out .= "</VirtualHost>\n";
         }
-        return SiteErrors::decorate($out);
+        return \Pjas\Shared\SensitiveFiles::decorate(SiteErrors::decorate($out));
     }
 
     /** 単純な行単位 diff (プレビュー表示用) */

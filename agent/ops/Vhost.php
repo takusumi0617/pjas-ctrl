@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 namespace Pjas\Agentd\Ops;
+require_once dirname(__DIR__,2).'/shared/SensitiveFiles.php';
 
 require_once dirname(__DIR__, 2) . '/shared/SiteErrors.php';
 use Pjas\Shared\SiteErrors;
@@ -61,7 +62,7 @@ final class Vhost
         }
         $body = (string) file_get_contents($path);
         if (str_starts_with($body, self::MANAGED_HEADER)) throw new OpException('管理下の生成済み設定は移行元に選べません');
-        $rendered = (new SitePause($this->cfg))->render(SiteErrors::decorate($this->inheritedRender($body, $spec)), $spec);
+        $rendered = \Pjas\Shared\SensitiveFiles::decorate((new SitePause($this->cfg))->render(SiteErrors::decorate($this->inheritedRender($body, $spec)), $spec));
         return ['source' => $source, 'domain' => $spec['domain'], 'body' => $body, 'hash' => hash('sha256', $body), 'rendered' => $rendered];
     }
 
@@ -116,9 +117,19 @@ final class Vhost
         return array_values(array_unique($hits));
     }
 
+    public function assertControlHostSafe(string $conf):void{
+        preg_match_all('/^[\t ]*Server(?:Name|Alias)\s+([^\r\n#]+)/mi',$conf,$names);$patterns=[];
+        foreach($names[1] as $line)foreach(preg_split('/\s+/',trim($line)) as $value)$patterns[]=strtolower(trim($value,'"'));
+        foreach(glob($this->enabledDir().'/*.conf')?:[] as $file){if(!is_file($file))continue;$body=(string)file_get_contents($file);
+            if(!str_contains($body,'http://127.0.0.1:8184')&&!str_contains($body,dirname(__DIR__,2).'/public'))continue;
+            preg_match_all('/^[\t ]*ServerName\s+(\S+)/mi',$body,$hosts);
+            foreach($hosts[1] as $host)foreach($patterns as $pattern)if(fnmatch($pattern,strtolower(trim($host,'"'))))throw new OpException('公開アドレスまたは別名が管理画面と重なっています。管理画面の設定は変更しません');
+        }
+    }
+
     public function render(array $spec): string
     {
-        return (new SitePause($this->cfg))->render(SiteErrors::decorate($this->renderNormal($spec)), $spec);
+        return \Pjas\Shared\SensitiveFiles::decorate((new SitePause($this->cfg))->render(SiteErrors::decorate($this->renderNormal($spec)), $spec));
     }
 
     private function renderNormal(array $spec): string
@@ -387,6 +398,7 @@ final class Vhost
             throw new OpException('移行元が変更されたか、プレビューが未確認です。もう一度プレビューを開いてください');
         }
         $conf = $migration['rendered'] ?? $this->render($spec);
+        $this->assertControlHostSafe($conf);
 
         $backup = is_file($path) ? (string) file_get_contents($path) : null;
 
@@ -449,7 +461,7 @@ final class Vhost
     public function restore(array $params): array
     {
         $spec=Spec::service($params['service']??null);$name=$spec['name'];$path=$this->confPath($name);
-        $old=$this->currentForErrors($spec);$history=new ApacheHistory($this->cfg);$revision=(string)($params['revision']??'');$conf=$history->snapshot($name,$revision);
+        $old=$this->currentForErrors($spec);$history=new ApacheHistory($this->cfg);$revision=(string)($params['revision']??'');$conf=\Pjas\Shared\SensitiveFiles::decorate($history->snapshot($name,$revision));$this->assertControlHostSafe($conf);
         if(!empty((new SitePause($this->cfg))->read($name)['enabled'])||str_contains($conf,'# paused service:'))throw new OpException('停止中の設定は復元できません。公開状態の通常設定を選んでください');
         preg_match_all('/^[\t ]*ServerName\s+(\S+)/mi',$conf,$hosts);
         if(!$hosts[1])throw new OpException('履歴に公開アドレスがありません');

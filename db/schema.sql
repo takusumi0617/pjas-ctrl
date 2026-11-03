@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   role          TEXT NOT NULL DEFAULT 'viewer',   -- owner | operator | viewer
   totp_secret   TEXT,
+  auth_version INTEGER NOT NULL DEFAULT 0,
   totp_last_step INTEGER NOT NULL DEFAULT -1,
   scope_all INTEGER NOT NULL DEFAULT 1,
   enabled INTEGER NOT NULL DEFAULT 1,

@@ -9,7 +9,7 @@ sudo apt update
 sudo apt install -y software-properties-common ca-certificates
 sudo add-apt-repository -y ppa:ondrej/php
 sudo apt update
-sudo apt install apache2 php8.4-fpm php8.4-cli php8.4-sqlite3 php8.4-mbstring unzip curl util-linux cron git
+sudo apt install apache2 php8.4-fpm php8.4-cli php8.4-sqlite3 php8.4-mbstring unzip curl util-linux cron git python3
 sudo a2enmod rewrite proxy_fcgi setenvif ssl headers
 sudo a2enconf php8.4-fpm
 sudo systemctl enable --now cron

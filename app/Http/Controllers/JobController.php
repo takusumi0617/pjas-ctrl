@@ -59,6 +59,7 @@ final class JobController
         $start  = time();
 
         while (time() - $start < 300) {
+            if(\Pjas\Http\Auth::user()===null||($job['service_id']?!\Pjas\Http\Auth::canSite($site['name']):!\Pjas\Http\Auth::can('owner')))return;
             clearstatcache(false, $path);
             $size = is_file($path) ? (int) filesize($path) : 0;
             if ($size > $offset) {

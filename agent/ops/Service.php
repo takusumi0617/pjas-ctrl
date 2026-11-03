@@ -38,6 +38,7 @@ final class Service
         }
 
         foreach ([$base, $this->paths->releases($name), $this->paths->shared($name)] as $dir) {
+            if(is_link($dir))throw new OpException('管理用フォルダがリンクになっています: '.$dir);
             if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
                 throw new OpException("ディレクトリを作成できません: {$dir}");
             }

@@ -97,6 +97,7 @@ final class Preview
         $body.="    <FilesMatch \"^\\.\">\n        Require all denied\n    </FilesMatch>\n";
         $body.=$prod['runtime']==='static'?"    <FilesMatch \\.php$>\n        Require all denied\n    </FilesMatch>\n":"    <FilesMatch \\.php$>\n        SetHandler \"proxy:unix:{$socket}|fcgi://localhost\"\n    </FilesMatch>\n";
         $cert=$this->cfg['tls_cert_file'];$key=$this->cfg['tls_key_file'];$conf="# pjas-ctrl isolated preview\n<VirtualHost *:80>\n    ServerName {$domain}\n    Redirect permanent / https://{$domain}/\n</VirtualHost>\n<VirtualHost *:443>\n".$body."    SSLEngine on\n    SSLCertificateFile {$cert}\n    SSLCertificateKeyFile {$key}\n</VirtualHost>\n";
+        (new Vhost($this->cfg,$this->paths))->assertControlHostSafe($conf);
         $lock=fopen($this->cfg['apache_sites'].'/.pjas-vhost.lock','c');if(!$lock||!flock($lock,LOCK_EX))throw new OpException('公開設定をロックできません');$old=is_file($confPath)?file_get_contents($confPath):null;
         try{file_put_contents($confPath,$conf);chmod($confPath,0644);Proc::must([$this->cfg['a2ensite'],'-q','pjas-'.$id],null,30);(new Vhost($this->cfg,$this->paths))->reload();}
         catch(\Throwable $e){if($old===null){@unlink($confPath);Proc::run([$this->cfg['a2dissite'],'-q','pjas-'.$id],null,30);}else file_put_contents($confPath,$old);Proc::run([$this->cfg['apachectl'],'graceful'],null,60);throw $e;}

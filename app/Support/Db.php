@@ -32,7 +32,7 @@ final class Db
     {
         self::conn()->exec(file_get_contents($schemaFile));
         $columns = array_column(self::all('PRAGMA table_info(users)'), 'name');
-        foreach (['totp_last_step'=>'INTEGER NOT NULL DEFAULT -1','scope_all'=>'INTEGER NOT NULL DEFAULT 1','enabled'=>'INTEGER NOT NULL DEFAULT 1'] as $name=>$definition) {
+        foreach (['auth_version'=>'INTEGER NOT NULL DEFAULT 0','totp_last_step'=>'INTEGER NOT NULL DEFAULT -1','scope_all'=>'INTEGER NOT NULL DEFAULT 1','enabled'=>'INTEGER NOT NULL DEFAULT 1'] as $name=>$definition) {
             if (!in_array($name,$columns,true)) self::conn()->exec("ALTER TABLE users ADD COLUMN {$name} {$definition}");
         }
     }

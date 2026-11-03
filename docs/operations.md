@@ -29,7 +29,7 @@ sudo php8.4 bin/pjas-install-features --check
 sudo php8.4 bin/pjas-install-features --apply
 ```
 
-管理画面のApache設定名が `pjas-ctrl.conf` 以外の場合は、両方のコマンドに `--site=設定名` を指定します。`.conf` は付けません。前提は `php8.4-fpm php8.4-cli php8.4-sqlite3 php8.4-mbstring apache2 git curl tar unzip util-linux` です。
+管理画面のApache設定名が `pjas-ctrl.conf` 以外の場合は、両方のコマンドに `--site=設定名` を指定します。`.conf` は付けません。前提は `php8.4-fpm php8.4-cli php8.4-sqlite3 php8.4-mbstring apache2 git curl tar unzip util-linux python3` です。
 
 `--check` は確認のみです。`--apply` は設定・SQLite DBを `/var/lib/pjas-control/setup-*` に退避し、追加テーブル、専用ユーザー、PHP実行設定、管理画面用HTTPサービス、自動確認タイマーを配置します。設定検査に失敗した場合は変更した設定・権限を戻します。追加したDBテーブル・ユーザーは残ります。本番サイトのApache設定は、この初回準備では変更しません。
 

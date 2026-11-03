@@ -2,8 +2,8 @@
 <?php
 declare(strict_types=1);
 /** Install the reviewed feature services. --check reads only; --apply changes local system configuration. */
-require dirname(__DIR__).'/app/bootstrap.php';
-require_once PJAS_ROOT.'/agent/lib/ControlRuntime.php';require_once PJAS_ROOT.'/agent/lib/OpException.php';require_once PJAS_ROOT.'/agent/lib/Proc.php';
+require dirname(__DIR__).'/app/bootstrap.php';require_once PJAS_ROOT.'/shared/SensitiveFiles.php';
+require_once PJAS_ROOT.'/agent/lib/SiteLayout.php';require_once PJAS_ROOT.'/agent/lib/ControlRuntime.php';require_once PJAS_ROOT.'/agent/lib/OpException.php';require_once PJAS_ROOT.'/agent/lib/Proc.php';
 use Pjas\Agentd\Proc;
 use Pjas\Support\Config;
 if(PHP_SAPI!=='cli')exit(1);
@@ -11,10 +11,11 @@ $apply=in_array('--apply',$argv,true);$check=in_array('--check',$argv,true);if(!
 $site='pjas-ctrl';foreach($argv as $arg)if(str_starts_with($arg,'--site='))$site=substr($arg,7);
 if(!preg_match('/\A[a-zA-Z0-9][a-zA-Z0-9_-]*\z/D',$site))throw new RuntimeException('管理画面の設定名が不正です');
 $agent=require PJAS_ROOT.'/agent/config.php';$sites=$agent['apache_sites'];$conf=$sites.'/'.$site.'.conf';$db=(string)Config::get('db');$upload=(string)Config::get('upload_dir');$jobs=(string)Config::get('job_dir');$control=$agent['control_dir']??'/var/lib/pjas-control';
-$savedFiles=[];$savedAttrs=[];$backup=null;$webGroupRemoved=false;$changesStarted=false;$previousWebActive=false;$previousTimerActive=false;
+$savedFiles=[];$savedAttrs=[];$backup=null;$webGroupRemoved=false;$changesStarted=false;$previousWebActive=false;$previousTimerActive=false;$sensitiveEnabled=is_file('/etc/apache2/conf-enabled/pjas-sensitive-files.conf');
 $remember=static function(string $path)use(&$savedAttrs):void{if(is_link($path))throw new RuntimeException('シンボリックリンクの設定先は変更できません: '.$path);if(file_exists($path)&&!isset($savedAttrs[$path])){$st=stat($path);$savedAttrs[$path]=[$st['uid'],$st['gid'],$st['mode']&0777];}};
 try{
- foreach(['/usr/bin/php8.4','/usr/sbin/php-fpm8.4','/usr/sbin/apache2','/usr/bin/git','/usr/bin/curl','/bin/tar'] as $file)if(!is_executable($file))throw new RuntimeException($file.' がありません。PHP 8.4 FPM・SQLite・OpenSSL・git・curl・Apacheを用意してください');
+ foreach(['/usr/bin/php8.4','/usr/sbin/php-fpm8.4','/usr/sbin/apache2','/usr/bin/python3','/usr/bin/git','/usr/bin/curl','/bin/tar'] as $file)if(!is_executable($file))throw new RuntimeException($file.' がありません。PHP 8.4 FPM・SQLite・OpenSSL・git・curl・Apacheを用意してください');
+ if(Proc::run(['/usr/bin/python3','-c','import sqlite3,tarfile,zipfile'],null,10)['code']!==0)throw new RuntimeException('python3の標準ライブラリが必要です。sudo apt install python3 を実行してください');
  if(!class_exists('SQLite3')||!extension_loaded('openssl'))throw new RuntimeException('PHP SQLite3・OpenSSL拡張が必要です');
  if(!is_file($conf)||is_link($conf)||!str_contains(file_get_contents($conf),PJAS_ROOT.'/public'))throw new RuntimeException('管理画面のApache設定が見つかりません。--site=設定名 を指定してください');
  $body=file_get_contents($conf);
@@ -32,6 +33,8 @@ try{
  if(is_file($db)){$src=new SQLite3($db);$dst=new SQLite3($backup.'/pjas.db');if(!$src->backup($dst))throw new RuntimeException('DBの退避に失敗しました');$dst->close();$src->close();chmod($backup.'/pjas.db',0600);}
  $install=static function(string $source,string $dest,int $mode=0644)use($backup,&$savedFiles,$remember):void{$remember($dest);$savedFiles[$dest]=is_file($dest)?file_get_contents($dest):null;if(is_file($dest)){copy($dest,$backup.'/'.str_replace('/','_',ltrim($dest,'/')));chmod($backup.'/'.str_replace('/','_',ltrim($dest,'/')),0600);}if(!is_dir(dirname($dest)))mkdir(dirname($dest),0755,true);if(file_put_contents($dest,str_replace('/opt/pjas-ctrl',PJAS_ROOT,file_get_contents($source)))===false)throw new RuntimeException('設定を配置できません: '.$dest);chmod($dest,$mode);};
  $changesStarted=true;
+ $install(PJAS_ROOT.'/systemd/pjas-sensitive-files.conf','/etc/apache2/conf-available/pjas-sensitive-files.conf');
+ $run(['/usr/sbin/a2enconf','pjas-sensitive-files']);
  $install(PJAS_ROOT.'/systemd/pjas-control.pool.conf','/etc/php/8.4/fpm/pool.d/pjas-control.conf');
  if(!is_dir('/etc/pjas-control'))mkdir('/etc/pjas-control',0755);
  $backendPath='/etc/pjas-control/apache.conf';$remember($backendPath);$savedFiles[$backendPath]=is_file($backendPath)?file_get_contents($backendPath):null;
@@ -40,6 +43,12 @@ try{
  $updated=\Pjas\Agentd\ControlRuntime::frontend($body);
  $remember($conf);$savedFiles[$conf]=$body;
  if(file_put_contents($conf,$updated)===false)throw new RuntimeException('管理画面の転送設定を保存できません');chmod($conf,0600);
+ foreach(glob($sites.'/*.conf')?:[] as $siteFile){
+  $content=file_get_contents($siteFile);$protected=\Pjas\Shared\SensitiveFiles::decorate($content);if($protected===$content)continue;$remember($siteFile);
+  if(!array_key_exists($siteFile,$savedFiles))$savedFiles[$siteFile]=$content;
+  $savedPath=$backup.'/site-'.basename($siteFile);if(!copy($siteFile,$savedPath))throw new RuntimeException('公開設定の退避に失敗しました');chmod($savedPath,0600);
+  if(file_put_contents($siteFile,$protected)===false)throw new RuntimeException('機密ファイルの公開防止設定を保存できません');
+ }
  $run(['/usr/sbin/a2enmod','proxy','proxy_http','proxy_fcgi','rewrite','headers','auth_basic','authn_file','authz_user']);
  try{if(!is_dir('/run/pjas-control-web'))mkdir('/run/pjas-control-web',0755,true);$run(['/usr/sbin/apache2','-t','-f','/etc/pjas-control/apache.conf']);$run(['/usr/sbin/apachectl','configtest']);$run(['/usr/sbin/php-fpm8.4','--test']);}
  catch(Throwable $e){copy($backup.'/apache.conf',$conf);throw new RuntimeException('設定検査に失敗しました。管理画面のApache設定は戻しました。退避先: '.$backup.' / '.$e->getMessage());}
@@ -52,12 +61,18 @@ try{
  foreach([dirname($jobs)=>0751,$jobs=>0750] as $dir=>$mode){if(!is_dir($dir))mkdir($dir,$mode,true);$remember($dir);chown($dir,'root');chgrp($dir,'pjas');chmod($dir,$mode);}
  $remember(PJAS_ROOT.'/config.php');$remember(PJAS_ROOT.'/agent/config.php');
  chown(PJAS_ROOT.'/config.php','root');chgrp(PJAS_ROOT.'/config.php','pjas-control');chmod(PJAS_ROOT.'/config.php',0640);chown(PJAS_ROOT.'/agent/config.php','root');chgrp(PJAS_ROOT.'/agent/config.php','root');chmod(PJAS_ROOT.'/agent/config.php',0600);
+ if(is_file($db)){
+  $layoutDb=new SQLite3($db,SQLITE3_OPEN_READONLY);$sitesRows=$layoutDb->query('SELECT name FROM services');
+  while($row=$sitesRows->fetchArray(SQLITE3_ASSOC)){$base=rtrim($agent['www_root'],'/').'/'.$row['name'];if(!is_link($base.'/current')||!is_dir($base.'/releases')||!is_dir($base.'/shared'))continue;$remember($base);$remember($base.'/releases');\Pjas\Agentd\SiteLayout::protect($agent,$row['name']);}
+  $layoutDb->close();
+ }
  $run(['/usr/sbin/runuser','-u','pjas-control','--','/usr/bin/php8.4',PJAS_ROOT.'/bin/pjas-migrate']);
 
  $run(['/bin/systemctl','daemon-reload']);$run(['/bin/systemctl','restart','pjas-agentd']);$run(['/bin/systemctl','restart','php8.4-fpm']);$run(['/bin/systemctl','enable','--now','pjas-control-web.service']);$run(['/usr/sbin/apachectl','graceful']);$run(['/bin/systemctl','enable','--now','pjas-monitor.timer']);
  echo "追加機能を有効にしました。退避先: {$backup}\n管理画面へログインし直して「接続設定」からGitHub Appなどを設定してください。\n";
 }catch(Throwable $e){
  if($apply&&$changesStarted){
+  if(!$sensitiveEnabled)Proc::run(['/usr/sbin/a2disconf','pjas-sensitive-files'],null,30);
   Proc::run(['/bin/systemctl','stop','pjas-control-web.service'],null,30);
   if(!$previousTimerActive)Proc::run(['/bin/systemctl','stop','pjas-monitor.timer'],null,30);
   foreach(array_reverse($savedFiles,true) as $path=>$content){if($content===null)@unlink($path);else @file_put_contents($path,$content);}
