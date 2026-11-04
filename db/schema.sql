@@ -158,3 +158,15 @@ CREATE TABLE IF NOT EXISTS service_lifecycle (
  expires INTEGER NOT NULL DEFAULT 0, detail TEXT NOT NULL DEFAULT '',
  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS server_alert_ack (
+    alert_id INTEGER PRIMARY KEY REFERENCES alerts(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_audit_auth_time ON audit_log(action,result,at);
+CREATE TABLE IF NOT EXISTS notification_retries (
+    alert_id INTEGER PRIMARY KEY REFERENCES alerts(id) ON DELETE CASCADE,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_attempt INTEGER NOT NULL DEFAULT 0
+);

@@ -22,11 +22,11 @@ final class Operations
         $old=$this->store->read('settings');$url=rtrim(trim((string)($params['public_url']??'')),'/');
         if($url!==''&&(!filter_var($url,FILTER_VALIDATE_URL)||parse_url($url,PHP_URL_SCHEME)!=='https'||parse_url($url,PHP_URL_USER)||parse_url($url,PHP_URL_QUERY)||parse_url($url,PHP_URL_FRAGMENT)||!in_array(parse_url($url,PHP_URL_PATH)??'',['','/'],true)))throw new OpException('管理画面のURLはhttps://から始まる、末尾にパスのないアドレスを入力してください');
         $domain=trim((string)($params['preview_domain']??''));if($domain!=='')Spec::domain($domain);
-        $channel=(string)($params['channel']??'none');if(!in_array($channel,['none','webhook','smtp'],true))throw new OpException('通知方法を選んでください');
+        $channel=(string)($params['channel']??'none');if(!in_array($channel,['none','webhook','discord','smtp'],true))throw new OpException('通知方法を選んでください');
         $n=array_replace($old['notifications']??[],['channel'=>$channel]);
-        if($channel==='webhook'){
+        if(in_array($channel,['webhook','discord'],true)){
             $target=trim((string)($params['webhook_url']??''))?:($old['notifications']['webhook_url']??'');
-            if(!filter_var($target,FILTER_VALIDATE_URL)||parse_url($target,PHP_URL_SCHEME)!=='https'||parse_url($target,PHP_URL_USER)||preg_match('/[\r\n]/',$target))throw new OpException('通知先はhttps://から始まるWebhook URLを入力してください');$n['webhook_url']=$target;
+            if(!filter_var($target,FILTER_VALIDATE_URL)||parse_url($target,PHP_URL_SCHEME)!=='https'||parse_url($target,PHP_URL_USER)||preg_match('/[\r\n]/',$target))throw new OpException('通知先はhttps://から始まるWebhook URLを入力してください');if($channel==='discord'&&!Notifier::validateDiscord($target))throw new OpException('Discordのサーバー設定 → 連携サービス → ウェブフックで発行したURLを入力してください');$n['webhook_url']=$target;
         }
         if($channel==='smtp'){
             $host=trim((string)($params['smtp_host']??''));if(!preg_match('/\A[a-zA-Z0-9.-]{1,253}\z/D',$host))throw new OpException('メールサーバー名を確認してください');

@@ -8,6 +8,8 @@
 GitHub App・バックアップ・予約公開など13機能の初回準備と使い方は
 [docs/operations.md](docs/operations.md) を参照してください。
 
+Ubuntu 1台の状態確認・セキュリティ監視とDiscord通知は [サーバー監視の使い方](docs/server-monitoring.md) を参照してください。
+
 ## 構成
 
 ```

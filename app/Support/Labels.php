@@ -84,6 +84,10 @@ final class Labels
     public static function action(string $v): string
     {
         return match ($v) {
+            'server.restart.request' => 'サーバーのサービス再起動を要求',
+            'server.restart.success' => 'サーバーのサービス再起動が完了',
+            'server.restart.failed' => 'サーバーのサービス再起動に失敗',
+            'server.alert.ack' => 'サーバーのお知らせを確認',
             'auth.login'         => 'ログイン',
             'auth.logout'        => 'ログアウト',
             'service.create'     => 'サイトの登録',

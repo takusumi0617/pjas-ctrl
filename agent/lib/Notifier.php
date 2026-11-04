@@ -10,16 +10,24 @@ final class Notifier
         $store=new ControlStore($this->cfg);$s=$store->read('settings')['notifications']??['channel'=>'none'];
         if(($s['channel']??'none')==='none')return ['sent'=>false,'reason'=>'通知先が未設定です'];
         if($this->transport)return ($this->transport)($s,$message);
-        if($s['channel']==='webhook'){
+        if(in_array($s['channel'],['webhook','discord'],true)){
             $dir=$store->directory('requests').'/notify-'.bin2hex(random_bytes(8));mkdir($dir,0700);
             try{
                 file_put_contents($dir.'/curl','url = '.json_encode($s['webhook_url'],JSON_UNESCAPED_SLASHES)."\n");chmod($dir.'/curl',0600);
-                file_put_contents($dir.'/body',json_encode(['text'=>$message,'source'=>'pjas-ctrl'],JSON_THROW_ON_ERROR));chmod($dir.'/body',0600);
+                file_put_contents($dir.'/body',json_encode(self::payload($s['channel'],$message),JSON_THROW_ON_ERROR));chmod($dir.'/body',0600);
                 $r=Proc::run(['/usr/bin/curl','--silent','--show-error','--max-time','20','--proto','=https','--config',$dir.'/curl','--request','POST','--header','Content-Type: application/json','--data-binary','@'.$dir.'/body','--output','/dev/null','--write-out','%{http_code}'],null,25);
                 if($r['code']!==0||(int)$r['out']<200||(int)$r['out']>=300)throw new OpException('通知先が受信できませんでした（HTTP '.(int)$r['out'].'）');return ['sent'=>true];
             }finally{foreach(glob($dir.'/*')?:[] as $f)@unlink($f);@rmdir($dir);}
         }
         return $this->smtp($s,$message);
+    }
+    public static function payload(string $channel,string $message): array
+    {
+        return $channel==='discord' ? ['content'=>mb_substr($message,0,950),'allowed_mentions'=>['parse'=>[]]] : ['text'=>$message,'source'=>'pjas-ctrl'];
+    }
+    public static function validateDiscord(string $url): bool
+    {
+        return (bool)preg_match('~\Ahttps://discord\.com/api/webhooks/[0-9]{10,25}/[A-Za-z0-9_-]{20,200}\z~D',$url);
     }
     private function smtp(array $s,string $message): array
     {
