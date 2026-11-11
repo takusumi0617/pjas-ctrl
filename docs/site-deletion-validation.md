@@ -1,5 +1,9 @@
 # サイト削除機能の追加検証（2026-11-03）
 
+[ドキュメント一覧](README.md) / [現在の更新手順](upgrade.md)
+
+この文書は記載日の検証記録です。現在の導入・更新手順は上のリンクを参照してください。
+
 緊急反映時に中断した追加検証を再開し、次を確認しました。
 
 - 36本のPHP回帰テストが成功（35本の通常テストと、HTTP通信を使うサイト停止テスト）。
@@ -17,12 +21,4 @@
 
 ブラウザー検証は実際のPHPアプリ・SQLite・ファイル退避処理を使っています。Apache・systemdへの外部コマンドはテスト用の代替コマンドで成功・失敗を再現しました。本番サーバーへの適用、実際の常駐プログラムの停止・起動はこの検証には含みません。
 
-更新する場合：
-
-```bash
-cd /opt/pjas-ctrl
-sudo git pull --ff-only origin main
-sudo -u pjas-control php8.4 bin/pjas-migrate
-sudo systemctl restart pjas-agentd
-sudo systemctl reload php8.4-fpm
-```
+導入済みサーバーへの反映は [現在の更新手順](upgrade.md) に従ってください。

@@ -1,19 +1,12 @@
-# Ubuntu 1台の管理・セキュリティ監視
+# サーバー監視とDiscord通知
+
+[ドキュメント一覧](README.md) / [運用機能](operations.md)
 
 管理者用の「サーバー」画面で確認します。閲覧専用・公開担当の利用者はアクセスできません。既存のサイト別監視は「運用状況」で引き続き確認できます。
 
 ## 有効にする
 
-公開・削除・バックアップ等の作業が実行中でないときに更新してください。
-
-```bash
-cd /opt/pjas-ctrl
-sudo git pull --ff-only origin main
-sudo -u pjas-control php8.4 bin/pjas-migrate
-sudo php8.4 bin/pjas-install-features --check
-sudo php8.4 bin/pjas-install-features --apply
-sudo systemctl status pjas-agentd pjas-monitor.timer
-```
+初めて使うサーバーは [新規導入](install.md)、導入済みサーバーは [更新手順](upgrade.md) を完了してください。`pjas-agentd` と `pjas-monitor.timer` の状態を確認してから、通知先を設定します。
 
 管理画面の「接続設定と初回準備」で通知方法を **Discord** にします。Discordの「サーバー設定 → 連携サービス → ウェブフック」で発行した `https://discord.com/api/webhooks/.../...` を入力して保存し、テスト送信してください。空欄なら保存済みURLを維持します。URLはパスワードと同様の秘密情報です。root専用の管理情報に保存し、画面や通知には再表示しません。
 

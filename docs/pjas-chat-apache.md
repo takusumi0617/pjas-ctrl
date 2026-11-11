@@ -1,5 +1,7 @@
 # pjas-chat の公開設定
 
+[ドキュメント一覧](README.md) / [サイト運用](sites.md)
+
 サイトの「設定」で「公開するフォルダ」を `dist`、PHP を `php8.4-fpm` に設定します。ビルド済みの `dist/index.html`、`api/index.php`、必要な vendor がリリース内にあることを確認してください。公開フォルダをリポジトリ全体にすると設定やDBを公開してしまうため、必ず dist を指定します。
 
 「Apache 設定に追加する行」に、次を指定します。`{{document_root}}` は公開フォルダ、`{{site_root}}` はサイトの current フォルダへ置き換わります。リリース日時を直接書く必要はありません。

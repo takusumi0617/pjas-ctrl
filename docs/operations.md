@@ -1,6 +1,8 @@
-# バックアップ・運用機能の使い方
+# 運用機能
 
-GitHub Appへの接続を含む、次の13機能を追加しています。
+[ドキュメント一覧](README.md) / [導入](install.md) / [サイト運用](sites.md)
+
+導入を終えた管理者・公開担当者向けに、GitHub接続、公開確認、バックアップ、利用者の設定をまとめています。通常サイト（v1）の操作が中心です。専用ユーザー・CA状態を扱う場合は [隔離コンポーネント（v2）](pjas-cert.md) を参照してください。
 
 | 機能 | 操作する場所 |
 | --- | --- |
@@ -18,39 +20,13 @@ GitHub Appへの接続を含む、次の13機能を追加しています。
 | 確認したコードの日時指定公開 | 公開前の確認 → 日時を指定して予約する |
 | GitHub Appでprivateリポジトリを取得 | 接続設定 → GitHub App、サイト登録 → 接続方法 |
 
-## Ubuntuで今回の機能を有効にする
+## 利用前の確認
 
-既存のPHP 8.4・Apache環境で、まずコードを更新します。`config.php` と `agent/config.php` の独自設定がある場合は退避してから更新してください。後者はリポジトリの管理対象です。
+新規サーバーは [導入手順](install.md)、導入済みサーバーは [更新手順](upgrade.md) に従い、管理画面の分離と監視タイマーの準備を完了してください。導入・更新コマンドはそちらへ集約しています。
 
-```bash
-cd /opt/pjas-ctrl
-sudo git pull --ff-only origin main
-sudo php8.4 bin/pjas-install-features --check
-sudo php8.4 bin/pjas-install-features --apply
-```
+管理画面へログインし直し、agentの稼働と「運用状況」の最終確認時刻を確認します。外部サービスが未設定でも、ローカルのバックアップや差分確認は利用できます。
 
-管理画面のApache設定名が `pjas-ctrl.conf` 以外の場合は、両方のコマンドに `--site=設定名` を指定します。`.conf` は付けません。前提は `php8.4-fpm php8.4-cli php8.4-sqlite3 php8.4-mbstring apache2 git curl tar unzip util-linux python3` です。
-
-`--check` は確認のみです。`--apply` は設定・SQLite DBを `/var/lib/pjas-control/setup-*` に退避し、追加テーブル、専用ユーザー、PHP実行設定、管理画面用HTTPサービス、自動確認タイマーを配置します。設定検査に失敗した場合は変更した設定・権限を戻します。追加したDBテーブル・ユーザーは残ります。本番サイトのApache設定は、この初回準備では変更しません。
-
-管理画面は `pjas-control` ユーザーで動かします。本番サイトの `www-data` から管理用DBやroot操作のソケットへ直接アクセスできないよう、専用のPHPソケットとHTTPサービスを使用します。Apacheの管理画面の設定だけをループバックHTTPへ転送し、既存のHTTPSとアクセス元制限は維持します。管理画面のコードは引き続きroot所有・本番ユーザーから書き込み不可にしてください。
-
-コードの配置先は実行したコマンドの場所へ合わせます。DB・ログなどの独自パスを変更している場合は、systemdのReadWritePathsもdrop-inで環境に合わせてください。標準外のPHPハンドラーが残っている場合は、管理画面の設定を先に標準の構成へ合わせます。
-
-```bash
-systemctl status pjas-agentd pjas-control-web pjas-monitor.timer
-sudo journalctl -u pjas-monitor.service -n 50 --no-pager
-sudo -u pjas-control php8.4 /opt/pjas-ctrl/bin/pjasctl services
-```
-
-管理画面へログインし直し、「接続設定と初回準備」を開いてください。「運用状況」に最終確認時刻が表示されれば、自動確認が動いています。通常は1分ごとに確認します。外部サービスの設定は未入力のままでも、バックアップや差分確認は使用できます。
-
-Cloudflare証明書は引き続き全サイト共通で次を使います。Certbotは使用しません。
-
-```text
-/etc/ssl/cloudflare/memo.takusumi.work.pem
-/etc/ssl/cloudflare/memo.takusumi.work.key
-```
+標準のTLSは共通のCloudflare Origin CA証明書です。サイト別TLSの選択・更新は [v2ガイドのサイト別TLS](pjas-cert.md#サイト別tls) を参照してください。
 
 ## GitHub Appを接続する
 
@@ -107,7 +83,7 @@ tar -xzf restored.tar.gz -C recovered
 
 試験環境は専用ユーザー、専用PHP-FPM、systemdのPrivateNetwork、書き込み先制限で動かします。本番のDB・共有データは独立したコピー、本番の.envはコピー対象外です。外部DB・メールなどへのネットワーク接続、プロセス実行、標準のDB Unix socketへのアクセスを制限します。機密データを含む本番DBのコピーなので、試験URLのパスワードも安全に扱ってください。
 
-試験公開はPHP・静的なビルド済みコード用です。独自のProxyPass・WebSocket・本番の準備処理は実行しません。外部DBや独自常駐サーバーが必須のアプリは、この試験環境の対象外です。本番サイト同士は従来どおりwww-dataで動くため、相互に信用しない利用者向けの完全な実行環境分離を提供するものではありません。
+試験公開はPHP・静的なビルド済みコード用です。独自のProxyPass・WebSocket・本番の準備処理は実行しません。外部DBや独自常駐サーバーが必須のアプリは、この試験環境の対象外です。通常のv1サイト同士は共通ユーザー（既定www-data）で動くため、相互に信用しない利用者向けの完全な実行環境分離を提供するものではありません。
 
 ## 利用者とログインの保護
 

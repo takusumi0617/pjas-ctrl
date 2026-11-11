@@ -1,289 +1,165 @@
-# pjas-ctrl 導入手順 (Debian / Ubuntu + Apache 2.4)
+# 新規導入
 
-## 1. 必要パッケージ
+[ドキュメント一覧](README.md) / [既存環境の更新](upgrade.md)
 
-Ubuntu 24.04 で PHP 8.4 を使う場合は、PHP パッケージ用 PPA を追加する。
+まだpjas-ctrlを導入していないサーバー向けの手順です。完了すると、専用ユーザーで動く管理画面、特権agent、自動監視タイマーが利用できるようになります。管理対象サイトの登録は、その後に行います。
+
+## 進め方と前提条件
+
+標準構成は **Ubuntu 24.04、PHP 8.4、Apache 2.4、systemd** です。以下のコマンドはサーバー上で実行します。`sudo` を使える管理者アカウントが必要です。
+
+| 先に決めるもの | この手順での例・注意点 |
+| --- | --- |
+| コードの配置先 | `/opt/pjas-ctrl`。別の場所ではサービス定義のパスも確認 |
+| 管理画面のURL | `https://ctrl.example.com`。DNSを用意し、ApacheのServerNameに設定 |
+| 管理者メールアドレス | `ops@example.com`。ログインIDとして使用 |
+| 管理画面にアクセスできる範囲 | VPN・社内ネットワーク・IP制限など。実際の接続元を許可 |
+| HTTPS証明書と秘密鍵 | 標準の例はCloudflare Origin CA。対象ドメインを含むものを別途発行 |
+| 管理対象サイトの配置先 | `/var/www`。Web側とagent側の設定を揃える |
+
+Cloudflare Origin CA証明書は、Cloudflare経由の接続を想定しています。ブラウザーからオリジンサーバーへ直接接続しても通常は信頼されません。直接アクセスする構成では、その接続で信頼できる証明書と鍵を用意し、以下の設定を合わせてください。
+
+**実行順序:** パッケージ → コード配置 → 設定 → 管理者作成 → 証明書・Apache設定 → 管理画面の分離 → 公開と確認。初期状態の管理画面は、分離処理が終わるまで有効化しません。
+
+## 1. 必要パッケージを入れる
+
+Ubuntu 24.04の標準PHPは8.4ではないため、この例では第三者のPHPパッケージ提供元 `ppa:ondrej/php` を追加します。利用組織で認めた提供元を使ってください。Debianなど別の環境にPPAの追加コマンドをそのまま実行しないでください。
 
 ```bash
 sudo apt update
 sudo apt install -y software-properties-common ca-certificates
 sudo add-apt-repository -y ppa:ondrej/php
 sudo apt update
-sudo apt install apache2 php8.4-fpm php8.4-cli php8.4-sqlite3 php8.4-mbstring unzip curl util-linux cron git python3
+sudo apt install -y apache2 php8.4-fpm php8.4-cli php8.4-sqlite3 php8.4-mbstring unzip curl util-linux cron git python3
 sudo a2enmod rewrite proxy_fcgi setenvif ssl headers
 sudo a2enconf php8.4-fpm
-sudo systemctl enable --now cron
+sudo systemctl enable --now cron php8.4-fpm
 ```
 
-## 2. 配置とユーザー
+PHP拡張と、Pythonの標準ライブラリを確認します。`bin/pjas-install-features` はPHP 8.4の実行ファイル・FPMを前提にしています。
 
 ```bash
-sudo git clone <this repo> /opt/pjas-ctrl
-sudo groupadd -f pjas
-sudo usermod -aG pjas www-data          # web が agent ソケットに接続できるように
-
-sudo install -d -o www-data -g pjas -m 0770 /var/lib/pjas /var/lib/pjas/uploads
-sudo install -d -o root    -g pjas -m 0750 /var/log/pjas /var/log/pjas/jobs
-sudo chown -R root:root /opt/pjas-ctrl
-sudo chmod -R go-w /opt/pjas-ctrl
+php8.4 -v
+php8.4 -r 'foreach (["pdo_sqlite", "sqlite3", "mbstring", "openssl", "pcntl", "posix"] as $ext) { if (!extension_loaded($ext)) { fwrite(STDERR, "不足: $ext\n"); exit(1); } } echo "PHP拡張: OK\n";'
+python3 -c 'import sqlite3, tarfile, zipfile; print("Python標準ライブラリ: OK")'
 ```
 
-管理画面のコードは root 所有・www-data からは読み取り専用にする (web からコードを書き換えられないこと)。
+## 2. コードと作業ディレクトリを配置する
 
-## 3. 設定
+```bash
+sudo git clone https://github.com/takusumi0617/pjas-ctrl.git /opt/pjas-ctrl
+sudo chown -R root:root /opt/pjas-ctrl
+sudo chmod -R go-w /opt/pjas-ctrl
+sudo groupadd -f pjas
+sudo install -d -o www-data -g pjas -m 0770 /var/lib/pjas /var/lib/pjas/uploads
+sudo install -d -o root -g pjas -m 0750 /var/log/pjas /var/log/pjas/jobs
+```
+
+この時点の `www-data` 所有は、初回DB作成までの準備用です。手順6で管理DB・アップロード先を `pjas-control` へ移し、本番サイトのユーザーを管理用RPCグループから外します。`www-data` を `pjas` グループへ追加する必要はありません。
+
+## 3. 設定を作成する
 
 ```bash
 sudo cp /opt/pjas-ctrl/config.php.example /opt/pjas-ctrl/config.php
-sudo chown root:www-data /opt/pjas-ctrl/config.php && sudo chmod 640 /opt/pjas-ctrl/config.php
-sudo editor /opt/pjas-ctrl/config.php        # db / socket / www_root を環境に合わせる
-sudo editor /opt/pjas-ctrl/agent/config.php  # Cloudflare 証明書、git_repos、web_user を設定
+sudo chown root:www-data /opt/pjas-ctrl/config.php
+sudo chmod 640 /opt/pjas-ctrl/config.php
+sudo editor /opt/pjas-ctrl/config.php
+sudo editor /opt/pjas-ctrl/agent/config.php
 ```
 
-`config.php` (web) と `agent/config.php` (agent) の `www_root` / `upload_dir` / `job_dir` /
-ソケットパスは必ず一致させる。
+両ファイルの次の項目を合わせます。既定のパスを使う場合は、値を変更する必要はありません。
 
-## 4. DB 初期化と管理ユーザー
+| 用途 | Web側 `config.php` | agent側 `agent/config.php` |
+| --- | --- | --- |
+| サイト配置先 | `www_root` | `www_root` |
+| アップロード先 | `upload_dir` | `upload_dir` |
+| ジョブログ | `job_dir` | `job_dir` |
+| RPCソケット | `agent_socket` | `socket` |
+| 共通TLS証明書・鍵 | `tls_cert_file` / `tls_key_file` | `tls_cert_file` / `tls_key_file` |
+
+Web側の `db` は管理用SQLite DB、`security_key` は二段階認証等の暗号鍵です。`force_https` は本番では `true` にします。agent側の `web_user` / `web_group` は通常サイトの実行ユーザーであり、管理画面用の `pjas-control` へ変更する項目ではありません。
+
+標準外の保存先を使う場合は、systemdサービスの `ReadWritePaths` も合わせてください。コード・設定はroot所有とし、アプリの実行ユーザーから書き換えられない状態を維持します。
+
+## 4. 管理DBと最初の管理者を作成する
 
 ```bash
 cd /opt/pjas-ctrl
-sudo -u www-data php bin/pjas-init ops@example.com
+sudo -u www-data php8.4 bin/pjas-init ops@example.com
 ```
 
-## 5. agent の起動
+12文字以上のパスワードを対話入力します。パスワードはコマンド引数へ書かないでください。手順6の分離処理後、CLIを実行するユーザーは `pjas-control` になります。
 
-```bash
-sudo cp systemd/pjas-agentd.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now pjas-agentd
-systemctl status pjas-agentd
-sudo journalctl -u pjas-agentd -f     # op ごとのログはここに出る
-```
+## 5. HTTPS証明書と管理画面のApache設定を用意する
 
-## 6. Cloudflare Origin CA 証明書と管理画面の vhost
-
-全サイト共通のワイルドカード証明書と秘密鍵を次へ配置する。
+標準設定で参照するファイルは次の2つです。リポジトリには証明書も秘密鍵も含まれません。別途用意してから進めてください。
 
 ```text
 /etc/ssl/cloudflare/memo.takusumi.work.pem
 /etc/ssl/cloudflare/memo.takusumi.work.key
 ```
 
-秘密鍵は root のみ読めるようにする。
+この名前はリポジトリの既定値です。別のパスを使う場合は、手順3の両設定と、これから配置するApache設定内の証明書・鍵のパスをすべて変更します。
 
 ```bash
 sudo chown root:root /etc/ssl/cloudflare/memo.takusumi.work.{pem,key}
 sudo chmod 644 /etc/ssl/cloudflare/memo.takusumi.work.pem
 sudo chmod 600 /etc/ssl/cloudflare/memo.takusumi.work.key
+sudo cp /opt/pjas-ctrl/systemd/pjas-ctrl.apache.conf /etc/apache2/sites-available/pjas-ctrl.conf
+sudo editor /etc/apache2/sites-available/pjas-ctrl.conf
 ```
+
+編集する箇所は `ServerName`、`Require ip`、証明書・鍵のパスです。例の `ctrl.pjas.example` とプライベートIP範囲を、そのまま利用しないでください。プロキシやCloudflareを経由する場合、Apacheが認識する接続元IPとアクセス制限の関係も確認します。
+
+この時点では `a2ensite` を実行しません。初回準備コマンドがこのファイルを読み、既存のHTTPS・アクセス元制限を保ちながら管理画面専用HTTPサービスへの転送に変更します。
+
+## 6. 管理画面を専用ユーザーへ分離する
 
 ```bash
-sudo cp systemd/pjas-ctrl.apache.conf /etc/apache2/sites-available/pjas-ctrl.conf
-sudo editor /etc/apache2/sites-available/pjas-ctrl.conf   # ServerName と Require ip を自環境に
-sudo a2ensite pjas-ctrl && sudo apachectl configtest && sudo systemctl reload apache2
+cd /opt/pjas-ctrl
+sudo php8.4 bin/pjas-install-features --check
+sudo php8.4 bin/pjas-install-features --apply
 ```
 
-管理画面は公開しないこと。VPN / 社内 NW / mTLS のいずれかで到達を制限する。
+`--check` は前提条件と変更予定の確認です。`--apply` は実際にユーザー・DB・サービス・設定を変更します。Apache設定の名前を変更した場合は、両方に `--site=設定名` を追加してください。`.conf` は付けません。
 
-php-fpm 側の推奨設定 (アップロードと SSE のため):
+処理後は次の構成になります。
 
-```ini
-; /etc/php/8.4/fpm/conf.d/99-pjas-ctrl.ini
-upload_max_filesize = 512M
-post_max_size = 520M
-max_execution_time = 0        ; SSE ストリーム用 (fastcgi_read_timeout も伸ばす)
-```
+| 役割 | ユーザー・サービス |
+| --- | --- |
+| 管理画面のPHP | `pjas-control`、FPMソケット `/run/php/pjas-control.sock` |
+| 管理画面専用HTTP | `pjas-control-web.service`、待受 `127.0.0.1:8184` |
+| 特権操作 | `pjas-agentd.service`（root） |
+| 定期監視・予約処理 | `pjas-monitor.timer` |
+| 通常の本番サイト | agentの `web_user`（通常 `www-data`） |
 
-## 6.5. 管理画面の分離と追加機能の初回準備
+設定と既存DBの退避先は `/var/lib/pjas-control/setup-*` です。処理は管理画面の転送設定に加え、既存サイトのApache設定にも機密ファイルの公開防止設定を追加することがあります。既存サイトがある場合は、先に [更新時の影響と退避](upgrade.md) を確認してください。
 
-ログイン前に次を実行します。既存環境の更新時も必要です。
+## 7. 管理画面を有効にし、動作を確認する
 
 ```bash
-sudo php8.4 /opt/pjas-ctrl/bin/pjas-install-features --check
-sudo php8.4 /opt/pjas-ctrl/bin/pjas-install-features --apply
+sudo a2ensite pjas-ctrl
+sudo apachectl configtest
+sudo systemctl reload apache2
+systemctl status pjas-agentd pjas-control-web php8.4-fpm pjas-monitor.timer --no-pager
+sudo -u pjas-control php8.4 /opt/pjas-ctrl/bin/pjasctl services
 ```
 
-これ以降、管理画面は専用の `pjas-control` で動きます。管理DB・ソケットを本番の `www-data` から分け、自動確認・予約公開を有効にします。CLIも `sudo -u pjas-control` で実行してください。設定の退避・復旧、GitHub App・試験公開・通知の準備は [運用機能の使い方](operations.md) にまとめています。
+設定検査が失敗した場合は、その原因を直すまで次のreloadへ進まないでください。新規導入直後、CLIのサイト一覧が空なのは正常です。
 
-## 7. 動作確認
+1. 許可した接続元から管理画面のHTTPS URLを開きます。
+2. 手順4で作成した管理者でログインします。
+3. agentが稼働中であることを確認します。
+4. 「運用状況」に最終確認時刻が表示されることを確認します。
+5. [サイトの登録と日常運用](sites.md) に沿ってテスト用サイトを1つ公開し、実際のHTTP応答と作業履歴を確認します。
 
-1. `https://ctrl.example.com/` にログイン
-2. サイドバーの agent 表示が「稼働中」であること
-3. サービスを 1 つ登録 → 「Apache 設定」タブで差分を確認して適用
-4. 小さな zip をデプロイ → ジョブ画面にログが流れ、`current` が張り替わること
-5. `sudo -u pjas-control php bin/pjasctl services` が同じ状態を返すこと
+起動しない場合のログ確認は [更新・障害時の確認](upgrade.md#問題が起きた場合) を参照してください。
 
-## 8. 運用メモ
+## 次に設定するもの
 
-- **証明書更新**: Cloudflare Origin CA 証明書を差し替えた後に `sudo apachectl graceful` を実行する
-- **バックアップ**: `/var/lib/pjas/pjas.db` (状態と監査ログ) と各サービスの `shared/`
-- **既存サービスの取り込み**: 先に `releases/<tag>/` へ現物を移し `current` を張ってから
-  pjas-ctrl に登録すると、以降のデプロイとロールバックが揃う
-- **agent が落ちている場合**: 画面は閲覧できるが、デプロイと Apache 操作はすべて拒否される
-- **定期処理**: コード更新後に `sudo -u pjas-control php8.4 bin/pjas-migrate` でDBを更新する。
-  定期処理は `/etc/cron.d/pjas-task-*`、実行内容は `/var/lib/pjas/cron/`、ログは `/var/log/pjas/cron/` に保存される
+- [GitHub App・通知・バックアップ・試験公開](operations.md)
+- [サーバー画面とDiscord通知](server-monitoring.md)
+- [.pjas v1による通常サイトの一括登録](pjas-manifest.md)
+- [専用ユーザーとCA保護領域を使うv2サイト](pjas-cert.md)
 
-## 常駐プログラムの管理
-
-管理者権限で「常駐プログラム」を開き、サイトごとに新規作成・設定編集・起動・停止・再起動ができます。登録と操作は「操作の記録」に残ります。サイトの current フォルダが存在することが必要です。
-
-- 新規作成: 表示名と実行内容を指定します。サイトの公開中フォルダで www-data 権限で実行し、異常終了時は再起動します。保存だけでは起動しません。編集した実行内容は次の起動・再起動から有効です。関連付け先のサイトも編集できます。
-- 既存プログラム: サーバーの systemd サービス一覧から選んでサイトへ関連付けます。起動設定の取り込みを選ぶと、起動コマンドと作業フォルダをctrlで編集できます。元のサービス定義は保持し、サービス名.service.d/zzzz-pjas-ctrl.conf で必要項目だけを上書きします。環境変数ファイルなどの独自設定は維持します。
-- 関連付けのないプログラムや別サイト名を指定した操作はエージェント側でも拒否します。1つのプログラムは1つのサイトへ関連付けます。pjas-agentd 自身は関連付け・操作できません。
-
-以前の managed_daemons 一覧は操作許可として使用しません。Apache・PHP・cron も、必要なサイトへの明示的な関連付けが完了するまでは操作できません。
-
-関連付け台帳は `/var/lib/pjas-daemons/registry.json`、新規サービスは `/etc/systemd/system/pjas-daemon-*.service` に保存します。台帳と実行スクリプトは root 所有で、バックアップ対象にしてください。自動起動の有効化は必要に応じてサーバーで `sudo systemctl enable 対象.service` を実行してください。パス追従を有効にしたプログラムは、公開バージョンの切り替え・ロールバック時に稼働中のものだけ再起動します。停止中のものは起動しません。
-
-既存環境の更新時は、systemd の書き込み許可も更新します。
-
-```bash
-sudo install -d -o root -g root -m 755 /var/lib/pjas-daemons
-sudo cp /opt/pjas-ctrl/systemd/pjas-agentd.service /etc/systemd/system/pjas-agentd.service
-sudo systemctl daemon-reload
-sudo systemctl restart pjas-agentd
-```
-
-特殊なApache設定（dist配信・API・WebSocket）の例は [pjas-chat の公開設定](pjas-chat-apache.md) を参照してください。
-
-## 移行時に既存の Apache 設定を継承する
-
-通常の生成では表現できない独自設定があるサイトは、「公開設定」→「移行時のみ：既存設定を継承する」で移行元の conf を選び、「継承する内容を確認」を押します。差分を確認して「反映する」を押すと、継承元のコピーを保存し、以後もその設定をベースに生成します。一括登録済みのサイトでも、元の conf が sites-available に残っていれば実施できます。
-
-- 独自のディレクティブ、Directory / Location / IfModule、転送やアクセス制限は保持します。追加欄の許可一覧にない既存設定も継承できます。
-- DocumentRoot と対応するサイト内パスを current 配下へ変更し、443 の証明書・秘密鍵は共通の Cloudflare 証明書へ統一します。古い証明書チェーン指定は除去します。shared のパスは維持します。
-- HTTPSのない設定でHTTPSを有効にしている場合は、元のHTTP設定を残し、同じ独自設定を使う443の設定を追加します。元からあるHTTP転送ルールは保持します。
-- プレビュー後に継承元が変更された場合は再確認が必要です。configtest または反映に失敗すると、設定を戻して継承を確定しません。元の conf 本文は変更せず、同じドメインの古い有効設定を無効化します。
-- 継承元は sites-available 内にある root 所有・他ユーザー書き込み不可の conf に限ります。全VirtualHostのServerNameが対象サイトに一致し、80/443を使う通常形式のファイルが候補になります。別サイトと共用するconf、マクロ、外部ファイルに分かれたDocumentRootなどは手動で整理してください。候補に出ない場合、HTTPSの設定・ServerName・所有者・権限も確認してください。
-- このモードは元の設定を維持するため、通常の追加設定欄・PHPバージョン・AllowOverrideからの自動生成を使用しません。元のPHPハンドラーやモジュール指定は保持されます。継承した証明書・公開フォルダ以外の設定変更はサーバー管理者が保存済みの継承元を確認して行います。
-
-継承元のコピーは `/etc/apache2/sites-available/.pjas-inherited-サイト名.json` に root のみ読み書き可能な状態で保存します。バックアップ対象に含めてください。元設定の再取り込みは初回の継承時のみ可能です。元ファイルを編集しても保存済みのコピーには自動反映しません。DBの更新は不要です。
-
-## デーモンの実行内容の編集とサイト移行
-
-「常駐プログラム」の「設定を編集する」で、作成済みのデーモンに加えて既存デーモンの起動コマンドと作業フォルダも編集できます。既存デーモンは「起動設定もctrlで管理し、公開先の変更に追従する」を選びます。作業フォルダはサイト内の相対パスです。既存デーモンの起動コマンドは `/usr/bin/php8.4 websocket/server.php start` のように実行ファイルの絶対パスから始める1行で指定します。systemd の ExecStart として実行し、シェルを経由しません。
-
-`{{site_root}}` は `/var/www/サイト名/current` に置き換わります。サイトの直置きパスや日時付き releases のパスはこの記法へ正規化します。shared の固定パスは維持します。保存だけでは再起動せず、再起動ボタンで変更を反映します。以降の公開・ロールバック時には、追従対象の稼働中プログラムを再起動して同じバージョンにそろえます。以前のバージョンで作成したデーモンも一度設定を保存してください。
-
-サイトの「一括登録」と、登録済みサイトの「概要」→「既存ファイルを取り込む」には、移行する既存デーモンの複数選択欄があります。ファイル移動前に起動設定を検証し、current へ切り替えた後に関連付けとパスの上書きを設定します。稼働中なら再起動し、停止中なら起動しません。デーモンの移行選択には管理者権限が必要です。既にファイル移行済みなら「常駐プログラム」で関連付けと起動設定の取り込みを行えます。
-
-pjas-chat の既存 `pjas-websocket.service` は、`User=www-data`、`WorkingDirectory=/var/www/pjas-chat` の構成ならそのまま選択できます。作業フォルダと起動パスは current へ追従し、`EnvironmentFile=/etc/pjas-chat.env` は維持します。元設定の EnvironmentFile・ExecStartPre/Post・ExecStop/Post・PIDFile・ReadWritePaths・ReadOnlyPaths にサイト内の直置きパスがあれば、それらも current へ変更します。環境変数ファイルの中身や外部スクリプト内の固定パスまでは書き換えません。
-
-内容編集・自動パス移行の対象は、サイト内の作業フォルダを使い、www-data で動く simple/exec 型の単一 ExecStart サービスです。root 実行や forking 型などは既存の起動・停止管理のみとし、この編集の対象外です。元設定は上書きせず、ctrl用のdrop-inで変更します。`/var/lib/pjas-daemons` と `/etc/systemd/system/対象.service.d/zzzz-pjas-ctrl.conf` をバックアップしてください。
-
-## 公開GitHubから新しいサイトを登録する
-
-「サイト一覧」→「サイトを登録する」で、公開GitHubリポジトリのURL（または 所有者/リポジトリ）を入力します。ブランチ・タグを省略するとリポジトリの既定ブランチを使用します。GitHubの認証情報は使用せず、privateリポジトリは対象外です。
-
-公開アドレス・公開フォルダ・PHPの種類・動作確認ページなどを指定して登録すると、ファイル取得、準備処理、公開設定の反映、動作確認をジョブとして実行します。取得元は保存されるため、次回以降も通常のGit公開を利用できます。URLが空欄なら従来どおりサイト登録だけを行います。DB更新は不要です。
-
-GitHubリポジトリには様々な構成があります。public・dist・ルート直下など、公開フォルダをリポジトリに合わせて指定してください。npmやComposerが必要なら準備処理を指定し、DB・秘密鍵・環境変数の設定はアプリの手順に従ってください。取得や公開に失敗してもサイト登録と取得元は残るので、設定を修正し通常のGit公開から再試行できます。
-
-取得元台帳はroot所有の `/var/lib/pjas-repositories/サイト名.json` に保存します。既存の `agent/config.php` の `git_repos` も引き続き利用できます。Ubuntu側でGitHubへのHTTPS通信と git コマンドが必要です。更新時は以下を実行します。
-
-```bash
-sudo install -d -o root -g root -m 755 /var/lib/pjas-repositories
-sudo cp /opt/pjas-ctrl/systemd/pjas-agentd.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl restart pjas-agentd
-```
-
-## サイトの一時停止と自由なHTMLページ
-
-サイトの「概要」→「サイトの一時停止・再開」でHTTPコードとHTMLを指定します。404・403・410・503など、200〜599のコードを使用できます。204・205・304はHTTPの仕様上本文を返せません。HEADリクエストも本文なしです。サイトの公開設定を反映済みであることが必要です。
-
-HTMLはデータとしてそのまま表示し、PHPとして実行しません。CSS・JavaScriptはインラインに記載するか外部URLを使ってください。同じサイトの全URLを停止ページに切り替えるため、そのサイトにある画像・CSSのURLも停止ページになります。管理画面ではHTMLをエスケープして編集欄に表示し、管理画面自身で実行しません。
-
-HTTPとHTTPS、別名ドメイン、APIやWebSocketの新規接続も停止ページに切り替えます。HTTP公開の切替であり、バックグラウンドのデーモン・定期処理は停止しません。既に確立済みの接続は直ちには切断しません。停止ページはキャッシュしないヘッダーを返しますが、外部キャッシュに既に残っているページの削除は別途行ってください。
-
-停止状態はリリースから独立して保存し、公開・ロールバックや公開設定の再反映でも維持します。停止中の公開では通常ページのヘルスチェックをスキップします。「サイトを再開する」で、独自設定の継承を含む通常の公開設定へ戻します。反映に失敗した場合は公開設定と停止状態を復元します。
-
-停止ページの応答にはPHP 8.4 FPMを使用します（静的サイトも同様）。`agent/config.php` の `pause_fpm_socket` でソケットを指定できます。PHP-FPMを停止しないでください。保存先 `/var/lib/pjas-pauses` はroot所有とし、バックアップに含めます。DB更新は不要です。
-
-既存環境では以下の更新を行います。
-
-```bash
-sudo install -d -o root -g root -m 755 /var/lib/pjas-pauses
-sudo cp /opt/pjas-ctrl/systemd/pjas-agentd.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl restart pjas-agentd
-sudo systemctl reload php8.4-fpm
-```
-
-`.pjas` があるリポジトリからの一括設定読み込みは [.pjas の仕様](pjas-manifest.md) を参照してください。
-
-## 新規登録画面の取得元と公開スイッチ
-
-新規登録の「ファイルの取得元」は、新バージョン公開と同様にGitHub／圧縮ファイルから選択します。GitHubで「.pjasから設定を読み込む」をチェックした場合だけ設定を取り込みます。圧縮ファイルを選ぶとZIP/tar.gz/tgzから初回公開を実行し、ファイルを空欄にすると登録のみを行います。取得元を切り替えると、以前の取得元の入力は送信・適用しません。
-
-サイト右上のI/Oボタンに公開状態を表示します。押すと一時停止・再開のダイアログが開き、意味付きのHTTPコード一覧と「ctrlの既定ページ／独自HTML」を選択できます。既定ページはコードに応じた案内、レスポンシブ表示、ダークモードに対応しています。独自HTMLはそのまま保存・表示します。以前保存した独自HTMLは維持されます。既存の停止ページも、新しい既定デザインを使うにはダイアログで既定ページを選んで更新してください。
-
-
-## 各サイトの標準エラーページと雛形の更新
-
-Apacheが返す404・403・500・502・503・504などのエラーには、スマートフォンとダークモードに対応した共通ページを生成します。HTMLはApache設定に直接埋め込むため、アプリの公開ファイルやPHP-FPMに依存しません。日本語は文字参照で渡し、Apacheの標準応答の文字コードでも文字化けを防ぎます。
-
-既存サイトにも適用するには、ctrlを更新して作業プログラムを再起動します。
-
-```bash
-sudo git -C /opt/pjas-ctrl pull --ff-only origin main
-sudo systemctl restart pjas-agentd
-sudo systemctl reload php8.4-fpm
-```
-
-各サイトの **公開設定 → 変更点を確認 → 公開設定を反映する** で適用します。更新方法の選択は不要です。
-
-- 現在のconfがあれば、それをそのまま使い、VirtualHostごとにctrlの共通エラーページ部分だけを追加・更新します。80・443の独自設定、手作業の追記、独自の`ErrorDocument`を維持します。登録情報や保存した継承元からの全体再生成は行いません。
-- confがまだなければ、登録情報や保存した継承元から初回の公開設定を作成します。同じアドレスの別confが有効な場合は、継承元を確認するまで作成を止めます。複数ファイルに分かれた既存設定は自動でまとめて置き換えません。
-
-プレビュー後にconfが変更・作成・削除されていた場合は反映を拒否します。どちらの場合もプレビューはファイルを書き換えず、設定検査・再読み込みに失敗すると元に戻します。
-
-既存confがある場合、このボタンはエラーページの部分更新です。登録情報を編集しても、ドメイン・公開フォルダ・PHPなど既存confの他の項目は自動で書き換えません。独自の`ErrorDocument`や`.htaccess`を共通ページに変更したい場合は、独自指定の見直しが必要です。
-
-アプリが本文を返すエラー（APIのJSONなど）やCloudflare自身が返すエラーは変更しません。追加の`ProxyErrorOverride On`も設定しません。引き継いだ設定にこの指定がある場合は、その既存動作を維持します。厳しいContent-Security-Policyなど独自の応答ヘッダーは共通ページにも適用されます。
-
-旧来の`shared/maintenance.on`による503も共通ページを返します。従来の`/maintenance.html`を使いたい場合は追加設定に`ErrorDocument 503 /maintenance.html`を明示してください。右上の公開スイッチで設定する停止ページは、引き続きそちらのHTMLを使用します。
-
-
-公開設定の「エラーページの設定チェック」では、現在と更新後のconfをVirtualHostごと（`*:80`、`*:443`など）に分け、対象17コードの`ErrorDocument`を行単位で確認します。コメントや他の指示内の文字列を除外し、同じ階層では後の指定を優先します。ctrlの最新ページ、独自・旧版の指定、この範囲に指定なし、範囲限定・条件付きのみ、Apacheの既定表示を区別します。DirectoryやIfModuleなどで別指定がある場合も表示します。
-
-これはconfに直接書かれた指定の確認です。Include先・.htaccess・外部URL・エラーページファイルの存在や実際のHTTP応答を確認するものではありません。条件付きの指定をサイト全体への適用とは判定しません。ctrlの生成部分に欠けた行などがあり更新を安全に生成できない場合も、現在の設定チェックは表示し、反映ボタンを出さずに案内します。
-
-
-## 公開設定のGit差分と履歴
-
-公開設定の差分は、作業プログラム側で`git diff --no-index`を使って計算します。大きな追加や末尾改行の違いも検出します。Gitフック・外部の差分プログラム・文字変換プログラムは実行しません。
-
-公開設定ボタンからの反映前に、その時点のconfを`/etc/apache2/sites-available/.pjas-history/サイト名`の専用Gitリポジトリに保存します。フォルダはroot所有の0700です。GitHubなどへは送信しません。手作業の追記も含めて保存し、反映前の保存に失敗した場合はconfの更新を止めます。反映後も記録し、管理画面に最新10件の履歴を表示します。反映後の記録だけが失敗した場合は、設定は反映済み・反映前の履歴は保存済みであることを画面に表示します。
-
-既存confへの部分更新では、ctrlの生成したエラーページ部分を除いた前後の内容をGitで比較します。VirtualHost・ProxyPass・RewriteRuleなど、それ以外の変更があれば反映を拒否します。プレビュー後の変更検出、Apacheの設定検査、失敗時の復元も引き続き行います。Gitは履歴と文字列の差分を扱い、設定の意味やサイトの動作を判定するものではありません。
-
-サーバー管理者は、例えば次のコマンドで過去の内容を確認できます。`サイト名`と`コミット番号`は対象に置き換えます。
-
-```bash
-sudo git -C /etc/apache2/sites-available/.pjas-history/サイト名 log --oneline
-sudo git -C /etc/apache2/sites-available/.pjas-history/サイト名 show コミット番号:state.json
-sudo git -C /etc/apache2/sites-available/.pjas-history/サイト名 show コミット番号:apache.conf
-```
-
-`state.json`の`present: false`は、初回作成前でconfが存在しなかった記録です。履歴の対象は公開設定ボタンによるconfの反映です。一時停止・再開やデプロイなど別の操作はこの履歴の自動保存対象ではありません。停止状態・継承元・有効化されたサイトの状態も別管理のため、Git履歴を使う復元は管理者が関係する状態と設定内容を確認し、設定検査を通してから行ってください。管理画面からの自動復元ボタンは設けていません。
-
-
-## 以前のバージョンへ戻す
-
-左メニュー、サイト右上、または新バージョン公開画面の「以前のバージョンに戻す」から操作できます。サイトを選ぶと、サーバーの`releases`に実際に残っているバージョンを表示します。選んで実行すると、公開先を切り替えてPHP・Apache・関連する常駐プログラムを再読み込みし、動作を確認します。確認に失敗した場合は直前の公開先へ戻し、ジョブを失敗として記録します。画面を開いた後に公開先が変更されていた場合も切り替えを止めます。
-
-公開・取り込み・ロールバックはサイト単位のロックで直列に実行します。削除済みのリリースや外部へのシンボリックリンクは戻す対象に含めません。保存数を超えて削除された過去バージョンには戻せません。
-
-戻す対象はプログラムです。共有データや自動引き継ぎのDBは最新の内容を維持します。DBの構造を変更した場合は、古いコードとの互換性を確認してください。
-
-## 登録時のDBファイルの自動引き継ぎ
-
-新規登録の「データベースファイルを自動で引き継ぐ」は初期状態でオンです。一括登録でも有効になります。既存サイトの設定は自動変更しません。必要な場合はサイトの設定タブでオンにしてください。DBスキーマの更新は不要です。
-
-GitHub・圧縮ファイルからの公開、既存ファイルの取り込み、ロールバック時に、`.db`・`.sqlite`・`.sqlite3`とSQLiteヘッダーを持つファイルを検出します。実体は`shared`内の同じ相対パスに置き、新旧リリースからリンクします。公開中のファイルと既に共有しているデータを優先し、新しいコードに同梱された初期DBで上書きしません。SQLiteの`-wal`・`-shm`・`-journal`も初回移行時に一緒に引き継ぎます。SQLiteはリンク先の実体に対して追加ファイルを作成します。
-
-初回に既存DBを移す場合は、Web・常駐プログラム・定期処理などからDBへの書き込みを止め、バックアップを取ってから取り込み・公開を実行してください。以降は共有した実体を継続使用します。共有データのバックアップはリリースの保存とは別に行ってください。
-
-検出は`node_modules`・`vendor`・`.git`やシンボリックリンク先を除外し、1回の走査は50,000項目までです。パスには従来の共有パスと同じ英数字等の制約があります。SQLダンプやJSONは自動検出対象外で、必要なら引き継ぐパスに明示します。MySQL・PostgreSQLなど外部DBのコピーや構造の巻き戻しは行いません。
-
-保存上は既存の`shared_paths`に`@databases`という内部フラグを保持します。通常のパスとしては扱わず、画面ではチェックボックスに置き換えて表示します。共有フォルダや設定ファイルの初期値は、初回公開時に同梱された実データから引き継ぎ、登録時に空のファイルで置き換えません。
+通常サイトの登録と、pjas-certのCA初期化は別の作業です。v2のエンジン・保護領域・秘密情報・復元検査は、管理者による追加準備が必要です。
