@@ -50,6 +50,23 @@ $opt = static function (string $name, string $default = '') use (&$argv): string
 
 try {
     switch ($cmd) {
+        case 'components':
+            $operation=(string)($argv[0]??'status'); $site=(string)($argv[1]??'');
+            $allowed=['webplan','webapply','plan','apply','release','publish','setup','action','status','rollback','backup','restoreplan','restore','resume','tls.plan','tls.apply','tls.status'];
+            if (!in_array($operation,$allowed,true)) throw new RuntimeException('コンポーネント操作が不正です');
+            ServiceRepo::findOrFail($site); $input=$opt('input'); $params=[];
+            if ($input!=='') {
+                if (!is_file($input)||filesize($input)>131072) throw new RuntimeException('入力JSONを確認してください');
+                $params=json_decode(file_get_contents($input),true,32,JSON_THROW_ON_ERROR);
+                if (!is_array($params)) throw new RuntimeException('入力はJSONオブジェクトです');
+            }
+            $params['service']=$site;
+            $op=str_starts_with($operation,'tls.')?$operation:'components.'.$operation;
+            $r=AgentClient::call($op,$params,$actor);
+            Audit::log($actor,$op,$site,['result'=>'ok']);
+            echo json_encode($r,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+            break;
+
         case 'services':
             foreach (ServiceRepo::all() as $s) {
                 $cur = ReleaseRepo::current((int) $s['id']);

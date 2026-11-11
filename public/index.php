@@ -15,6 +15,9 @@ use Pjas\Http\Router;
 use Pjas\Http\View;
 
 $r = new Router();
+$components=new \Pjas\Http\Controllers\ComponentController();
+$r->get('/components',[$components,'index'],'owner');
+$r->post('/components',[$components,'action'],'owner');
 
 $auth = new AuthController();
 $r->get('/login', [$auth, 'showLogin'], 'public');

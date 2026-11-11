@@ -57,6 +57,7 @@ final class Automation
         ServerMonitoring::tick($now);
         $diskChecked=false;
         foreach(ServiceRepo::all() as $site){$policy=SitePolicy::get((int)$site['id']);$p=['service'=>Deployer::spec($site)];
+            if (Db::one('SELECT service_id FROM component_sites WHERE service_id=?',[$site['id']])) { ComponentMonitoring::check($site,$policy); $stats['checked']++; continue; }
             try{$health=AgentClient::call('health.check',$p,'monitor');$message=$site['name'].': '.(!empty($health['paused'])?'公開停止中の応答':(!empty($health['ok'])?'正常に応答しています':'サイトの応答を確認できません（HTTP '.($health['status']?:'応答なし').'）'));
                 Alerting::check('health:'.$site['id'],(int)$site['id'],!empty($health['ok']),$message,$policy['notifications']);ServiceRepo::setState((int)$site['id'],!empty($health['ok'])?'healthy':'unhealthy');$stats['checked']++;
                 $daemons=AgentClient::call('daemon.list',['service'=>$site['name']],'monitor')['daemons'];foreach($daemons as $d){$active=$d['state']['ActiveState']??'';$expected=($d['state']['UnitFileState']??'')==='enabled';if(!$expected&&$active==='inactive')continue;

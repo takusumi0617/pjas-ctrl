@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace Pjas\Agentd\Ops;
 require_once dirname(__DIR__,2).'/shared/SensitiveFiles.php';
+require_once dirname(__DIR__).'/lib/SiteTls.php';
+require_once __DIR__.'/Components.php';
 
 require_once dirname(__DIR__, 2) . '/shared/SiteErrors.php';
 use Pjas\Shared\SiteErrors;
@@ -129,11 +131,19 @@ final class Vhost
 
     public function render(array $spec): string
     {
-        return \Pjas\Shared\SensitiveFiles::decorate((new SitePause($this->cfg))->render(SiteErrors::decorate($this->renderNormal($spec)), $spec));
+        $body=\Pjas\Shared\SensitiveFiles::decorate((new SitePause($this->cfg))->render(SiteErrors::decorate($this->renderNormal($spec)), $spec));
+        return \Pjas\Agentd\SiteTls::decorate($this->cfg,$spec['name'],$body);
     }
 
     private function renderNormal(array $spec): string
     {
+        $isolated=Components::protectedSite($this->cfg,$spec['name']);
+        if ($isolated) {
+            $policy=new \Pjas\Agentd\ComponentPolicy($this->cfg); $grant=$policy->data['sites'][$spec['name']]??null;
+            if (!$grant) throw new OpException('隔離サイトの管理者設定がありません');
+            $spec=Spec::service(['name'=>$spec['name'],'domain'=>$grant['domain'],'runtime'=>$grant['runtime'],'docroot'=>$grant['document_root'],'tls'=>$grant['https']??true]);
+            if (is_file($this->inheritedPath($spec['name']))) throw new OpException('隔離サイトへ移行する前に継承Apache設定を管理者が整理してください');
+        }
         $saved = $this->inheritedPath($spec['name']);
         if (is_file($saved)) {
             $snapshot = json_decode((string) file_get_contents($saved), true, 512, JSON_THROW_ON_ERROR);
@@ -162,6 +172,12 @@ final class Vhost
         }
         if ($spec['runtime'] !== 'static') {
             $sock  = '/run/php/' . $spec['runtime'] . '.sock';
+            if ($isolated) {
+                $state=(new \Pjas\Agentd\ControlStore($this->cfg))->read('components-'.$name);
+                $php=array_values(array_filter($state['manifest']['components']??[],fn($c)=>$c['type']==='php'));
+                if (count($php)!==1) throw new OpException('サイト別FPMを先に設定してください');
+                $sock=rtrim($this->cfg['component_run_dir']??'/run/pjas-components','/').'/'.$name.'-'.$php[0]['id'].'/socket/php.sock';
+            }
             $body .= "    <FilesMatch \\.php$>\n";
             $body .= "        SetHandler \"proxy:unix:{$sock}|fcgi://localhost\"\n";
             $body .= "    </FilesMatch>\n";

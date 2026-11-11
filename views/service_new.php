@@ -129,6 +129,7 @@ $v = static fn(string $k, string $d = '') => View::e((string) ($in[$k] ?? $d));
   <?php if (!empty($in['manifest_token'])): ?>
   <fieldset id="manifest-settings" class="source-fields" <?= $selectedSource !== 'git' || empty($in['read_manifest']) ? 'hidden disabled' : '' ?>>
   <div class="card"><div class="card-h">.pjas の設定と追加プログラム</div><div class="card-b">
+  <p>コンポーネント画面・CLIで使用する読み込みトークン: <code><?= $v('manifest_token') ?></code></p>
   <input type="hidden" name="manifest_token" value="<?= $v('manifest_token') ?>">
   <div class="field"><label>読み込んだ設定（JSON・編集可能）</label><textarea name="manifest_json" rows="18" class="mono"><?= $v('manifest_json') ?></textarea></div>
   <p class="hint">サイト名・ドメイン・公開フォルダ・準備処理・共有パスには上の入力欄を使います。このJSONではデーモン・cronなどを編集できます。起動指定のあるプログラムは初回公開で実行します。</p>

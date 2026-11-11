@@ -15,6 +15,10 @@ final class AgentClient
 {
     /** agent 側 Registry と一致する許可 op。ここに無い op は送信前に落とす。 */
     public const OPS = [
+        'components.webplan','components.webapply',
+        'components.plan','components.apply','components.setup','components.action','components.status',
+        'components.maintain','components.release','components.publish','components.rollback','components.backup','components.restoreplan','components.restore','components.resume',
+        'tls.renew','tls.plan','tls.apply','tls.status',
         'server.snapshot','server.restart',
         'site.plan','site.status','site.start','site.cleanup',
         'ops.run','ops.settings','ops.save','ops.notify','ops.resources','ops.certificate','ops.logs',

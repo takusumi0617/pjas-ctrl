@@ -70,7 +70,29 @@ $review=new \Pjas\Agentd\ReleaseReview($cfg,$paths);
 $preview=new \Pjas\Agentd\Ops\Preview($cfg,$paths);
 $repositories=new \Pjas\Agentd\GitRepositories($cfg);
 $server=new \Pjas\Agentd\Ops\ServerMonitor($cfg);
+$components=new \Pjas\Agentd\Ops\Components($cfg);
+$certificates=new \Pjas\Agentd\Ops\Certificates($cfg);
 $registry = [
+    'components.webplan'=>[$components,'webPlan'],
+    'components.webapply'=>[$components,'webApply'],
+    'components.plan'=>[$components,'plan'],
+    'components.apply'=>[$components,'apply'],
+    'components.setup'=>[$components,'setup'],
+    'components.action'=>[$components,'action'],
+    'components.status'=>[$components,'status'],
+    'components.release'=>[$components,'releasePlan'],
+    'components.publish'=>[$components,'publish'],
+    'components.rollback'=>[$components,'rollback'],
+    'components.maintain'=>[$components,'maintain'],
+    'components.backup'=>[$components,'backup'],
+    'components.restoreplan'=>[$components,'restorePlan'],
+    'components.restore'=>[$components,'restore'],
+    'components.resume'=>[$components,'resume'],
+    'tls.renew'=>[$certificates,'renew'],
+    'tls.plan'=>[$certificates,'plan'],
+    'tls.apply'=>[$certificates,'apply'],
+    'tls.status'=>[$certificates,'status'],
+
     'server.snapshot'=>[$server,'snapshot'],
     'server.restart'=>[$server,'restart'],
     'ops.run'=>[(new \Pjas\Agentd\Ops\AsyncTasks($cfg,$paths)),'start'],
@@ -221,6 +243,8 @@ function handle(string $line, array $registry): array
     $started = microtime(true);$siteLock=null;
     try {
         $target=$params['service']??($params['task']['service']??null);if(is_array($target))$target=$target['name']??null;
+        if (is_string($target)) \Pjas\Agentd\Ops\Components::guard($cfg,$target,$op);
+        if (!empty($params['target_service'])) \Pjas\Agentd\Ops\Components::guard($cfg,\Pjas\Agentd\Spec::name($params['target_service']),$op);
         if(is_string($target)&&!str_starts_with($op,'site.')){
             if(in_array($op,['github.configure','github.connection','cron.apply','cron.delete','daemon.save','daemon.action','apache.apply','apache.pause','fs.write','service.create','service.destroy','preview.save'],true)){
                 $path=$cfg['apache_sites'].'/.pjas-deploy-'.\Pjas\Agentd\Spec::name($target).'.lock';if(is_link($path))throw new OpException('作業ロックが不正です');$siteLock=fopen($path,'c');

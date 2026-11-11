@@ -10,6 +10,8 @@ GitHub App・バックアップ・予約公開など13機能の初回準備と�
 
 Ubuntu 1台の状態確認・セキュリティ監視とDiscord通知は [サーバー監視の使い方](docs/server-monitoring.md) を参照してください。
 
+pjas-cert向けの `.pjas v2`、専用実行ユーザー・FPM・保護領域・状態復元・サイト別TLSは [隔離コンポーネントの導入と運用](docs/pjas-cert.md) を参照してください。
+
 ## 構成
 
 ```

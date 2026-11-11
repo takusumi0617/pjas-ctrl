@@ -88,6 +88,15 @@ final class ServiceController
 
         $actor = Auth::actor();
         try {
+            if (($manifest['version']??1)===2) {
+                $review=AgentClient::call('components.plan',['service'=>$v['name'],'token'=>(string)$_POST['manifest_token']],$actor);
+                $expected=PjasManifest::defaults($review['proposed']);
+                foreach (['name','domain','runtime','docroot'] as $key) if ($v[$key]!==$expected[$key]) throw new AgentException('v2サイトの公開設定は承認済みマニフェストと一致させてください');
+                ServiceRepo::create($v);
+                \Pjas\Support\Db::run('INSERT INTO component_sites(service_id) VALUES (?)',[ServiceRepo::findOrFail($v['name'])['id']]);
+                Audit::log($actor,'components.register',$v['name'],['sha'=>$review['sha']]);
+                View::redirect('/components?service='.rawurlencode($v['name']),'サイトを登録しました。設定と固定コミットを確認し、適用・公開・初期化を順に実行してください');
+            }
             if ($manifest !== null) AgentClient::call('github.validate', ['service'=>Deployer::spec($v),
                 'token'=>(string)$_POST['manifest_token'],'json'=>(string)$_POST['manifest_json'],'repo'=>$repo,'ref'=>$ref,'auth'=>$selection['auth']],$actor);
             // ディレクトリ雛形 (releases/ shared/ current) は agent が root で作る
@@ -185,6 +194,7 @@ final class ServiceController
                     ],
                 ], $actor);
                 ServiceRepo::create($v);
+                \Pjas\Support\Db::run('INSERT INTO component_sites(service_id) VALUES (?)',[ServiceRepo::findOrFail($v['name'])['id']]);
                 Audit::log($actor, 'service.create', $v['name'], ['domain' => $v['domain'], 'via' => 'import']);
 
                 $note = '登録しました';

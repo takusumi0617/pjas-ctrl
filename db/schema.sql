@@ -170,3 +170,10 @@ CREATE TABLE IF NOT EXISTS notification_retries (
     attempts INTEGER NOT NULL DEFAULT 0,
     last_attempt INTEGER NOT NULL DEFAULT 0
 );
+
+-- Non-authoritative UI/monitor cache; privileges and secrets remain in the root-owned agent store.
+CREATE TABLE IF NOT EXISTS component_sites (
+ service_id INTEGER PRIMARY KEY REFERENCES services(id) ON DELETE CASCADE,
+ phase TEXT NOT NULL DEFAULT 'registered',
+ observed_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

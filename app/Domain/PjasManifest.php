@@ -2,7 +2,7 @@
 declare(strict_types=1);
 namespace Pjas\Domain;
 
-/** .pjas version 1。未知のキーは黙って無視せず、入力ミスとして返す。 */
+/** .pjas version 1 / 2。未知のキーは黙って無視せず、入力ミスとして返す。 */
 final class PjasManifest
 {
     private static function keys(array $v, array $allowed, string $where): void
@@ -18,6 +18,7 @@ final class PjasManifest
     {
         if (strlen($json) > 128 * 1024) throw new \InvalidArgumentException('.pjasは128KB以内にしてください');
         try { $m = json_decode($json, true, 64, JSON_THROW_ON_ERROR); } catch (\JsonException $e) { throw new \InvalidArgumentException('.pjasのJSONが不正です: ' . $e->getMessage()); }
+        if (is_array($m) && ($m['version'] ?? null) === 2) { require_once __DIR__ . '/ComponentManifest.php'; return ComponentManifest::parse($m); }
         if (!is_array($m) || ($m['version'] ?? null) !== 1) throw new \InvalidArgumentException('.pjasのversionは1を指定してください');
         self::keys($m, ['version', 'site', 'apache', 'shared', 'prepare', 'daemons', 'cron'], '.pjas');
         if (!is_array($m['site'] ?? null)) throw new \InvalidArgumentException('siteを指定してください');
@@ -70,6 +71,6 @@ final class PjasManifest
         return ['name'=>$s['name'], 'domain'=>$s['domain'] ?? '', 'runtime'=>$s['runtime'] ?? 'php8.4-fpm',
             'docroot'=>$s['document_root'] ?? 'public', 'tls'=>($s['https'] ?? true) ? 1 : 0,
             'health_path'=>$s['health_path'] ?? '/', 'health_status'=>$s['health_status'] ?? 200,
-            'shared_paths'=>implode(',', $m['shared']), 'hooks'=>implode("\n", $m['prepare'])];
+            'shared_paths'=>implode(',', $m['shared'] ?? []), 'hooks'=>implode("\n", $m['prepare'] ?? [])];
     }
 }

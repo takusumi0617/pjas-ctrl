@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 namespace Pjas\Agentd\Ops;
+require_once dirname(__DIR__).'/lib/ComponentPolicy.php';
 
 use Pjas\Agentd\OpException;
 use Pjas\Agentd\Proc;
@@ -34,6 +35,7 @@ final class Daemon
     {
         if (!is_string($unit) || !preg_match('/\A[a-zA-Z0-9][a-zA-Z0-9_.@-]*\.service\z/D', $unit)
             || $unit === 'pjas-agentd.service') throw new OpException('このサービス名は使えません');
+        if (\Pjas\Agentd\ComponentPolicy::reservedUnit($this->cfg,$unit)) throw new OpException('隔離コンポーネントのunitは共通デーモンとして操作できません');
         return $unit;
     }
     private function write(string $path, string $body, int $mode = 0644): void
@@ -204,6 +206,7 @@ final class Daemon
         $units = [];
         foreach (explode("\n", trim($out)) as $line) {
             $unit = preg_split('/\s+/', trim($line))[0] ?? '';
+            if (\Pjas\Agentd\ComponentPolicy::reservedUnit($this->cfg,$unit)) continue;
             if ($unit === 'pjas-agentd.service' || isset($linked[$unit]) || str_starts_with($unit, 'pjas-daemon-')) continue;
             if (preg_match('/\A[a-zA-Z0-9][a-zA-Z0-9_.@-]*\.service\z/D', $unit) && !str_contains($unit, '@.')) $units[] = $unit;
         }

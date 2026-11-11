@@ -1,0 +1,102 @@
+# pjas-cert 用の隔離コンポーネント（.pjas v2）
+
+v1 の登録・公開・切り戻しは従来どおりです。v2 は共通の実行ユーザーを使わず、設定更新、コード公開、CA初期化、状態復元を独立して実行します。CAや署名エンジンそのものは実装しません。ルート管理者と特権agentは信頼境界の内側です。
+
+## 管理者の事前準備
+
+対象は Linux、systemd の `systemd-run --wait --collect --service-type=exec` と `RuntimeMaxSec`、PHP 8.1以上、ACL対応PHP-FPM、Apache 2.4、Python 3、OpenSSL、Gitです。既存の管理画面用SQLite DBに `php bin/pjas-migrate` を実行します。スキーマ変更は追加テーブルだけです。
+
+`examples/pjas-cert/.pjas` と `examples/pjas-cert/components.json` は**提案したインターフェースの例**です。利用側の実際のエンジン、CLI、ファイル構成に合わせてください。2026年11月11日（JST）の確認時、利用側 `takusumi0617/pjas-cert` のHEAD `b1cbcefbd1548c81a9bb7607c358fb539edeb854` はLICENSEのみで、API・エンジン・CLIはまだありません。例に記載した `bin/*worker.php` や `/usr/local/libexec/pjas-cert-*` をctrlが提供しているわけではありません。不足する実行ファイル・参照・所有権がある場合は停止します。
+
+1. コンポーネントごとに専用ユーザーと同名の専用プライマリグループを管理者が作成します。root、www-data、pjas-control、プレビューユーザーは禁止です。同じUID/GIDの共有、補助グループ、複数サイトでの共有を拒否します。実行ユーザーに他サイトのグループを付与しないでください。
+2. `/var/lib/pjas-cert` は root:root 0755、`ui`、`ca`、`sign` は対応ユーザー・グループ所有の0700にします。公開ルート外の独立した実ディレクトリだけを割り当てます。親ディレクトリもroot所有で他ユーザーが書き込めないことが必要です。
+3. API資格情報などの保護ファイルを `/etc/pjas/secrets/` にroot所有0600で配置します。秘密値は.pjasに記載しません。CA鍵は一般の秘密情報として配布せず、専用の永続領域に配置します。CAの生成・エクスポート・ローテーションはpjas-certで行います。
+4. 台帳を `/etc/pjas/components.json` にroot所有0600で配置します。別の場所を使う場合は 管理者用 `agent/config.php` の `component_catalog` を設定します。台帳を変更できるWeb RPCはありません。`sites.repository` はGitHub読み込みの正規化URL（末尾.gitの有無は正規化）と一致させます。
+5. 32バイトのバックアップ暗号鍵を、保存物と別管理の `/etc/pjas/backup-keys/` 等へroot所有0600で用意します。ルートCA秘密鍵をオンラインの対象領域へ置かないでください。
+6. `/usr/local/libexec/` 等のroot所有・非特権ユーザーが変更できない場所へ、利用エンジンの事前検査・初期化・状態判定・復元検査を実装します。任意rootスクリプトをリポジトリから読み込むことはできません。
+7. agentのsystemdサンドボックスに、管理者指定の永続領域への `ReadWritePaths=/var/lib/pjas-cert` を追加します。標準のunitは `/var/lib/pjas-cert` を自動許可しません。対象ホストで明示的に承認してください。
+
+実行台帳はroot専用の `control_dir/components-<site>.json`、設定レビューと実行履歴もroot専用のControlStoreに保存します。Web DBの `component_sites` は監視対象・表示状態のキャッシュであり、権限判断には使いません。
+
+## .pjas v2
+
+上限128KB、コンポーネント16件、通常の参照配列32件、ヘルスチェック8件。未知キー、重複ID、循環依存、未知依存、制御文字、systemd展開文字を拒否します。正式な機械可読スキーマは `docs/pjas-v2.schema.json`、追加の意味検証は `ComponentManifest` が行います。
+
+- `components[].type`: `php` または `worker`。PHPは1件まで。
+- `execution_profile`: 管理者台帳 `profiles` のID。任意UID・所有者は指定できません。
+- `command`: workerのargv配列。最初の実行ファイルはプロファイルの `executables` に登録済みである必要があります。シェルやsystemd本文として解釈しません。`{{site_root}}` は固定されたサイトのcurrentだけへ展開します。
+- `storage` / `secrets`: 管理者に許可された領域ID・秘密情報IDの配列。任意パス・値を記載できません。
+- `requirements` / `setup` / `health_checks`: 管理者台帳の操作IDの配列。ヘルスチェックはコンポーネントの準備完了、CA期限、署名ジョブ滞留などを別IDにします。
+- `depends_on`: 別コンポーネントID。起動順と準備完了の両方を確認します。
+- `existing_service`: 台帳 `existing_services` のID。`sites`, `profile`, `unit`, `sha256` が必要です。管理者が `systemctl cat` の全本文を承認したハッシュ、専用ユーザー、基本隔離設定を検査し、定義を上書きせず関連付けます。新規unitは作成しません。既存unitに必要な全ての隔離設定を管理者が設定してください。
+- `backup_policy`: 整合性保存と復元検査の方針ID。
+
+通常のv1の `shared`, `prepare`, `cron`, `apache`, `daemons` をv2に混在させることはできません。v2ではCA状態をリリース内にリンクしません。アプリは `PJAS_STORAGE_<ID>` の保護領域を直接使います（IDのハイフンはアンダースコア、大文字）。初期の依存ライブラリはレビュー対象のGitコミットに含めるか、管理者が準備した実行環境を使ってください。公開時に任意ダウンロード・パッケージインストールは行いません。
+
+## 管理画面とCLI
+
+「隔離コンポーネント」で管理します。ownerロールとサイト権限、POSTのCSRF検証、変更時のパスワード再確認が必要です。
+
+1. 既存のGitHub `.pjasから設定を読み込む` を使います。v2の登録は自動公開せず、コンポーネント画面へ移ります。読み込み時のトークン（画面の `manifest_token`）は固定コミットを参照します。
+2. 設定の差分を確認し、レビューIDを指定して適用します。秘密値はプレビューしません。レビューは30分で失効し、台帳・既存設定が変わった場合は再確認が必要です。
+3. 同じトークンでコード公開を確認して公開します。Gitの固定オブジェクトから展開し、リンク・特殊ファイル・親パス・過大アーカイブを拒否します。コードはagent（本番はroot）所有で実行ユーザーには読み取りだけを許可します。
+4. 初回セットアップを明示して実行します。初期化操作の `absent` は安全な空状態、`check` は完了状態を終了コード0で示します。実行前に実行IDを保存します。中断・失敗後に状態が不明な場合は自動再実行しません。管理者がエンジン状態を調査し、root台帳と整合させてから再試行してください。
+5. 起動します。systemdの稼働と各準備完了チェックを別々に確認し、依存先が準備できなければ停止します。部分起動失敗時は、この操作で起動したコンポーネントを停止します。
+6. サイト別FPMの公開設定を確認して適用します。FPMは専用ユーザーで動き、ApacheユーザーにはソケットACLだけを渡します。設定ファイル・秘密情報の親ディレクトリはroot所有、実行ユーザーが変更できません。
+
+CLIは同じRPCを使います。
+
+```sh
+php bin/pjasctl components status pjas-cert
+php bin/pjasctl components plan pjas-cert --input /path/to/token.json
+php bin/pjasctl components apply pjas-cert --input /path/to/review.json
+php bin/pjasctl components release pjas-cert --input /path/to/token.json
+php bin/pjasctl components publish pjas-cert --input /path/to/review.json
+php bin/pjasctl components setup pjas-cert
+php bin/pjasctl components action pjas-cert --input /path/to/start.json
+```
+
+入力例は `{"token":"読み込み時の32桁トークン"}`, `{"review":"返された64桁レビューID"}`, `{"action":"start"}`。CLI入力には秘密値を含めないでください。起動プロセスのstdout/stderr、初期化・検査の出力は保存も返却もしません。アプリ自身の監査・ログにも秘密値を出力しないことが必要です。
+
+API資格情報はプロセス専用の保護ファイルへコピーし、`PJAS_SECRET_<ID>` にはファイルパスだけを渡します。PHP-FPMの `clear_env` を有効にして、必要な参照だけを設定します。台帳変更後は再プレビュー・停止・設定適用・再起動してください。元ファイルの値の更新は次の起動で渡されます。systemd credentialsへの依存はなく、初期実装は保護ファイル方式です。
+
+ホスト再起動時はagentが承認済みハッシュと一致するFPM設定と実行先を再生成できます。プロセス自動起動のenableは行いません。実行用ディレクトリの再生成前にコンポーネントを自動起動しないでください。
+
+## 更新・削除・移行
+
+通常の公開はマニフェストを再適用しません。設定が変わった場合は別の設定レビューが必要です。コード切り戻しには保存済みのリリースIDと `expected_current` を指定します。CA状態・管理DBは変更しません。稼働中の公開・切り戻しは停止、原子的切替、再起動・準備完了確認を行い、失敗すれば直前のコードへ戻します。
+
+隔離対象として管理者台帳に登録されたサイトは、従来のデプロイ・ファイル閲覧/編集・バックアップ復元・削除・共通デーモン経路をagentで拒否します。他サイトへの移動も拒否します。管理画面上で実行ユーザーへroot権限を追加する方法はありません。
+
+既存v1サイトの移行は自動ではありません。停止・バックアップ後、管理者がリリースの所有権、既存デーモン、独自Apache設定を確認して移行してください。未知のcurrentや継承Apache設定を自動で取り込まず拒否します。CA領域・鍵の削除RPCはありません。サイトをWeb DBから取り除いてもroot台帳と保護データを保持します。廃棄は別途管理者が対象・影響を確認して行ってください。
+
+## 監視、整合性保存、復元
+
+`bin/pjas-tick` はv2サイトを個別コンポーネント・個別チェック・バックアップ鮮度で監視します。既存の通知経路で重複を抑制し、復旧も通知します。監視対象・結果に秘密値や検査出力を含めません。バックアップはコンポーネント画面またはCLIで明示実行します。管理者台帳のバックアップ方針で `auto_backup: true` を承認した場合は `pjas-tick` が `max_age` ごとに整合性保存を実行します。全コンポーネントを停止する方式のため、停止可能な運用間隔を指定してください。失敗時は停止を維持します。
+
+全コンポーネントを停止して、登録したエンジン整合性チェックの後で保存します。稼働中DBの単純コピーはしません。保存物は既存の認証付きAES-256-GCMストリーム形式で暗号化し、root専用の `component-backups/<site>` に保存します。保護領域のリンク・特殊ファイル・ハードリンクを拒否します。保存物にはコードを含めません。
+
+復元は `restoreplan` → `restore`。暗号化認証、サイト、保存対象、台帳の一致、全アーカイブの安全性を検査してから停止・復元します。復元直前に発行停止状態を永続化します。領域の専用所有権と0700、秘密情報の0600を復元し、内部ファイルは保存時の所有権・所有者用の許可ビットを維持して（グループ・その他の権限は除去） `verify_restore` を実行し、CA DB・鍵・証明書の整合性と二重稼働がないことをエンジン側で確認します。途中失敗をロールバック済みとは扱いません。発行停止を保持し、管理者が復旧してください。
+
+`resume` は再検査と `{"accept_history_loss":true}` が必要です。古い発行・失効履歴の欠落を確認したという明示操作であり、検査だけで自動復旧しません。解除後も起動は別操作です。バックアップの `restore_tested` は復元検査が実際に成功した時だけtrueになります。外部署名ワーカーのOSやクラスタ排他制御は利用エンジンの検査アダプターで担保してください。
+
+## サイト別TLS
+
+台帳 `tls_providers` の `common`（従来の共通証明書）、`manual`、`pjas-cert` を選びます。`tls.plan` → `tls.apply` のレビューが必要です。既存サイトの未設定時の既定値は変更しません。`pjas-cert`プロバイダーに管理者が `auto_renew: true` と `renew_before`（秒、既定7日）を設定し、その設定をレビュー適用した場合は `pjas-tick` が自動更新します。台帳の変更後は自動更新を停止し再レビューを要求します。
+
+pjas-cert取得アダプターは `request` argvの `{csr}`, `{certificate}`, `{domain}` を受けます。TLS秘密鍵はctrlホストで作成し、アダプターへ渡しません。アダプターはCSRだけをCAへ送り、対象サイト限定の資格情報で証明書チェーンを指定ファイルへ保存してください。接続資格情報はroot管理の保護ファイルから読み込み、argv・出力に値を書かないでください。利用側のAPIが未確定なので、特定のHTTPエンドポイントはハードコードしていません。
+
+鍵の一致、SAN、期限、チェーン、TLSサーバー用途を検証し、世代ディレクトリのcurrentを原子的に切り替えます。Apache configtestとreload後、127.0.0.1へ対象ドメインのSNI・信頼ルートを使って実接続し、配信された証明書の指紋を照合します。失敗時は証明書の参照とApache設定を復旧し、復旧の成否も監査します。`control_domains` に管理画面ドメインを登録し、CA依存のTLS更新対象から除外してください。管理画面用の独立した証明書を保持します。
+
+## 検証
+
+```sh
+php tests/component_manifest.php
+php tests/components_workflow.php
+php tests/component_tls.php
+python3 tests/component_files.py
+```
+
+ワークフローテストはsystemdの呼び出しを模擬し、固定コミットからの実展開、初期化の再試行、暗号化保存と実復元を行います。TLSテストは実際のOpenSSLで検証します。対象Ubuntu上での別UIDアクセス拒否、FPMソケットACL、systemdサンドボックス、実Apache reloadとSNI接続は、対応権限を持つ実ホストで追加の統合検証が必要です。単体テストの成功を本番ホストの隔離検証済みとは扱わないでください。
+
+本番相当ホストでは `sudo php bin/pjas-components-check pjas-cert` を実行してください。実際のUID切替、自己コードの書き込み拒否、他領域・秘密ファイルへのアクセス拒否、Apacheから専用FPMソケットへの接続を検査します。root以外は終了コード77で未実施を示します。

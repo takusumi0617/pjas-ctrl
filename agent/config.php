@@ -1,6 +1,9 @@
 <?php
 // pjas-agentd 設定 (root で読まれる)。web 側 config.php と整合させること。
 return [
+    // v2 grants are edited by a root administrator, never through the web UI.
+    'component_catalog' => '/etc/pjas/components.json',
+    'component_run_dir' => '/run/pjas-components',
     'control_dir'   => '/var/lib/pjas-control',
     'preview_root'  => '/var/www/pjas-previews',
     'preview_user'  => 'pjas-preview',

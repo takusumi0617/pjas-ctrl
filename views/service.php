@@ -19,6 +19,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
         default     => '<span class="tag t-mut">未確認</span>',
     } ?>
   <span class="spacer"></span>
+  <?php if (Auth::can('owner')): ?><a class="btn" href="/components?service=<?= $name ?>">隔離コンポーネント</a><?php endif; ?>
   <form method="post" action="/services/<?= $name ?>/health"><?= Csrf::field() ?>
     <button class="btn">いま動作を確認する</button></form>
   <?php if (Auth::canSite($s['name'],'operator')): ?>

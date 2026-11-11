@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "control_domains": ["ctrl.example.com"],
+  "sites": {"pjas-cert": {"repository": "https://github.com/takusumi0617/pjas-cert", "domain": "cert.example.com", "runtime": "php8.4-fpm", "document_root": "public", "https": true}},
+  "profiles": {
+    "cert-web": {"sites": ["pjas-cert"], "type": "php", "user": "pjas-cert-web", "group": "pjas-cert-web", "fpm_binary": "/usr/sbin/php-fpm8.4", "apache_user": "www-data"},
+    "cert-ca": {"sites": ["pjas-cert"], "type": "worker", "user": "pjas-cert-ca", "group": "pjas-cert-ca", "executables": ["/usr/bin/php8.4"], "ready_timeout": 30},
+    "cert-sign": {"sites": ["pjas-cert"], "type": "worker", "user": "pjas-cert-sign", "group": "pjas-cert-sign", "executables": ["/usr/bin/php8.4"]}
+  },
+  "storage": {
+    "cert-ui": {"sites": ["pjas-cert"], "profile": "cert-web", "path": "/var/lib/pjas-cert/ui", "purpose": "management-db"},
+    "cert-ca-state": {"sites": ["pjas-cert"], "profile": "cert-ca", "path": "/var/lib/pjas-cert/ca", "purpose": "intermediate-ca"},
+    "cert-sign-state": {"sites": ["pjas-cert"], "profile": "cert-sign", "path": "/var/lib/pjas-cert/sign", "purpose": "signing-jobs"}
+  },
+  "secrets": {"cert-api": {"sites": ["pjas-cert"], "profile": "cert-web", "purpose": "api", "path": "/etc/pjas/secrets/cert-api"}},
+  "requirements": {"cert-platform": {"sites": ["pjas-cert"], "command": ["/usr/local/libexec/pjas-cert-platform-check"]}},
+  "setup": {"cert-ca-init": {"sites": ["pjas-cert"], "profile": "cert-ca", "command": ["/usr/local/libexec/pjas-cert-initialize"], "absent": ["/usr/local/libexec/pjas-cert-state-absent"], "check": ["/usr/local/libexec/pjas-cert-state-check"], "timeout": 120}},
+  "health": {
+    "web-ready": {"sites": ["pjas-cert"], "profile": "cert-web", "command": ["/usr/local/libexec/pjas-cert-probe", "web"]},
+    "ca-ready": {"sites": ["pjas-cert"], "profile": "cert-ca", "command": ["/usr/local/libexec/pjas-cert-probe", "ca"]},
+    "ca-expiry": {"sites": ["pjas-cert"], "profile": "cert-ca", "command": ["/usr/local/libexec/pjas-cert-probe", "ca-expiry"]},
+    "sign-ready": {"sites": ["pjas-cert"], "profile": "cert-sign", "command": ["/usr/local/libexec/pjas-cert-probe", "sign"]},
+    "sign-queue": {"sites": ["pjas-cert"], "profile": "cert-sign", "command": ["/usr/local/libexec/pjas-cert-probe", "sign-queue"]}
+  },
+  "backup_policies": {"cert-backup": {"sites": ["pjas-cert"], "storage": ["cert-ui", "cert-ca-state", "cert-sign-state"], "secrets": ["cert-api"], "key_file": "/etc/pjas/backup-keys/cert.key", "max_age": 86400, "check": ["/usr/local/libexec/pjas-cert-backup-check"], "verify_restore": ["/usr/local/libexec/pjas-cert-restore-check"]}},
+  "tls_providers": {
+    "cloudflare": {"sites": ["pjas-cert"], "type": "common", "trust": "/etc/pjas/cloudflare-origin-root.pem"},
+    "cert-tls": {"sites": ["pjas-cert"], "type": "pjas-cert", "trust": "/etc/pjas/cert-trust.pem", "request": ["/usr/local/libexec/pjas-cert-request", "{csr}", "{certificate}", "{domain}"]},
+    "manual": {"sites": ["pjas-cert"], "type": "manual", "trust": "/etc/pjas/cert-trust.pem", "certificate": "/etc/pjas/tls/site.pem", "key": "/etc/pjas/tls/site.key"}
+  }
+}

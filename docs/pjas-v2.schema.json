@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pjas.invalid/schemas/pjas-v2.json",
+  "title": ".pjas version 2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "site",
+    "components"
+  ],
+  "properties": {
+    "version": {
+      "const": 2
+    },
+    "site": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "domain",
+        "runtime",
+        "document_root"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+        },
+        "domain": {
+          "type": "string"
+        },
+        "runtime": {
+          "enum": [
+            "static",
+            "php8.1-fpm",
+            "php8.2-fpm",
+            "php8.3-fpm",
+            "php8.4-fpm"
+          ]
+        },
+        "document_root": {
+          "type": "string"
+        },
+        "https": {
+          "type": "boolean"
+        },
+        "health_path": {
+          "type": "string"
+        },
+        "health_status": {
+          "type": "integer"
+        }
+      }
+    },
+    "components": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "type",
+          "execution_profile"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,31}$"
+          },
+          "type": {
+            "enum": [
+              "php",
+              "worker"
+            ]
+          },
+          "execution_profile": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,31}$"
+          },
+          "command": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "maxLength": 1024,
+              "pattern": "^[^\\u0000-\\u001f\\u007f$%]*$"
+            }
+          },
+          "working_directory": {
+            "type": "string"
+          },
+          "storage": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{0,31}$"
+            },
+            "maxItems": 32,
+            "uniqueItems": true
+          },
+          "secrets": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{0,31}$"
+            },
+            "maxItems": 32,
+            "uniqueItems": true
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{0,31}$"
+            },
+            "maxItems": 32,
+            "uniqueItems": true
+          },
+          "setup": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{0,31}$"
+            },
+            "maxItems": 32,
+            "uniqueItems": true
+          },
+          "health_checks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{0,31}$"
+            },
+            "maxItems": 8,
+            "uniqueItems": true
+          },
+          "existing_service": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,31}$"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "php"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "command": {
+                  "maxItems": 0
+                }
+              },
+              "not": {
+                "required": [
+                  "existing_service"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,31}$"
+      },
+      "maxItems": 32,
+      "uniqueItems": true
+    },
+    "backup_policy": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,31}$"
+    }
+  },
+  "$comment": "128KiB limit, reference authorization, dependency graph, worker commands and path safety are also checked by ComponentManifest and the privileged agent."
+}

@@ -1,0 +1,38 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+/** Read-only host acceptance checks; run as root after configuring an isolated site. */
+if (PHP_SAPI!=='cli') exit(1);
+if (!function_exists('posix_geteuid') || posix_geteuid()!==0) { fwrite(STDERR,"実UID間の検査には対象ホストのroot権限が必要です\n");exit(77); }
+$root=dirname(__DIR__);
+spl_autoload_register(static function($class)use($root){
+ if(str_starts_with($class,'Pjas\\Agentd\\')) { $r=substr($class,12); $f=$root.'/agent/'.(str_starts_with($r,'Ops\\')?'ops/'.substr($r,4):'lib/'.$r).'.php'; }
+ elseif(str_starts_with($class,'Pjas\\Domain\\')) $f=$root.'/app/Domain/'.substr($class,12).'.php'; else return;
+ if(is_file($f))require_once $f;
+});
+use Pjas\Agentd\{ComponentPolicy,ControlStore,Proc,Spec};
+try {
+ $cfg=require $root.'/agent/config.php';$site=Spec::name($argv[1]??'');$policy=new ComponentPolicy($cfg);$s=(new ControlStore($cfg))->read('components-'.$site);
+ if (!$s) throw new RuntimeException('隔離サイトの設定を先に適用してください');
+ $fail=0;
+ $check=static function(bool $ok,string $label)use(&$fail){echo ($ok?'PASS ':'FAIL ').$label."\n";if(!$ok)$fail++;};
+ $profiles=[];
+ foreach ($s['manifest']['components'] as $c) $profiles[$c['execution_profile']]=$policy->profile($c['execution_profile'],$site);
+ foreach ($profiles as $id=>$p) {
+  $identity=Proc::run(['/usr/bin/id','-u'],null,10,$p['user']);$check($identity['code']===0 && (int)trim($identity['out'])===$p['uid'],$id.' の実UIDに切り替える');
+  $code=$cfg['www_root'].'/'.$site.'/current';
+  $check(Proc::run(['/usr/bin/test','-w',$code],null,10,$p['user'])['code']!==0,$id.' はコードを変更できない');
+  foreach ($policy->data['storage']??[] as $sid=>$st) {
+   if (($st['profile']??'')===$id) { $policy->storage($sid,$site,$id); $check(Proc::run(['/usr/bin/test','-w',$st['path']],null,10,$p['user'])['code']===0,$id.' は割り当て領域 '.$sid.' を書き込める'); }
+   else $check(Proc::run(['/usr/bin/test','-x',$st['path']],null,10,$p['user'])['code']!==0,$id.' は他の領域 '.$sid.' に入れない');
+  }
+  foreach ($policy->data['secrets']??[] as $sid=>$secret) $check(Proc::run(['/usr/bin/test','-r',$secret['path']],null,10,$p['user'])['code']!==0,$id.' は秘密情報の元ファイル '.$sid.' を読めない');
+ }
+ foreach ($s['manifest']['components'] as $c) if ($c['type']==='php') {
+  $pr=$profiles[$c['execution_profile']];$socket=rtrim($cfg['component_run_dir']??'/run/pjas-components','/').'/'.$site.'-'.$c['id'].'/socket/php.sock';
+  $r=Proc::run(['/usr/bin/python3','-c','import socket,sys;s=socket.socket(socket.AF_UNIX);s.settimeout(2);s.connect(sys.argv[1]);s.close()',$socket],null,5,$pr['apache_user']??'www-data');
+  $check($r['code']===0,'Apacheユーザーは専用FPMソケットへ接続できる');
+ }
+ foreach (['www-data',$cfg['preview_user']??'pjas-preview'] as $other) if (posix_getpwnam($other)) foreach ($policy->data['storage']??[] as $sid=>$st) $check(Proc::run(['/usr/bin/test','-x',$st['path']],null,10,$other)['code']!==0,$other.' は保護領域 '.$sid.' に入れない');
+ exit($fail?1:0);
+} catch(Throwable $e) {fwrite(STDERR,$e->getMessage()."\n");exit(1);}

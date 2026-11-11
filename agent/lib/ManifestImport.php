@@ -66,6 +66,7 @@ final class ManifestImport
         if (isset($origin['ref']) && GitHubRepository::ref((string)($params['ref'] ?? '')) !== $origin['ref']) throw new OpException('ブランチが読み込み時から変更されています。設定を再読み込みしてください');
         if (($m['apache']['file'] ?? '') !== ($original['apache']['file'] ?? '')) throw new OpException('Apache設定ファイルの変更には再読み込みが必要です');
         if (isset($m['apache'])) self::apache($this->file($dir,$m['apache']['file']),$m,$spec,$this->cfg['www_root']);
+        if ($m['version']===2) throw new OpException('v2はコンポーネント画面で固定コミットを確認・適用してください');
         foreach ($m['cron'] as $item) { Spec::cronSchedule($item['schedule']); Spec::cronCommand($item['command']); }
         return ['valid'=>true];
     }
@@ -77,6 +78,7 @@ final class ManifestImport
         $origin = json_decode((string) file_get_contents($dir . '.json'), true, 512, JSON_THROW_ON_ERROR);
         if ((new GitRepositories($this->cfg))->resolve($spec['name'])['repo'] !== $origin['repo']) throw new OpException('取得元と読み込み情報が一致しません');
         try { $m = PjasManifest::parse((string) ($params['json'] ?? '')); } catch (\InvalidArgumentException $e) { throw new OpException($e->getMessage()); }
+        if ($m['version']===2) throw new OpException('v2はコンポーネント専用の登録を使用してください');
         foreach ($m['cron'] as $cron) { Spec::cronSchedule($cron['schedule']); Spec::cronCommand($cron['command']); }
         $conf = isset($m['apache']) ? $this->file($dir, $m['apache']['file']) : '';
         $originalManifest = PjasManifest::parse($this->file($dir,'.pjas'));
