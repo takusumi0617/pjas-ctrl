@@ -61,7 +61,19 @@ final class Preview
         }
         // 本番データから独立したコピーを作り、環境変数は試験用だけを使用する。
         (new Backups($this->cfg,$this->paths))->snapshotData($name,$base.'/shared',false);
-        file_put_contents($base.'/shared/.env',$config['environment']);
+        // Never publish the environment with the process's public-file umask,
+        // and never follow a previous preview's .env symlink as root.
+        $envPath=$base.'/shared/.env';$envTemp=$envPath.'.tmp-'.bin2hex(random_bytes(12));
+        $envFile=fopen($envTemp,'x');
+        if (!$envFile) throw new OpException('試験用の環境設定を作成できません');
+        try {
+            if (!chmod($envTemp,0600) || fwrite($envFile,$config['environment'])!==strlen($config['environment'])) throw new OpException('試験用の環境設定を安全に保存できません');
+            fclose($envFile);$envFile=null;
+            if (!rename($envTemp,$envPath)) throw new OpException('試験用の環境設定を配置できません');
+        } finally {
+            if (is_resource($envFile)) fclose($envFile);
+            if (file_exists($envTemp)) unlink($envTemp);
+        }
         foreach(['tmp','sessions'] as $part)if(!is_dir($base.'/shared/'.$part))mkdir($base.'/shared/'.$part,0700,true);
         Proc::must(['/bin/chown','-Rh',$user.':'.$user,$base.'/shared',$rel],null,120);
         $stageSpec=array_replace($prod,['name'=>$id,'domain'=>$domain,'extra_conf'=>'','hooks'=>[],'shared'=>array_values(array_unique(array_merge(['.env'],$prod['shared']))),'auto_databases'=>true]);
