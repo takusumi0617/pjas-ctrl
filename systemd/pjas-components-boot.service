@@ -1,0 +1,14 @@
+[Unit]
+Description=Restore approved PJAS component runtime after boot
+After=network-online.target pjas-agentd.service
+Wants=network-online.target
+Requires=pjas-agentd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/php8.4 /opt/pjas-ctrl/bin/pjas-components-boot
+TimeoutStartSec=600
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

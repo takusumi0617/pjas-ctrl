@@ -14,6 +14,29 @@ final class Components
     public function __construct(private array $cfg) { $this->store = new ControlStore($cfg); }
     private function site(array $p): string { return Spec::name(is_array($p['service'] ?? null) ? $p['service']['name'] ?? '' : $p['service'] ?? ''); }
     private function state(string $site): array { return $this->store->read('components-'.$site); }
+    /** Boot uses the same validation and readiness checks as an explicit start.
+     * Never replay setup or resume a stopped/restored/partially initialized CA.
+     */
+    public function recoverReadySites(): array
+    {
+        $result=[];
+        foreach (glob($this->store->directory().'/components-*.json')?:[] as $file) {
+            $site=Spec::name(substr(basename($file),11,-5));
+            try {
+                $result[$site]=$this->locked($site,function()use($site){
+                    $s=$this->state($site);
+                    if (($s['phase']??'')!=='ready' || empty($s['initialized'])) return ['skipped'=>true];
+                    // actionUnlocked validates policy, approved file hashes, code,
+                    // runtime secrets and dependency health before starting.
+                    return $this->actionUnlocked($site,['action'=>'start','_actor'=>'boot']);
+                });
+            } catch (\Throwable $e) {
+                // Do not print definitions, secret values or subprocess output.
+                $result[$site]=['failed'=>true];
+            }
+        }
+        return $result;
+    }
     public static function protectedSite(array $cfg, string $site): bool
     {
         $path = rtrim($cfg['control_dir'] ?? '/var/lib/pjas-control','/').'/components-'.Spec::name($site).'.json';
@@ -380,6 +403,10 @@ final class Components
             $s=$this->state($site); $action=$p['action']??'';
             if (!in_array($action,['start','stop','restart'],true)) throw new OpException('操作が不正です');
             if ($action==='stop') {
+                // Persist the stop intent before systemctl: a crash midway must
+                // never turn a partially stopped CA into a boot-time restart.
+                if (($s['phase']??'')!=='restore_hold') $s['phase']='stopped';
+                $this->save($site,$s);
                 foreach (array_reverse($s['units']??[]) as $unit) Proc::must([$this->cfg['systemctl'],'stop','--',$unit],null,30);
                 if (($s['phase']??'')!=='restore_hold') $s['phase']='stopped';
                 $this->save($site,$s); $this->audit($site,'stop',$p,'ok'); return ['phase'=>$s['phase']];

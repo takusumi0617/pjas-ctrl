@@ -40,6 +40,7 @@ try{
  $backendPath='/etc/pjas-control/apache.conf';$remember($backendPath);$savedFiles[$backendPath]=is_file($backendPath)?file_get_contents($backendPath):null;
  $backend=file_get_contents(PJAS_ROOT.'/systemd/pjas-control-web.conf');$backend=str_replace('/opt/pjas-ctrl',PJAS_ROOT,$backend);if(file_put_contents('/etc/pjas-control/apache.conf',$backend)===false)throw new RuntimeException('管理画面用Apache設定を保存できません');chmod('/etc/pjas-control/apache.conf',0644);
  foreach(['pjas-agentd.service','pjas-control-web.service','pjas-monitor.service','pjas-monitor.timer'] as $unit)$install(PJAS_ROOT.'/systemd/'.$unit,'/etc/systemd/system/'.$unit);
+ foreach(['pjas-agentd','pjas-control-web'] as $unit)$install(PJAS_ROOT.'/systemd/'.$unit.'-security.conf','/etc/systemd/system/'.$unit.'.service.d/90-pjas-security.conf');
  $updated=\Pjas\Agentd\ControlRuntime::frontend($body);
  $remember($conf);$savedFiles[$conf]=$body;
  if(file_put_contents($conf,$updated)===false)throw new RuntimeException('管理画面の転送設定を保存できません');chmod($conf,0600);

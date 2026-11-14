@@ -1,0 +1,32 @@
+name: PHP・Python回帰テスト
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962
+        with:
+          php-version: '8.4'
+          extensions: pdo_sqlite, sqlite3, mbstring, openssl, pcntl, posix
+          coverage: none
+      - name: 非特権の専用テストユーザーを準備
+        run: |
+          sudo useradd --create-home --user-group pjas-test
+          sudo chown -R pjas-test:pjas-test "$GITHUB_WORKSPACE"
+      - name: PHP構文・回帰テストとPythonの検証
+        run: |
+          sudo -u pjas-test env PJAS_TEST_ROOT="$GITHUB_WORKSPACE" bash <<'BASH'
+          set -euo pipefail
+          cd "$PJAS_TEST_ROOT"
+          find agent app shared views tests public -name '*.php' -print0 | xargs -0 -n1 php -l
+          for file in bin/pjas-*; do
+            if head -1 "$file" | grep -q php; then php -l "$file"; fi
+          done
+          for test in tests/*.php; do php "$test"; done
+          python3 tests/security_archives.py
+          python3 tests/component_files.py
+          BASH

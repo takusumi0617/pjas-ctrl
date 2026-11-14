@@ -1,0 +1,27 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+if (PHP_SAPI!=='cli' || !function_exists('posix_geteuid') || posix_geteuid()!==0) exit(77);
+$root=dirname(__DIR__);
+spl_autoload_register(static function(string $class)use($root):void{
+    if (str_starts_with($class,'Pjas\\Agentd\\Ops\\')) $file=$root.'/agent/ops/'.substr($class,16).'.php';
+    elseif (str_starts_with($class,'Pjas\\Agentd\\')) $file=$root.'/agent/lib/'.substr($class,12).'.php';
+    elseif (str_starts_with($class,'Pjas\\Shared\\')) $file=$root.'/shared/'.substr($class,12).'.php';
+    elseif (str_starts_with($class,'Pjas\\')) $file=$root.'/app/'.str_replace('\\','/',substr($class,5)).'.php';
+    else return;
+    if (is_file($file)) require_once $file;
+});
+try {
+    $cfg=require $root.'/agent/config.php';
+    $results=(new Pjas\Agentd\Ops\Components($cfg))->recoverReadySites();
+    $failed=false;
+    foreach ($results as $site=>$result) {
+        $state=!empty($result['failed'])?'FAIL':(!empty($result['skipped'])?'SKIP':'PASS');
+        echo $state.' '.$site."\n";
+        $failed=$failed || !empty($result['failed']);
+    }
+    exit($failed?1:0);
+} catch (Throwable $e) {
+    fwrite(STDERR,"コンポーネントの起動前検証に失敗しました。設定・状態・agentの監査記録を確認してください。\n");
+    exit(1);
+}

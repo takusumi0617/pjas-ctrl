@@ -1,0 +1,101 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+/** Existing installations: preserve all PHP/Apache config, catalog and resource limits. */
+if (PHP_SAPI!=='cli' || !function_exists('posix_geteuid') || posix_geteuid()!==0) {
+    fwrite(STDERR,"サーバー上でsudo php8.4 bin/pjas-security-update --check または --apply を実行してください。\n"); exit(77);
+}
+$root=dirname(__DIR__);
+spl_autoload_register(static function(string $class)use($root):void{
+    if (str_starts_with($class,'Pjas\\Agentd\\')) $file=$root.'/agent/lib/'.substr($class,12).'.php';
+    elseif (str_starts_with($class,'Pjas\\Domain\\')) $file=$root.'/app/Domain/'.substr($class,12).'.php';
+    else return;
+    if (is_file($file)) require_once $file;
+});
+use Pjas\Agentd\{ComponentPolicy,ControlStore,Proc,SecurityUpdate};
+$apply=in_array('--apply',$argv,true); $check=in_array('--check',$argv,true);
+if ($apply===$check || count($argv)!==2) { fwrite(STDERR,"--check または --apply の一方だけを指定してください。\n");exit(1); }
+$snapshot=[]; $disabled=[]; $backup=null; $changed=false; $lock=null; $wasActive=[]; $bootEnabled=false;
+try {
+    $cfg=require $root.'/agent/config.php'; $store=new ControlStore($cfg);
+    $lock=$store->lock('security-update');
+    ComponentPolicy::safe($root); ComponentPolicy::safe($root.'/agent/config.php');
+    foreach (['/usr/bin/php8.4','/usr/bin/systemctl','/usr/bin/systemd-analyze'] as $bin) {
+        if (!is_executable($bin)) throw new RuntimeException('必要な実行ファイルがありません: '.$bin);
+    }
+    $files=SecurityUpdate::files($root); $managed=SecurityUpdate::managedUnits($cfg);
+    foreach ($files as $dest=>$body) {
+        if (is_link($dest) || (file_exists($dest) && !is_file($dest))) throw new RuntimeException('設定先が通常ファイルではありません: '.$dest);
+        ComponentPolicy::safe(is_dir(dirname($dest))?dirname($dest):dirname(dirname($dest)));
+    }
+    foreach (['pjas-agentd.service','pjas-control-web.service'] as $unit) {
+        $r=Proc::run(['/usr/bin/systemctl','is-active','--quiet',$unit],null,10);
+        $wasActive[$unit]=$r['code']===0;
+    }
+    $bootEnabled=Proc::run(['/usr/bin/systemctl','is-enabled','--quiet','pjas-components-boot.service'],null,10)['code']===0;
+    foreach ($managed as $unit) {
+        $info=Proc::must(['/usr/bin/systemctl','show','--no-pager','--property=DropInPaths','--value',$unit],null,10);
+        if (trim($info)!=='') throw new RuntimeException('コンポーネントに追加設定があります。自動起動の移行前に確認してください: '.$unit);
+    }
+    echo "対象: agent/管理HTTPの制限、コンポーネントの起動時復帰。\nPHP・Apache設定、許可台帳、pjas-cert設定、メモリ・タスク数制限は書き換えません。\n";
+    foreach ($files as $dest=>$body) echo '配置予定: '.$dest."\n";
+    foreach ($managed as $unit) echo '起動時復帰へ移行: '.$unit."\n";
+    echo "独自設定を含む実効設定:\n";
+    $show=Proc::must(['/usr/bin/systemctl','show','--no-pager','pjas-agentd.service','pjas-control-web.service',
+        '-p','Id','-p','DropInPaths','-p','ReadWritePaths','-p','CapabilityBoundingSet','-p','MemoryHigh','-p','MemoryMax','-p','TasksMax'],null,15);
+    echo $show;
+    if (!$apply) { echo "確認完了。--applyで適用します（agentと管理HTTPだけを再起動）。\n";exit(0); }
+    // Stop neither PHP-FPM nor public Apache, and never execute CA setup/restore.
+    $backup=$store->directory('security-updates').'/'.gmdate('Ymd-His').'-'.bin2hex(random_bytes(4));
+    if (!mkdir($backup,0700)) throw new RuntimeException('退避先を作成できません');
+    file_put_contents($backup.'/effective-before.txt',$show); chmod($backup.'/effective-before.txt',0600);
+    foreach ($files as $dest=>$body) {
+        $st=is_file($dest)?stat($dest):null;
+        $snapshot[$dest]=['body'=>$st?file_get_contents($dest):null,'mode'=>$st?($st['mode']&0777):null,'uid'=>$st['uid']??null,'gid'=>$st['gid']??null];
+    }
+    $enabled=[];
+    foreach ($managed as $unit) {
+        $r=Proc::run(['/usr/bin/systemctl','is-enabled',$unit],null,10); $state=trim($r['out']);
+        if (!in_array($state,['enabled','disabled','static'],true)) throw new RuntimeException('通常のenable/disable状態ではありません: '.$unit);
+        if ($state==='enabled') $enabled[]=$unit;
+    }
+    $metadata=['files'=>$snapshot,'enabled_components'=>$enabled,'boot_enabled'=>$bootEnabled,'active'=>$wasActive];
+    if (file_put_contents($backup.'/rollback.json',json_encode($metadata,JSON_THROW_ON_ERROR|JSON_PRETTY_PRINT))===false) throw new RuntimeException('退避に失敗しました');
+    chmod($backup.'/rollback.json',0600); $changed=true;
+    foreach ($files as $dest=>$body) {
+        if (!is_dir(dirname($dest)) && !mkdir(dirname($dest),0755)) throw new RuntimeException('設定先を作成できません');
+        $temp=$dest.'.tmp-'.bin2hex(random_bytes(4));
+        if (file_put_contents($temp,$body)===false || !chmod($temp,0644) || !rename($temp,$dest)) throw new RuntimeException('配置に失敗しました');
+    }
+    Proc::must(['/usr/bin/systemd-analyze','verify','/etc/systemd/system/pjas-agentd.service','/etc/systemd/system/pjas-control-web.service','/etc/systemd/system/pjas-components-boot.service'],null,30);
+    foreach ($enabled as $unit) {
+        // No --now: currently running components remain running.
+        $disabled[]=$unit; Proc::must(['/usr/bin/systemctl','disable',$unit],null,20);
+    }
+    Proc::must(['/usr/bin/systemctl','daemon-reload'],null,20);
+    Proc::must(['/usr/bin/systemctl','enable','pjas-components-boot.service'],null,20);
+    foreach ($wasActive as $unit=>$active) if ($active) {
+        Proc::must(['/usr/bin/systemctl','restart',$unit],null,60);
+        Proc::must(['/usr/bin/systemctl','is-active','--quiet',$unit],null,10);
+    }
+    echo "適用完了。退避先: {$backup}\n次回OS起動時はreadyのサイトだけを検証して復帰します。停止・復元保留状態は維持します。\n";
+} catch (Throwable $e) {
+    if ($changed) {
+        $rollbackFailed=false;
+        foreach ($snapshot as $dest=>$saved) {
+            if ($saved['body']===null) { if (file_exists($dest) && !unlink($dest)) $rollbackFailed=true; }
+            else {
+                if (file_put_contents($dest,$saved['body'])===false || !chown($dest,$saved['uid']) || !chgrp($dest,$saved['gid']) || !chmod($dest,$saved['mode'])) $rollbackFailed=true;
+            }
+        }
+        $commands=[['/usr/bin/systemctl','daemon-reload']];
+        foreach ($disabled as $unit) $commands[]=['/usr/bin/systemctl','enable',$unit];
+        if (!$bootEnabled) $commands[]=['/usr/bin/systemctl','disable','pjas-components-boot.service'];
+        foreach ($wasActive as $unit=>$active) if ($active) $commands[]=['/usr/bin/systemctl','restart',$unit];
+        foreach ($commands as $command) if (Proc::run($command,null,60)['code']!==0) $rollbackFailed=true;
+        fwrite(STDERR,$rollbackFailed?"自動復旧の一部が失敗しました。退避内容とサービス状態を確認してください。\n":"変更前の設定と自動起動設定へ戻しました。\n");
+    }
+    fwrite(STDERR,'失敗: '.$e->getMessage()."\n".($backup?'退避先: '.$backup."\n":''));exit(1);
+} finally {
+    if (is_resource($lock)) { flock($lock,LOCK_UN); fclose($lock); }
+}

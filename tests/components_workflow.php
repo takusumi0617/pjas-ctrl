@@ -35,12 +35,25 @@ try {
  rejects(fn()=>$ops->action(['service'=>'cert','action'=>'start']));
  $ops->setup(['service'=>'cert']);$count=count(file($dir.'/tasks'));$ops->setup(['service'=>'cert']);check(count(file($dir.'/tasks'))===$count+1,'再試行は完了判定だけを実行しCAを再生成しない');
  $ops->action(['service'=>'cert','action'=>'start']);check($ops->status(['service'=>'cert'])['components']['ca']['ready'],'起動と準備完了を別々に確認する');
+ // Simulate reboot: workers lose runtime secrets even when no FPM file exists.
+ unlink($dir.'/active');cleanup($dir.'/run');mkdir($dir.'/run',0755);
+ $recovered=$ops->recoverReadySites();
+ check(($recovered['cert']['phase']??'')==='ready' && file_get_contents($dir.'/run/cert-ca/secrets/api')==='private-test-value','起動時にreadyのサイトだけを検証し秘密情報と実行領域を復帰する');
+ $store=new ControlStore($cfg);$saved=$store->read('components-cert');
+ $saved['policy']=str_repeat('0',64);$store->write('components-cert',$saved);unlink($dir.'/active');
+ check(!empty($ops->recoverReadySites()['cert']['failed']) && !file_exists($dir.'/active'),'許可台帳のハッシュが不一致なら自動起動しない');
+ $saved['policy']=hash('sha256',json_encode((new ComponentPolicy($cfg))->data,JSON_THROW_ON_ERROR));$store->write('components-cert',$saved);
+ $unitPath=$dir.'/units/pjas-component-cert-ca.service';$unitBody=file_get_contents($unitPath);file_put_contents($unitPath,$unitBody."\n# changed\n");
+ check(!empty($ops->recoverReadySites()['cert']['failed']) && !file_exists($dir.'/active'),'承認済みunitのハッシュが不一致なら自動起動しない');
+ file_put_contents($unitPath,$unitBody);$store->write('components-cert',$saved);$ops->action(['service'=>'cert','action'=>'start']);
  $backup=$ops->backup(['service'=>'cert']);file_put_contents($dir.'/data/db','changed');
  $review=$ops->restorePlan(['service'=>'cert','backup'=>$backup['id']]);$ops->restore(['service'=>'cert','backup'=>$backup['id'],'review'=>$review['review']]);
  check(file_get_contents($dir.'/data/db')==='original' && !file_exists($dir.'/active'),'暗号化バックアップを復元して発行停止を保持する');
+ check(!empty($ops->recoverReadySites()['cert']['skipped']) && !file_exists($dir.'/active'),'restore_holdはOS再起動後も起動しない');
  rejects(fn()=>$ops->action(['service'=>'cert','action'=>'start']));rejects(fn()=>$ops->resume(['service'=>'cert']));
  $ops->resume(['service'=>'cert','accept_history_loss'=>true]);$ops->action(['service'=>'cert','action'=>'start']);
  $ops->action(['service'=>'cert','action'=>'stop']);
+ check(!empty($ops->recoverReadySites()['cert']['skipped']) && !file_exists($dir.'/active'),'明示停止したサイトはOS再起動後も停止を維持する');
  // Interrupted setup must never replay the create operation.
  $store=new ControlStore($cfg);$state=$store->read('components-cert');$state['setup']['ca.init']['state']='running';$state['phase']='setup_failed';$store->write('components-cert',$state);
  rejects(fn()=>$ops->setup(['service'=>'cert']));
