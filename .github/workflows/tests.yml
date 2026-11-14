@@ -31,6 +31,7 @@ jobs:
             if head -1 "$file" | grep -q php; then php -l "$file"; fi
           done
           for test in tests/*.php; do php "$test"; done
+          PJAS_COMPONENT_TEST_TYPE=php php tests/components_workflow.php
           python3 tests/security_archives.py
           python3 tests/component_files.py
           BASH

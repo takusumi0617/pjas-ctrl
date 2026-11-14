@@ -4,6 +4,7 @@ require __DIR__.'/support/features.php';
 use Pjas\Agentd\{ComponentPolicy,ControlStore,Proc};
 use Pjas\Agentd\Ops\Components;
 [$dir,$cfg]=fixture('components');
+$componentType=getenv('PJAS_COMPONENT_TEST_TYPE')==='php'?'php':'worker';
 try {
  $cfg['web_user']='www-data';$cfg['web_group']='www-data';$cfg['preview_user']='pjas-preview';$cfg['component_catalog']=$dir.'/catalog.json';$cfg['component_run_dir']=$dir.'/run';
  $cfg['systemctl']=$dir.'/systemctl';$cfg['systemd_run']=$dir.'/systemd-run';
@@ -12,6 +13,10 @@ try {
  $manifest=['version'=>2,'site'=>['name'=>'cert','domain'=>'cert.example.com','runtime'=>'static','document_root'=>'public','https'=>false],'components'=>[['id'=>'ca','type'=>'worker','execution_profile'=>'ca','command'=>[$dir.'/true'],'storage'=>['state'],'secrets'=>['api'],'setup'=>['init'],'health_checks'=>['ready']]],'backup_policy'=>'backup'];
  mkdir($dir.'/data',0700);mkdir($dir.'/www/cert',0755);mkdir($dir.'/run',0755);file_put_contents($dir.'/data/db','original');chmod($dir.'/data/db',0600);file_put_contents($dir.'/key',random_bytes(32));chmod($dir.'/key',0600);
  $catalog=['version'=>1,'sites'=>['cert'=>['repository'=>'https://github.com/test/cert','domain'=>'cert.example.com','runtime'=>'static','document_root'=>'public','https'=>false]],'profiles'=>['ca'=>['sites'=>['cert'],'type'=>'worker','user'=>$user,'group'=>$group,'executables'=>[$dir.'/true']]],'storage'=>['state'=>['sites'=>['cert'],'profile'=>'ca','path'=>$dir.'/data','purpose'=>'intermediate-ca']],'secrets'=>['api'=>['sites'=>['cert'],'profile'=>'ca','path'=>$dir.'/api-secret','purpose'=>'api']],'setup'=>['init'=>['sites'=>['cert'],'profile'=>'ca','command'=>[$dir.'/true'],'check'=>[$dir.'/true'],'absent'=>[$dir.'/true']]],'health'=>['ready'=>['sites'=>['cert'],'profile'=>'ca','command'=>[$dir.'/true']]],'backup_policies'=>['backup'=>['sites'=>['cert'],'storage'=>['state'],'key_file'=>$dir.'/key','verify_restore'=>[$dir.'/true']]]];
+ if ($componentType==='php') {
+  $manifest['components'][0]['type']='php';$manifest['components'][0]['command']=[];
+  $catalog['profiles']['ca']['type']='php';$catalog['profiles']['ca']['fpm_binary']=$dir.'/true';$catalog['profiles']['ca']['apache_user']=$user;
+ }
  file_put_contents($cfg['component_catalog'],json_encode($catalog));chmod($cfg['component_catalog'],0600);
  file_put_contents($cfg['systemctl'],"#!/bin/sh\ncase \"\$1\" in\nis-active) if [ -f '$dir/active' ]; then echo active; exit 0; else echo inactive; exit 3; fi;;\nstart) touch '$dir/active';;\nstop) rm -f '$dir/active';;\nesac\nexit 0\n");chmod($cfg['systemctl'],0700);
  file_put_contents($cfg['systemd_run'],"#!/bin/sh\necho run >> '$dir/tasks'\nif [ -f '$dir/fail-task' ]; then exit 1; fi\nexit 0\n");chmod($cfg['systemd_run'],0700);
@@ -39,6 +44,7 @@ try {
  unlink($dir.'/active');cleanup($dir.'/run');mkdir($dir.'/run',0755);
  $recovered=$ops->recoverReadySites();
  check(($recovered['cert']['phase']??'')==='ready' && file_get_contents($dir.'/run/cert-ca/secrets/api')==='private-test-value','起動時にreadyのサイトだけを検証し秘密情報と実行領域を復帰する');
+ if ($componentType==='php') check(is_file($dir.'/run/cert-ca/php-fpm.conf'),'OS再起動で消失したFPM設定を承認済みハッシュと照合して再生成する');
  $store=new ControlStore($cfg);$saved=$store->read('components-cert');
  $saved['policy']=str_repeat('0',64);$store->write('components-cert',$saved);unlink($dir.'/active');
  check(!empty($ops->recoverReadySites()['cert']['failed']) && !file_exists($dir.'/active'),'許可台帳のハッシュが不一致なら自動起動しない');
