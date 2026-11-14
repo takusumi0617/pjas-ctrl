@@ -15,10 +15,18 @@ spl_autoload_register(static function(string $class)use($root):void{
 use Pjas\Agentd\{ComponentPolicy,ControlStore,Proc,SecurityUpdate};
 $apply=in_array('--apply',$argv,true); $check=in_array('--check',$argv,true);
 if ($apply===$check || count($argv)!==2) { fwrite(STDERR,"--check または --apply の一方だけを指定してください。\n");exit(1); }
-$snapshot=[]; $disabled=[]; $backup=null; $changed=false; $lock=null; $wasActive=[]; $bootEnabled=false;
+$snapshot=[]; $disabled=[]; $backup=null; $changed=false; $lock=null; $siteLocks=[]; $wasActive=[]; $bootEnabled=false;
 try {
     $cfg=require $root.'/agent/config.php'; $store=new ControlStore($cfg);
     $lock=$store->lock('security-update');
+    foreach (glob($store->directory().'/components-*.json')?:[] as $stateFile) {
+        $site=Pjas\Agentd\Spec::name(substr(basename($stateFile),11,-5));
+        $siteLock=$cfg['apache_sites'].'/.pjas-deploy-'.$site.'.lock';
+        if (is_link($siteLock)) throw new RuntimeException('サイトロックがリンクです');
+        $fp=fopen($siteLock,'c');
+        if (!$fp || !flock($fp,LOCK_EX|LOCK_NB)) throw new RuntimeException('コンポーネントの作業中です。完了後に再実行してください: '.$site);
+        $siteLocks[]=$fp;
+    }
     ComponentPolicy::safe($root); ComponentPolicy::safe($root.'/agent/config.php');
     foreach (['/usr/bin/php8.4','/usr/bin/systemctl','/usr/bin/systemd-analyze'] as $bin) {
         if (!is_executable($bin)) throw new RuntimeException('必要な実行ファイルがありません: '.$bin);
@@ -97,5 +105,6 @@ try {
     }
     fwrite(STDERR,'失敗: '.$e->getMessage()."\n".($backup?'退避先: '.$backup."\n":''));exit(1);
 } finally {
+    foreach ($siteLocks as $fp) { flock($fp,LOCK_UN); fclose($fp); }
     if (is_resource($lock)) { flock($lock,LOCK_UN); fclose($lock); }
 }

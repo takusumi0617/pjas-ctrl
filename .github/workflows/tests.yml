@@ -8,6 +8,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
       - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962
         with:
           php-version: '8.4'
@@ -16,10 +18,11 @@ jobs:
       - name: 非特権の専用テストユーザーを準備
         run: |
           sudo useradd --create-home --user-group pjas-test
-          sudo chown -R pjas-test:pjas-test "$GITHUB_WORKSPACE"
+          sudo install -d -o pjas-test -g pjas-test /tmp/pjas-ctrl-tests
+          git archive HEAD | sudo -u pjas-test tar -x -C /tmp/pjas-ctrl-tests
       - name: PHP構文・回帰テストとPythonの検証
         run: |
-          sudo -u pjas-test env PJAS_TEST_ROOT="$GITHUB_WORKSPACE" bash <<'BASH'
+          sudo -u pjas-test env PJAS_TEST_ROOT=/tmp/pjas-ctrl-tests bash <<'BASH'
           set -euo pipefail
           cd "$PJAS_TEST_ROOT"
           find agent app shared views tests public -name '*.php' -print0 | xargs -0 -n1 php -l

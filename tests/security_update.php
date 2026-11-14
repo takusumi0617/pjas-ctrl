@@ -20,6 +20,23 @@ $boot=$files['/etc/systemd/system/pjas-components-boot.service'];
 check(str_contains($boot,'After=network-online.target pjas-agentd.service'),'agentの起動後に承認済み状態の復帰を行う');
 check(str_contains($boot,$root.'/bin/pjas-components-boot'),'起動時復帰は実際のコード配置先を参照する');
 
+if (is_executable('/usr/bin/systemd-analyze') && is_executable('/usr/sbin/apache2')) {
+    [$verifyDir,$verifyCfg]=fixture('unit-verify');
+    try {
+        foreach (['pjas-agentd','pjas-control-web'] as $name) {
+            copy($root.'/systemd/'.$name.'.service',$verifyDir.'/'.$name.'.service');
+            mkdir($verifyDir.'/'.$name.'.service.d',0755);
+            copy($root.'/systemd/'.$name.'-security.conf',$verifyDir.'/'.$name.'.service.d/90-pjas-security.conf');
+        }
+        file_put_contents($verifyDir.'/php8.4-fpm.service',"[Service]\nExecStart=/usr/bin/true\n");
+        file_put_contents($verifyDir.'/pjas-components-boot.service',$boot);
+        $verified=Pjas\Agentd\Proc::run(['/usr/bin/systemd-analyze','--user','verify',
+            $verifyDir.'/pjas-agentd.service',$verifyDir.'/pjas-control-web.service',$verifyDir.'/pjas-components-boot.service'],null,30,null,
+            ['PATH'=>'/usr/bin:/bin','XDG_RUNTIME_DIR'=>$verifyDir,'SYSTEMD_UNIT_PATH'=>$verifyDir.':/usr/lib/systemd/system']);
+        check($verified['code']===0,'制限設定と起動時復帰unitをsystemdのパーサーで検証する: '.$verified['err']);
+    } finally { cleanup($verifyDir); }
+}
+
 // Behavioral check: only approved generated units are migrated, never a
 // catalog-assigned external service; tampered files and symlinks must fail.
 if (function_exists('posix_geteuid')) {
