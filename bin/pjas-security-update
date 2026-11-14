@@ -51,12 +51,15 @@ try {
                 throw new RuntimeException('コンポーネントに追加設定があります。自動起動の移行前に確認してください: '.$dropIn);
             }
             echo '維持する確認済み追加設定: '.$dropIn."\n";
-            if (SecurityUpdate::reviewedComponentDropIn($unit,$dropIn,$dropInBody)) {
-                $coordination='/run/pjas-cert/coordination.lock';
-                if (!is_file($coordination) || is_link($coordination) || is_link(dirname($coordination))) {
-                    throw new RuntimeException('pjas-certの共有ロックが未準備またはリンクです。既存のtmpfiles設定を確認してください: '.$coordination);
-                }
-                echo "pjas-cert共有ロック: 通常ファイルとして配置済み（変更しません）\n";
+            foreach (SecurityUpdate::reviewedRequirements($unit,$dropIn,$dropInBody) as $required=>$kind) {
+                $ready=match($kind) {
+                    'file'=>is_file($required) && !is_link($required) && !is_link(dirname($required)),
+                    'directory'=>is_dir($required) && !is_link($required) && !is_link(dirname($required)),
+                    'executable'=>is_file($required) && is_executable($required),
+                    default=>false,
+                };
+                if (!$ready) throw new RuntimeException('pjas-certの必要な実行環境が未準備または不正です。既存のPHP・tmpfiles設定を確認してください: '.$required);
+                echo 'pjas-cert実行環境: 確認済み（変更しません） '.$required."\n";
             }
         }
     }

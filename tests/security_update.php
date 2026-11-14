@@ -17,6 +17,31 @@ foreach ([
 ] as $changed) check(!SecurityUpdate::reviewedComponentDropIn($certUnit,$certPath,$changed),'未確認の設定追加・変更・削除を拒否する');
 check(!SecurityUpdate::reviewedComponentDropIn('other.service',$certPath,$certOverride),'他サービスの設定を取り違えない');
 check(!SecurityUpdate::reviewedComponentDropIn($certUnit,'/tmp/pjas-cert.conf',$certOverride),'別の場所に置かれた追加設定を許可しない');
+foreach (['web','ca','sign'] as $component) {
+    $unit='pjas-component-pjas-cert-'.$component.'.service';$dir='/etc/systemd/system/'.$unit.'.d/';
+    $base=$component==='web'?$certOverride:
+        "[Unit]\nAfter=systemd-tmpfiles-setup.service\n[Service]\nReadWritePaths=/run/pjas-cert/coordination.lock\nMemoryMax=256M\nCPUQuota=100%\nReadWritePaths=/run/pjas-cert/{$component}\n";
+    $command=$component==='web'?'/usr/sbin/php-fpm8.5 --nodaemonize --fpm-config /run/pjas-components/pjas-cert-web/php-fpm.conf':'/usr/bin/php8.5 bin/worker '.$component;
+    $migration="[Service]\nExecStart=\nExecStart={$command}\n";
+    if ($component==='web') $migration.="Environment=PHP_INI_SCAN_DIR=/etc/php/8.5/fpm/conf.d:/etc/pjas-cert/php-ini\n";
+    check(SecurityUpdate::reviewedComponentDropIn($unit,$dir.'pjas-cert.conf',$base),$component.'の確認済み共有ロック・実行領域・リソース制限を維持する');
+    check(SecurityUpdate::reviewedComponentDropIn($unit,$dir.'zzzz-php85-migration.conf',$migration),$component.'の確認済みPHP 8.5移行設定を維持する');
+    foreach ([
+        str_replace("ExecStart=\nExecStart={$command}","ExecStart={$command}\nExecStart=",$migration),
+        str_replace("ExecStart=\n",'',$migration),
+        $migration."ExecStart=/bin/true\n",
+        str_replace('8.5','8.4',$migration),
+        $migration."Environment=LD_PRELOAD=/tmp/inject.so\n",
+    ] as $bad) check(!SecurityUpdate::reviewedComponentDropIn($unit,$dir.'zzzz-php85-migration.conf',$bad),$component.'の未確認の実行内容・リセット順序・環境変数を拒否する');
+    check(!SecurityUpdate::reviewedComponentDropIn($unit,$dir.'pjas-cert.conf',$base."ReadWritePaths=/\n"),$component.'の書き込み範囲拡大を拒否する');
+    $requirements=SecurityUpdate::reviewedRequirements($unit,$dir.'pjas-cert.conf',$base);
+    check(($requirements['/run/pjas-cert/coordination.lock']??'')==='file',$component.'の共有ロックを前提条件として確認する');
+    if ($component!=='web') check(($requirements['/run/pjas-cert/'.$component]??'')==='directory',$component.'の実行用ディレクトリを前提条件として確認する');
+    $requirements=SecurityUpdate::reviewedRequirements($unit,$dir.'zzzz-php85-migration.conf',$migration);
+    $binary=$component==='web'?'/usr/sbin/php-fpm8.5':'/usr/bin/php8.5';
+    check(($requirements[$binary]??'')==='executable',$component.'のPHP 8.5実行ファイルを前提条件として確認する');
+    if ($component==='web') check(($requirements['/etc/php/8.5/fpm/conf.d']??'')==='directory' && ($requirements['/etc/pjas-cert/php-ini']??'')==='directory','PHP-FPM 8.5とpjas-certのINI読み込み先を確認する');
+}
 $files=SecurityUpdate::files($root);
 check(count($files)===3,'限定更新は専用drop-in二つと起動時復帰unitだけを配置する');
 check(!isset($files['/etc/systemd/system/pjas-agentd.service']),'既存のagent本体unitを上書きしない');

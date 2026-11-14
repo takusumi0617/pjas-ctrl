@@ -47,6 +47,18 @@ sudo php8.4 bin/pjas-security-update --check
 
 この設定がある場合は共有ロックが通常ファイルとして存在することも確認します。既存のtmpfiles設定、PHP設定ディレクトリ、agent側の `/var/lib/pjas-cert` の書き込み許可は上書きしません。共有ロックはctrlから新規作成せず、OS起動時も既存のtmpfiles設定による準備が必要です。起動時復帰はその準備後に動きます。
 
+同日に確認したCA・署名サービスの `pjas-cert.conf` と、3サービスの `zzzz-php85-migration.conf` も内容を限定して維持します。CA・署名側は共有ロックに加え `/run/pjas-cert/ca`・`/run/pjas-cert/sign` への書き込み指定を持ちます。PHP 8.5移行ファイルの指定は次のとおりです。
+
+| コンポーネント | ExecStartの空指定に続く起動内容 | PHP_INI_SCAN_DIR |
+| --- | --- | --- |
+| web | `/usr/sbin/php-fpm8.5 --nodaemonize --fpm-config /run/pjas-components/pjas-cert-web/php-fpm.conf` | `/etc/php/8.5/fpm/conf.d:/etc/pjas-cert/php-ini` |
+| ca | `/usr/bin/php8.5 bin/worker ca` | 追加指定なし |
+| sign | `/usr/bin/php8.5 bin/worker sign` | 追加指定なし |
+
+`ExecStart=` の空指定と置き換えの順序も検証し、逆順・省略・別コマンド・追加の環境変数は許可しません。既存の移行ファイルを保持するため、webのINI読み込み先は後から適用される8.5の指定が有効になります。ctrl本体のPHP 8.4や許可台帳・承認済みunitのハッシュを、8.5へ自動変換する処理ではありません。
+
+`--check` はPHP 8.5実行ファイル、webのINI設定ディレクトリ、CA・署名サービスの既存実行用ディレクトリも確認します。存在しない場合は設定の削除や新規作成をせずに停止します。実行領域の所有者・権限は既存のtmpfiles設定で管理してください。
+
 ```bash
 sudo php8.4 bin/pjas-security-update --apply
 ```

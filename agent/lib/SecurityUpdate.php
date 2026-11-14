@@ -11,15 +11,26 @@ final class SecurityUpdate
      */
     public static function reviewedComponentDropIn(string $unit, string $path, string $body): bool
     {
-        if ($unit!=='pjas-component-pjas-cert-web.service' ||
-            $path!=='/etc/systemd/system/'.$unit.'.d/pjas-cert.conf') return false;
-        $expected=[
-            'Unit.After'=>'systemd-tmpfiles-setup.service',
-            'Service.ReadWritePaths'=>'/run/pjas-cert/coordination.lock',
-            'Service.MemoryMax'=>'256M',
-            'Service.CPUQuota'=>'100%',
-            'Service.Environment'=>'PHP_INI_SCAN_DIR=/etc/php/8.4/fpm/conf.d:/etc/pjas-cert/php-ini',
-        ];
+        if (!preg_match('/\Apjas-component-pjas-cert-(web|ca|sign)\.service\z/D',$unit,$match)) return false;
+        $component=$match[1];$dir='/etc/systemd/system/'.$unit.'.d/';
+        if ($path===$dir.'pjas-cert.conf') {
+            $expected=[
+                'Unit.After'=>['systemd-tmpfiles-setup.service'],
+                'Service.ReadWritePaths'=>['/run/pjas-cert/coordination.lock'],
+                'Service.MemoryMax'=>['256M'],
+                'Service.CPUQuota'=>['100%'],
+            ];
+            if ($component==='web') $expected['Service.Environment']=['PHP_INI_SCAN_DIR=/etc/php/8.4/fpm/conf.d:/etc/pjas-cert/php-ini'];
+            else $expected['Service.ReadWritePaths'][]='/run/pjas-cert/'.$component;
+        } elseif ($path===$dir.'zzzz-php85-migration.conf') {
+            // The empty ExecStart must precede the replacement. Reversing these
+            // lines clears the command instead of selecting PHP 8.5.
+            $command=$component==='web'
+                ? '/usr/sbin/php-fpm8.5 --nodaemonize --fpm-config /run/pjas-components/pjas-cert-web/php-fpm.conf'
+                : '/usr/bin/php8.5 bin/worker '.$component;
+            $expected=['Service.ExecStart'=>['',$command]];
+            if ($component==='web') $expected['Service.Environment']=['PHP_INI_SCAN_DIR=/etc/php/8.5/fpm/conf.d:/etc/pjas-cert/php-ini'];
+        } else return false;
         $section=''; $seen=[];
         foreach (explode("\n",$body) as $line) {
             $line=trim($line);
@@ -27,10 +38,29 @@ final class SecurityUpdate
             if (in_array($line,['[Unit]','[Service]'],true)) { $section=substr($line,1,-1);continue; }
             if (!str_contains($line,'=')) return false;
             [$key,$value]=explode('=',$line,2);$key=$section.'.'.trim($key);
-            if (isset($seen[$key]) || !isset($expected[$key]) || trim($value)!==$expected[$key]) return false;
-            $seen[$key]=true;
+            if (!isset($expected[$key])) return false;
+            $seen[$key][]=trim($value);
         }
-        return count($seen)===count($expected);
+        if (count($seen)!==count($expected)) return false;
+        foreach ($expected as $key=>$values) if (($seen[$key]??null)!==$values) return false;
+        return true;
+    }
+
+    /** Prerequisites for the reviewed override; inspect only, never recreate
+     * application-owned paths or rewrite PHP migration settings here.
+     * @return array<string,string> path => file|directory|executable
+     */
+    public static function reviewedRequirements(string $unit,string $path,string $body): array
+    {
+        if (!self::reviewedComponentDropIn($unit,$path,$body)) return [];
+        preg_match('/-(web|ca|sign)\.service\z/D',$unit,$match);$component=$match[1];
+        if (basename($path)==='pjas-cert.conf') {
+            $required=['/run/pjas-cert/coordination.lock'=>'file'];
+            if ($component!=='web') $required['/run/pjas-cert/'.$component]='directory';
+            return $required;
+        }
+        if ($component!=='web') return ['/usr/bin/php8.5'=>'executable'];
+        return ['/usr/sbin/php-fpm8.5'=>'executable','/etc/php/8.5/fpm/conf.d'=>'directory','/etc/pjas-cert/php-ini'=>'directory'];
     }
 
     /** systemctl set-property persists resource-only files under system.control.
