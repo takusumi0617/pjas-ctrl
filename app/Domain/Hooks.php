@@ -14,9 +14,9 @@ final class Hooks
 {
     /** 完全一致の正規表現。引数も含めて縛る。 */
     public const ALLOWED = [
-        '/^\/usr\/bin\/php8\.[1-4] \/usr\/bin\/composer install( --no-dev)?( -o| --optimize-autoloader)?( --no-interaction)?$/',
-        '/^\/usr\/bin\/php8\.[1-4] \/usr\/bin\/composer dump-autoload( -o| --optimize)?$/',
-        '/^\/usr\/bin\/php8\.[1-4] artisan (migrate --force|config:cache|route:cache|view:cache|storage:link|optimize|optimize:clear)$/',
+        '/^\/usr\/bin\/php8\.[1-5] \/usr\/bin\/composer install( --no-dev)?( -o| --optimize-autoloader)?( --no-interaction)?$/',
+        '/^\/usr\/bin\/php8\.[1-5] \/usr\/bin\/composer dump-autoload( -o| --optimize)?$/',
+        '/^\/usr\/bin\/php8\.[1-5] artisan (migrate --force|config:cache|route:cache|view:cache|storage:link|optimize|optimize:clear)$/',
         '/^composer install( --no-dev)?( -o| --optimize-autoloader)?( --no-interaction)?$/',
         '/^composer dump-autoload( -o| --optimize)?$/',
         '/^php artisan (migrate --force|config:cache|route:cache|view:cache|storage:link|optimize|optimize:clear)$/',

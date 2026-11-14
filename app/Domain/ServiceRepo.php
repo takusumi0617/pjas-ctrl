@@ -9,7 +9,7 @@ final class ServiceRepo
 {
     public const NAME_RE   = '/^[a-z0-9][a-z0-9-]{0,31}$/';
     public const DOMAIN_RE = '/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i';
-    public const RUNTIMES  = ['php8.4-fpm', 'php8.3-fpm', 'php8.2-fpm', 'php8.1-fpm', 'static'];
+    public const RUNTIMES  = ['php8.5-fpm', 'php8.4-fpm', 'php8.3-fpm', 'php8.2-fpm', 'php8.1-fpm', 'static'];
 
     /** @return array<int,array<string,mixed>> */
     public static function all(): array

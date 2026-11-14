@@ -1,0 +1,20 @@
+<?php
+declare(strict_types=1);
+require __DIR__.'/support/features.php';
+use Pjas\Domain\{ServiceRepo,VhostRenderer,PjasManifest};
+use Pjas\Agentd\Spec;
+use Pjas\Support\Labels;
+check(ServiceRepo::RUNTIMES===Spec::RUNTIMES && in_array('php8.5-fpm',ServiceRepo::RUNTIMES,true),'画面とagentの許可ランタイムにPHP 8.5が含まれ一致する');
+$input=['name'=>'php85','domain'=>'php85.example.com','runtime'=>'php8.5-fpm','docroot'=>'public'];
+$normalized=ServiceRepo::validate($input,false);
+check($normalized['runtime']==='php8.5-fpm','PHP 8.5を選んだサイト設定をWeb側で保存用に検証できる');
+$spec=Spec::service($input);
+check($spec['runtime']==='php8.5-fpm','agent側でもPHP 8.5を保持する');
+$conf=VhostRenderer::render($input,'/var/www');
+check(str_contains($conf,'/run/php/php8.5-fpm.sock') && !str_contains($conf,'/run/php/php8.4-fpm.sock'),'PHP 8.5サイトの新規公開設定は8.5のFPMソケットを参照する');
+check(str_contains(Labels::runtime('php8.5-fpm'),'8.5'),'選択肢のラベルにPHP 8.5を表示する');
+$schema=json_decode(file_get_contents(dirname(__DIR__).'/docs/pjas-v2.schema.json'),true,512,JSON_THROW_ON_ERROR);
+check(in_array('php8.5-fpm',$schema['properties']['site']['properties']['runtime']['enum'],true),'公開JSON Schemaと実装のPHP 8.5対応を一致させる');
+$bad=$input;$bad['runtime']='php8.6-fpm';
+rejects(fn()=>ServiceRepo::validate($bad,false));
+rejects(fn()=>Spec::service($bad));

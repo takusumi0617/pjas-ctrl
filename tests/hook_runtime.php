@@ -10,7 +10,7 @@ use Pjas\Domain\Hooks;
 $n=0;
 function check(bool $ok,string $label): void { global $n; if(!$ok) throw new RuntimeException($label); $n++; echo "PASS $label\n"; }
 function rejects(callable $f,string $label): void { try {$f();} catch(Pjas\Agentd\OpException $e) { check(true,$label);return; } throw new RuntimeException($label); }
-foreach(['8.1','8.2','8.3','8.4'] as $version) {
+foreach(['8.1','8.2','8.3','8.4','8.5'] as $version) {
     $runtime='php'.$version.'-fpm'; $php='/usr/bin/php'.$version;
     check(Spec::runtimeHook(['composer','install','--no-dev','-o','--no-interaction'],$runtime)===[$php,'/usr/bin/composer','install','--no-dev','-o','--no-interaction'],'legacy Composer uses '.$version);
     check(Spec::runtimeHook(['php','artisan','migrate','--force'],$runtime)===[$php,'artisan','migrate','--force'],'legacy Artisan uses '.$version);

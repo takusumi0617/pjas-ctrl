@@ -13,7 +13,7 @@
 | version | このページの形式は整数の1。v2は別ガイドを参照 |
 | site.name | 初期サイト名。登録画面で変更可能 |
 | site.domain | 任意。未指定ならconfのServerNameを初期値にし、画面で入力 |
-| site.runtime | php8.4-fpm / php8.3-fpm / php8.2-fpm / php8.1-fpm / static |
+| site.runtime | php8.5-fpm / php8.4-fpm / php8.3-fpm / php8.2-fpm / php8.1-fpm / static |
 | site.document_root | リポジトリ内の公開フォルダ。省略時public |
 | site.https | true/false。省略時true |
 | site.health_path / health_status | 動作確認。省略時 / と200 |

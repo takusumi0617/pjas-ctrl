@@ -40,6 +40,8 @@ $chatExtra = $match[1];
 $cases[] = ['name' => 'pjas-chat', 'domain' => 'chat.example.com', 'runtime' => 'php8.4-fpm',
     'docroot' => 'dist', 'allow_override' => 'None', 'extra_conf' => $chatExtra, 'tls' => 1];
 
+$cases[] = ['name'=>'php85','domain'=>'php85.example.com','runtime'=>'php8.5-fpm','docroot'=>'public','allow_override'=>'None','extra_conf'=>'','tls'=>1];
+
 $cfg   = ['apache_sites' => '/etc/apache2/sites-available'];
 $paths = new Paths('/var/www');
 $agent = new AgentVhost($cfg, $paths);

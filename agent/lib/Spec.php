@@ -11,7 +11,7 @@ namespace Pjas\Agentd;
  */
 final class Spec
 {
-    public const RUNTIMES = ['php8.4-fpm', 'php8.3-fpm', 'php8.2-fpm', 'php8.1-fpm', 'static'];
+    public const RUNTIMES = ['php8.5-fpm', 'php8.4-fpm', 'php8.3-fpm', 'php8.2-fpm', 'php8.1-fpm', 'static'];
 
     public const ALLOWED_DIRECTIVES = [
         'Header', 'RequestHeader', 'Redirect', 'RedirectMatch',
@@ -23,9 +23,9 @@ final class Spec
 
     /** after_deploy フックの許可リスト (web 側 app/Domain/Hooks.php と同一) */
     public const ALLOWED_HOOKS = [
-        '/^\/usr\/bin\/php8\.[1-4] \/usr\/bin\/composer install( --no-dev)?( -o| --optimize-autoloader)?( --no-interaction)?$/',
-        '/^\/usr\/bin\/php8\.[1-4] \/usr\/bin\/composer dump-autoload( -o| --optimize)?$/',
-        '/^\/usr\/bin\/php8\.[1-4] artisan (migrate --force|config:cache|route:cache|view:cache|storage:link|optimize|optimize:clear)$/',
+        '/^\/usr\/bin\/php8\.[1-5] \/usr\/bin\/composer install( --no-dev)?( -o| --optimize-autoloader)?( --no-interaction)?$/',
+        '/^\/usr\/bin\/php8\.[1-5] \/usr\/bin\/composer dump-autoload( -o| --optimize)?$/',
+        '/^\/usr\/bin\/php8\.[1-5] artisan (migrate --force|config:cache|route:cache|view:cache|storage:link|optimize|optimize:clear)$/',
         '/^composer install( --no-dev)?( -o| --optimize-autoloader)?( --no-interaction)?$/',
         '/^composer dump-autoload( -o| --optimize)?$/',
         '/^php artisan (migrate --force|config:cache|route:cache|view:cache|storage:link|optimize|optimize:clear)$/',

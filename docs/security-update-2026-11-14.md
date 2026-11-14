@@ -106,6 +106,24 @@ sudo systemctl --failed --no-pager
 
 ## 検証の範囲
 
+### PHP 8.5の選択肢が表示されない場合のコード更新
+
+サイトの新規登録・設定・一括登録のプルダウンに `php8.5-fpm` を追加しました。Webとagentの保存時検証、v2マニフェスト・JSON Schema、Composer/Artisanの許可済み公開後処理も8.5に対応します。既存サイトのランタイムやctrl本体のPHPバージョンは自動変更しません。既定値も従来どおりです。
+
+この修正の反映にはコード取得とagentの再起動だけで十分です。DB移行や全機能インストールは不要です。公開・バックアップ等の処理が実行中でない時間に実行してください。
+
+```bash
+(
+  set -e
+  cd /opt/pjas-ctrl
+  sudo git pull --ff-only origin main
+  sudo systemctl restart pjas-agentd.service
+  sudo systemctl is-active pjas-agentd.service
+)
+```
+
+ブラウザーで管理画面を再読み込みしてください。PHP 8.5サイトを実際に動かすには、対象ホストにPHP 8.5 FPM・必要拡張・CLIが導入済みであることと、サイトの公開設定が対象FPMを参照することを確認します。既存confを維持する公開設定の部分更新は、ランタイムを選び直すだけで既存のFPM指定を自動変更する操作ではありません。
+
 `tests/security_update.php` は更新対象の限定と改変unitの拒否、`tests/components_workflow.php` はruntime消失後の復帰・許可台帳とunit改変時の拒否・停止と復元保留の維持を検証します。GitHub Actionsでは専用の非特権ユーザーでPHP/Python回帰テストを実行します。
 
 これらの回帰テストは本番systemdのサンドボックス内での全操作を保証するものではありません。Capabilityやシステムコール制限と、実ホスト固有のApache・pjas-cert設定との組み合わせは、適用後に上記の実機確認が必要です。

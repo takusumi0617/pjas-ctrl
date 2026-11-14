@@ -7,6 +7,8 @@ $m=['version'=>2,'site'=>['name'=>'pjas-cert','domain'=>'cert.example.com','runt
  ['id'=>'ca','type'=>'worker','execution_profile'=>'cert-ca','command'=>['/usr/bin/php8.4','ca.php'],'storage'=>['ca-state'],'health_checks'=>['ca-ready'],'setup'=>['ca-init']],
 ]];
 $r=PjasManifest::parse(json_encode($m));
+$php85=$m;$php85['site']['runtime']='php8.5-fpm';
+check(PjasManifest::parse(json_encode($php85))['site']['runtime']==='php8.5-fpm','隔離サイトのマニフェストでもPHP 8.5を受け付ける');
 check(array_column($r['components'],'id')===['ca','web'],'依存を起動順に整列する');
 check(PjasManifest::defaults($r)['shared_paths']==='','v2の既定値は共通sharedを使わない');
 foreach ([
