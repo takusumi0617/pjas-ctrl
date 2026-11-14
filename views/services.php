@@ -6,8 +6,8 @@ use Pjas\Support\Labels;
 ?>
 <div class="row"><h1>サイト一覧</h1><span class="spacer"></span>
   <?php if (Auth::can('owner')): ?>
-    <a class="btn" href="/services/import">サーバーから一括登録</a>
-    <a class="btn p" href="/services/new">+ サイトを登録</a>
+    <a class="btn" href="/services/import"><?= \Pjas\Support\Icons::render('inventory_2') ?>サーバーから一括登録</a>
+    <a class="btn p" href="/services/new"><?= \Pjas\Support\Icons::render('add') ?>サイトを登録</a>
   <?php endif; ?>
 </div>
 <div class="sub">このサーバーで管理しているサイトの一覧です。名前をクリックすると詳細を開けます。</div>

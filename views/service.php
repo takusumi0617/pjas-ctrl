@@ -8,6 +8,7 @@ use Pjas\Support\Labels;
 
 $s    = $service;
 $name = View::e($s['name']);
+$tabIcons=['overview'=>'monitoring','releases'=>'history','vhost'=>'code','files'=>'folder','jobs'=>'receipt_long','settings'=>'tune'];
 $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' => '公開設定',
          'files' => 'ファイル', 'jobs' => '作業の履歴', 'settings' => '設定'];
 ?>
@@ -19,15 +20,15 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
         default     => '<span class="tag t-mut">未確認</span>',
     } ?>
   <span class="spacer"></span>
-  <?php if (Auth::can('owner')): ?><a class="btn" href="/components?service=<?= $name ?>">隔離コンポーネント</a><?php endif; ?>
+  <?php if (Auth::can('owner')): ?><a class="btn" href="/components?service=<?= $name ?>"><?= \Pjas\Support\Icons::render('shield') ?>隔離コンポーネント</a><?php endif; ?>
   <form method="post" action="/services/<?= $name ?>/health"><?= Csrf::field() ?>
-    <button class="btn">いま動作を確認する</button></form>
+    <button class="btn"><?= \Pjas\Support\Icons::render('refresh') ?>いま動作を確認する</button></form>
   <?php if (Auth::canSite($s['name'],'operator')): ?>
-    <a class="btn p" href="/deploy?service=<?= $name ?>">新しいバージョンを公開</a>
-    <a class="btn" href="/rollback?service=<?= $name ?>">以前のバージョンに戻す</a>
-    <a class="btn" href="/services/<?= $name ?>/operations">バックアップ・運用</a>
+    <a class="btn p" href="/deploy?service=<?= $name ?>"><?= \Pjas\Support\Icons::render('cloud_upload') ?>新しいバージョンを公開</a>
+    <a class="btn" href="/rollback?service=<?= $name ?>"><?= \Pjas\Support\Icons::render('history') ?>以前のバージョンに戻す</a>
+    <a class="btn" href="/services/<?= $name ?>/operations"><?= \Pjas\Support\Icons::render('backup') ?>バックアップ・運用</a>
   <?php endif; ?>
-  <?php if (Auth::can('owner')): ?><button type="button" class="power-toggle <?= !empty($pause['enabled']) ? 'is-paused' : 'is-live' ?>" id="pause-toggle" role="switch" aria-checked="<?= !empty($pause['enabled']) ? 'false' : 'true' ?>" aria-label="サイトの公開状態を変更" aria-haspopup="dialog" aria-controls="pause-dialog" <?= empty($pause['can_pause']) ? 'disabled title="先に公開設定を反映してください"' : '' ?>><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v10M6 5a9 9 0 1 0 12 0"/></svg><span><?= !empty($pause['enabled']) ? '停止中' : '公開中' ?></span><span class="power-track" aria-hidden="true"></span></button><?php endif; ?>
+  <?php if (Auth::can('owner')): ?><button type="button" class="power-toggle <?= !empty($pause['enabled']) ? 'is-paused' : 'is-live' ?>" id="pause-toggle" role="switch" aria-checked="<?= !empty($pause['enabled']) ? 'false' : 'true' ?>" aria-label="サイトの公開状態を変更" aria-haspopup="dialog" aria-controls="pause-dialog" <?= empty($pause['can_pause']) ? 'disabled title="先に公開設定を反映してください"' : '' ?>><?= \Pjas\Support\Icons::render('power_settings_new') ?><span><?= !empty($pause['enabled']) ? '停止中' : '公開中' ?></span><span class="power-track" aria-hidden="true"></span></button><?php endif; ?>
 </div>
 <div class="sub"><span class="mono"><?= View::e($s['domain']) ?></span> ·
   <?= $current
@@ -37,7 +38,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
 
 <div class="tabs">
   <?php foreach ($tabs as $k => $label): ?>
-    <a class="tab<?= $tab === $k ? ' on' : '' ?>" href="/services/<?= $name ?>?tab=<?= $k ?>"><?= $label ?></a>
+    <a class="tab<?= $tab === $k ? ' on' : '' ?>" href="/services/<?= $name ?>?tab=<?= $k ?>"><?= \Pjas\Support\Icons::render($tabIcons[$k]) ?><span><?= $label ?></span></a>
   <?php endforeach; ?>
 </div>
 
@@ -211,11 +212,11 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
         <tr>
           <td class="mono">
             <?php if ($e['type'] === 'dir'): ?>
-              📁 <a href="/services/<?= $name ?>?tab=files&path=<?= urlencode((string) $e['path']) ?>"><?= View::e($e['name']) ?></a>
+              <?= \Pjas\Support\Icons::render('folder') ?> <a href="/services/<?= $name ?>?tab=files&path=<?= urlencode((string) $e['path']) ?>"><?= View::e($e['name']) ?></a>
             <?php elseif ($e['type'] === 'link'): ?>
-              🔗 <?= View::e($e['name']) ?> <span class="muted">→ <?= View::e((string) ($e['target'] ?? '')) ?></span>
+              <?= \Pjas\Support\Icons::render('link') ?> <?= View::e($e['name']) ?> <span class="muted">→ <?= View::e((string) ($e['target'] ?? '')) ?></span>
             <?php else: ?>
-              📄 <?= View::e($e['name']) ?>
+              <?= \Pjas\Support\Icons::render('description') ?> <?= View::e($e['name']) ?>
             <?php endif; ?>
           </td>
           <td class="muted"><?= View::e(Labels::entryType((string) $e['type'])) ?></td>

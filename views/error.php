@@ -1,4 +1,5 @@
 <?php
+require_once dirname(__DIR__).'/app/Support/Icons.php';
 use Pjas\Http\View;
 
 $code = (int) ($code ?? (http_response_code() ?: 500));
@@ -25,7 +26,7 @@ $description = ($message ?? '') !== '' ? $message : $description;
   <h1 id="error-title"><?= View::e($heading) ?></h1>
   <p class="error-description"><?= View::e($description) ?></p>
   <div class="error-actions">
-    <a class="btn p" href="/">ホームに戻る <span aria-hidden="true">→</span></a>
+    <a class="btn p" href="/">ホームに戻る <?= \Pjas\Support\Icons::render('arrow_forward') ?></a>
     <a class="btn" href="/login">ログイン画面へ</a>
   </div>
   <footer class="error-footer"><span>お困りのときは管理者へ</span><span>HTTP <?= $code ?></span></footer>

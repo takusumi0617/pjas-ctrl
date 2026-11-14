@@ -3,7 +3,7 @@ use Pjas\Http\View;
 use Pjas\Http\Csrf;
 ?>
 <dialog id="pause-dialog" class="pause-dialog" aria-labelledby="pause-title">
-  <div class="dialog-heading"><div><div class="dialog-eyebrow">SITE AVAILABILITY</div><h2 id="pause-title">公開の一時停止・再開</h2></div><button type="button" class="dialog-close" data-close-dialog aria-label="閉じる">×</button></div>
+  <div class="dialog-heading"><div><div class="dialog-eyebrow">SITE AVAILABILITY</div><h2 id="pause-title">公開の一時停止・再開</h2></div><button type="button" class="dialog-close" data-close-dialog aria-label="閉じる"><?= \Pjas\Support\Icons::render('close') ?></button></div>
   <p class="muted"><?= View::e($s['name']) ?> · <?= View::e($s['domain']) ?></p>
   <form method="post" action="/services/<?= $name ?>/pause">
   <?= Csrf::field() ?><input type="hidden" name="action" value="pause">
@@ -69,7 +69,7 @@ use Pjas\Http\Csrf;
       <option value="default" <?= ($pause['page_mode'] ?? 'custom') === 'default' ? 'selected' : '' ?>>ctrlの既定ページを使う</option>
       <option value="custom" <?= ($pause['page_mode'] ?? 'custom') !== 'default' ? 'selected' : '' ?>>独自のHTMLを使う</option>
     </select></div>
-    <div class="default-page-note" id="pause-default-note" <?= ($pause['page_mode'] ?? 'custom') !== 'default' ? 'hidden' : '' ?>><span class="page-icon" aria-hidden="true">◇</span><div><strong>HTTPコードに合わせた案内ページ</strong><div class="hint">画面サイズ・ダークモードに対応した、ctrl既定のデザインで表示します。</div></div></div>
+    <div class="default-page-note" id="pause-default-note" <?= ($pause['page_mode'] ?? 'custom') !== 'default' ? 'hidden' : '' ?>><span class="page-icon" aria-hidden="true"><?= \Pjas\Support\Icons::render('info') ?></span><div><strong>HTTPコードに合わせた案内ページ</strong><div class="hint">画面サイズ・ダークモードに対応した、ctrl既定のデザインで表示します。</div></div></div>
     <div class="field" id="pause-custom" <?= ($pause['page_mode'] ?? 'custom') === 'default' ? 'hidden' : '' ?>><label>表示するHTML</label><textarea name="html" rows="7" class="mono" <?= ($pause['page_mode'] ?? 'custom') === 'default' ? 'disabled' : '' ?>><?= View::e($pause['html']) ?></textarea><div class="hint">CSS・JavaScriptはインラインまたは外部URLで指定できます。PHPは実行しません。</div></div>
     <div class="dialog-actions"><button type="button" class="btn" data-close-dialog>キャンセル</button><button class="btn p"><?= !empty($pause['enabled']) ? '停止ページを更新' : '一時停止する' ?></button></div>
   </form>
