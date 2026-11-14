@@ -14,6 +14,7 @@ try {
  mkdir($dir.'/data',0700);mkdir($dir.'/www/cert',0755);mkdir($dir.'/run',0755);file_put_contents($dir.'/data/db','original');chmod($dir.'/data/db',0600);file_put_contents($dir.'/key',random_bytes(32));chmod($dir.'/key',0600);
  $catalog=['version'=>1,'sites'=>['cert'=>['repository'=>'https://github.com/test/cert','domain'=>'cert.example.com','runtime'=>'static','document_root'=>'public','https'=>false]],'profiles'=>['ca'=>['sites'=>['cert'],'type'=>'worker','user'=>$user,'group'=>$group,'executables'=>[$dir.'/true']]],'storage'=>['state'=>['sites'=>['cert'],'profile'=>'ca','path'=>$dir.'/data','purpose'=>'intermediate-ca']],'secrets'=>['api'=>['sites'=>['cert'],'profile'=>'ca','path'=>$dir.'/api-secret','purpose'=>'api']],'setup'=>['init'=>['sites'=>['cert'],'profile'=>'ca','command'=>[$dir.'/true'],'check'=>[$dir.'/true'],'absent'=>[$dir.'/true']]],'health'=>['ready'=>['sites'=>['cert'],'profile'=>'ca','command'=>[$dir.'/true']]],'backup_policies'=>['backup'=>['sites'=>['cert'],'storage'=>['state'],'key_file'=>$dir.'/key','verify_restore'=>[$dir.'/true']]]];
  if ($componentType==='php') {
+  $manifest['site']['runtime']='php8.4-fpm';$catalog['sites']['cert']['runtime']='php8.4-fpm';
   $manifest['components'][0]['type']='php';$manifest['components'][0]['command']=[];
   $catalog['profiles']['ca']['type']='php';$catalog['profiles']['ca']['fpm_binary']=$dir.'/true';$catalog['profiles']['ca']['apache_user']=$user;
  }
