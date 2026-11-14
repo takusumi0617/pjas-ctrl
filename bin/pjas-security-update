@@ -45,8 +45,18 @@ try {
         $info=Proc::must(['/usr/bin/systemctl','show','--no-pager','--property=DropInPaths','--value',$unit],null,10);
         foreach (preg_split('/\s+/',trim($info),-1,PREG_SPLIT_NO_EMPTY) as $dropIn) {
             ComponentPolicy::safe($dropIn);
-            if (!SecurityUpdate::resourceDropIn($unit,$dropIn,(string)file_get_contents($dropIn))) {
+            $dropInBody=(string)file_get_contents($dropIn);
+            if (!SecurityUpdate::resourceDropIn($unit,$dropIn,$dropInBody) &&
+                !SecurityUpdate::reviewedComponentDropIn($unit,$dropIn,$dropInBody)) {
                 throw new RuntimeException('コンポーネントに追加設定があります。自動起動の移行前に確認してください: '.$dropIn);
+            }
+            echo '維持する確認済み追加設定: '.$dropIn."\n";
+            if (SecurityUpdate::reviewedComponentDropIn($unit,$dropIn,$dropInBody)) {
+                $coordination='/run/pjas-cert/coordination.lock';
+                if (!is_file($coordination) || is_link($coordination) || is_link(dirname($coordination))) {
+                    throw new RuntimeException('pjas-certの共有ロックが未準備またはリンクです。既存のtmpfiles設定を確認してください: '.$coordination);
+                }
+                echo "pjas-cert共有ロック: 通常ファイルとして配置済み（変更しません）\n";
             }
         }
     }

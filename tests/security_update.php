@@ -3,6 +3,20 @@ declare(strict_types=1);
 require __DIR__.'/support/features.php';
 use Pjas\Agentd\SecurityUpdate;
 $root=dirname(__DIR__);
+$certUnit='pjas-component-pjas-cert-web.service';$certPath='/etc/systemd/system/'.$certUnit.'.d/pjas-cert.conf';
+$certOverride="[Unit]\nAfter=systemd-tmpfiles-setup.service\n[Service]\nReadWritePaths=/run/pjas-cert/coordination.lock\nMemoryMax=256M\nCPUQuota=100%\nEnvironment=PHP_INI_SCAN_DIR=/etc/php/8.4/fpm/conf.d:/etc/pjas-cert/php-ini\n";
+check(SecurityUpdate::reviewedComponentDropIn($certUnit,$certPath,$certOverride),'確認したpjas-cert専用の設定を内容まで照合して維持する');
+foreach ([
+    $certOverride."ExecStart=/bin/true\n",
+    $certOverride."Environment=LD_PRELOAD=/tmp/inject.so\n",
+    str_replace('coordination.lock','../other',$certOverride),
+    str_replace('MemoryMax=256M','MemoryMax=infinity',$certOverride),
+    str_replace('/etc/pjas-cert/php-ini','/tmp/php-ini',$certOverride),
+    str_replace('After=systemd-tmpfiles-setup.service','After=other.service',$certOverride),
+    str_replace("CPUQuota=100%\n",'',$certOverride),
+] as $changed) check(!SecurityUpdate::reviewedComponentDropIn($certUnit,$certPath,$changed),'未確認の設定追加・変更・削除を拒否する');
+check(!SecurityUpdate::reviewedComponentDropIn('other.service',$certPath,$certOverride),'他サービスの設定を取り違えない');
+check(!SecurityUpdate::reviewedComponentDropIn($certUnit,'/tmp/pjas-cert.conf',$certOverride),'別の場所に置かれた追加設定を許可しない');
 $files=SecurityUpdate::files($root);
 check(count($files)===3,'限定更新は専用drop-in二つと起動時復帰unitだけを配置する');
 check(!isset($files['/etc/systemd/system/pjas-agentd.service']),'既存のagent本体unitを上書きしない');

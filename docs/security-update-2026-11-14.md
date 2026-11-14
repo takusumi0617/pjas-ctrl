@@ -43,6 +43,10 @@ sudo php8.4 bin/pjas-security-update --check
 
 ### 3. 適用する
 
+11月14日に実機で確認した `pjas-component-pjas-cert-web.service.d/pjas-cert.conf` も、対象unit・パス・全設定値が一致するときだけ維持して移行できます。対象は `After=systemd-tmpfiles-setup.service`、`ReadWritePaths=/run/pjas-cert/coordination.lock`、`MemoryMax=256M`、`CPUQuota=100%`、`Environment=PHP_INI_SCAN_DIR=/etc/php/8.4/fpm/conf.d:/etc/pjas-cert/php-ini` です。環境変数や書き込み先を一般的に許可するものではありません。変更・追加・欠落があれば再確認のため停止します。
+
+この設定がある場合は共有ロックが通常ファイルとして存在することも確認します。既存のtmpfiles設定、PHP設定ディレクトリ、agent側の `/var/lib/pjas-cert` の書き込み許可は上書きしません。共有ロックはctrlから新規作成せず、OS起動時も既存のtmpfiles設定による準備が必要です。起動時復帰はその準備後に動きます。
+
 ```bash
 sudo php8.4 bin/pjas-security-update --apply
 ```

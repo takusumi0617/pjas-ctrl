@@ -5,6 +5,34 @@ namespace Pjas\Agentd;
 /** Plan a narrowly scoped upgrade without rewriting PHP, Apache or local drop-ins. */
 final class SecurityUpdate
 {
+    /** Host-specific pjas-cert override reviewed on 2026-11-14.
+     * Match the unit, file, sections and every value; never allow arbitrary
+     * Environment or ReadWritePaths directives by their names alone.
+     */
+    public static function reviewedComponentDropIn(string $unit, string $path, string $body): bool
+    {
+        if ($unit!=='pjas-component-pjas-cert-web.service' ||
+            $path!=='/etc/systemd/system/'.$unit.'.d/pjas-cert.conf') return false;
+        $expected=[
+            'Unit.After'=>'systemd-tmpfiles-setup.service',
+            'Service.ReadWritePaths'=>'/run/pjas-cert/coordination.lock',
+            'Service.MemoryMax'=>'256M',
+            'Service.CPUQuota'=>'100%',
+            'Service.Environment'=>'PHP_INI_SCAN_DIR=/etc/php/8.4/fpm/conf.d:/etc/pjas-cert/php-ini',
+        ];
+        $section=''; $seen=[];
+        foreach (explode("\n",$body) as $line) {
+            $line=trim($line);
+            if ($line==='' || str_starts_with($line,'#') || str_starts_with($line,';')) continue;
+            if (in_array($line,['[Unit]','[Service]'],true)) { $section=substr($line,1,-1);continue; }
+            if (!str_contains($line,'=')) return false;
+            [$key,$value]=explode('=',$line,2);$key=$section.'.'.trim($key);
+            if (isset($seen[$key]) || !isset($expected[$key]) || trim($value)!==$expected[$key]) return false;
+            $seen[$key]=true;
+        }
+        return count($seen)===count($expected);
+    }
+
     /** systemctl set-property persists resource-only files under system.control.
      * Retain those limits, but require explicit review of executable overrides.
      */
