@@ -24,6 +24,7 @@ jobs:
         run: |
           sudo -u pjas-test env PJAS_TEST_ROOT=/tmp/pjas-ctrl-tests bash <<'BASH'
           set -euo pipefail
+          umask 0022
           cd "$PJAS_TEST_ROOT"
           find agent app shared views tests public -name '*.php' -print0 | xargs -0 -n1 php -l
           for file in bin/pjas-*; do
