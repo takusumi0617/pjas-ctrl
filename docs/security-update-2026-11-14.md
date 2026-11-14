@@ -38,7 +38,7 @@ sudo php8.4 bin/pjas-security-update --check
 
 このコマンドは対象ファイル、コンポーネントの起動方式の移行対象、既存drop-in、書き込み許可、リソース制限を表示します。秘密情報の本文は表示しません。root専用の作業ロックと管理用ディレクトリは作成する場合があります。サービス設定・サイトデータは変更しません。
 
-生成unitが承認済みハッシュと違う場合は停止します。コンポーネント側に追加drop-inがある場合や、masked/linked等の通常と異なるenable状態も自動移行しません。現在の追加設定と台帳を照合してから対応します。agent側の `pjas-cert.conf` とメモリ制限はそのまま利用できます。
+生成unitが承認済みハッシュと違う場合は停止します。コンポーネント側の追加drop-inは、`systemctl set-property` が `system.control` 配下に保存する `MemoryHigh`・`MemoryMax`・`TasksMax` だけのファイルを内容まで検証して維持します。それ以外の追加設定や、masked/linked等の通常と異なるenable状態は自動移行しません。現在の追加設定と台帳を照合してから対応します。agent側の `pjas-cert.conf` とメモリ制限はそのまま利用できます。
 
 ### 3. 適用する
 

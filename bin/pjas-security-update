@@ -43,7 +43,12 @@ try {
     $bootEnabled=Proc::run(['/usr/bin/systemctl','is-enabled','--quiet','pjas-components-boot.service'],null,10)['code']===0;
     foreach ($managed as $unit) {
         $info=Proc::must(['/usr/bin/systemctl','show','--no-pager','--property=DropInPaths','--value',$unit],null,10);
-        if (trim($info)!=='') throw new RuntimeException('コンポーネントに追加設定があります。自動起動の移行前に確認してください: '.$unit);
+        foreach (preg_split('/\s+/',trim($info),-1,PREG_SPLIT_NO_EMPTY) as $dropIn) {
+            ComponentPolicy::safe($dropIn);
+            if (!SecurityUpdate::resourceDropIn($unit,$dropIn,(string)file_get_contents($dropIn))) {
+                throw new RuntimeException('コンポーネントに追加設定があります。自動起動の移行前に確認してください: '.$dropIn);
+            }
+        }
     }
     echo "対象: agent/管理HTTPの制限、コンポーネントの起動時復帰。\nPHP・Apache設定、許可台帳、pjas-cert設定、メモリ・タスク数制限は書き換えません。\n";
     foreach ($files as $dest=>$body) echo '配置予定: '.$dest."\n";

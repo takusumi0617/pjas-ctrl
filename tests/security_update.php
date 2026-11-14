@@ -19,6 +19,12 @@ check(str_contains($agent,'UMask=0022'),'公開ファイルの読み込み権限
 $boot=$files['/etc/systemd/system/pjas-components-boot.service'];
 check(str_contains($boot,'After=network-online.target pjas-agentd.service'),'agentの起動後に承認済み状態の復帰を行う');
 check(str_contains($boot,$root.'/bin/pjas-components-boot'),'起動時復帰は実際のコード配置先を参照する');
+$resourceUnit='pjas-component-cert-ca.service';
+$resourcePath='/etc/systemd/system.control/'.$resourceUnit.'.d/50-MemoryMax.conf';
+check(SecurityUpdate::resourceDropIn($resourceUnit,$resourcePath,"# systemctl set-property\n[Service]\nMemoryMax=536870912\n"),'systemctlで設定した既存リソース制限を維持して移行できる');
+check(!SecurityUpdate::resourceDropIn($resourceUnit,$resourcePath,"[Service]\nMemoryMax=536870912\nExecStart=/bin/true\n"),'リソース制限と見せかけた実行内容変更を拒否する');
+check(!SecurityUpdate::resourceDropIn($resourceUnit,$resourcePath,"[Service]\nMemoryMax=536870912\n[Unit]\nRequires=other.service\n"),'リソース制限内の依存関係変更を拒否する');
+check(!SecurityUpdate::resourceDropIn('other.service',$resourcePath,"[Service]\nMemoryMax=536870912\n"),'他のunitの制限を取り違えない');
 
 if (is_executable('/usr/bin/systemd-analyze') && is_executable('/usr/sbin/apache2')) {
     [$verifyDir,$verifyCfg]=fixture('unit-verify');

@@ -5,6 +5,24 @@ namespace Pjas\Agentd;
 /** Plan a narrowly scoped upgrade without rewriting PHP, Apache or local drop-ins. */
 final class SecurityUpdate
 {
+    /** systemctl set-property persists resource-only files under system.control.
+     * Retain those limits, but require explicit review of executable overrides.
+     */
+    public static function resourceDropIn(string $unit, string $path, string $body): bool
+    {
+        $prefix='/etc/systemd/system.control/'.$unit.'.d/50-';
+        if (!str_starts_with($path,$prefix) || !preg_match('/\A(MemoryHigh|MemoryMax|TasksMax)\.conf\z/D',substr($path,strlen($prefix)),$m)) return false;
+        $section=false; $found=false;
+        foreach (explode("\n",$body) as $line) {
+            $line=trim($line);
+            if ($line==='' || str_starts_with($line,'#') || str_starts_with($line,';')) continue;
+            if ($line==='[Service]' && !$section) { $section=true;continue; }
+            if (!$section || !preg_match('/\A'.preg_quote($m[1],'/').'=(infinity|[0-9]+(?:\.[0-9]+)?[KMGTPE%]?)\z/D',$line)) return false;
+            $found=true;
+        }
+        return $found;
+    }
+
     public static function files(string $root, string $unitDir='/etc/systemd/system'): array
     {
         $files=[];
