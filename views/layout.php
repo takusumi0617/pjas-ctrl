@@ -45,5 +45,5 @@ $nav=static function(string $href,string $icon,string $label)use($path):string {
 <?php if($flash): ?><div role="status" class="note <?= $flash['kind']==='err'?'err':'ok' ?> flash"><?= View::e($flash['text']) ?></div><?php endif; ?>
 <?= $content ?>
 </main></div>
-<script src="/assets/navigation.js?v=20261114-icons" defer></script>
+<script src="/assets/navigation.js?v=20261117-operations" defer></script>
 </body></html>

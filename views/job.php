@@ -32,4 +32,4 @@ use Pjas\Support\Labels;
 </div>
 
 <div id="job-meta" data-id="<?= (int) $job['id'] ?>" data-state="<?= View::e($job['state']) ?>" data-type="<?= View::e($job['type']) ?>" data-offset="<?= strlen($log) ?>" hidden></div>
-<script src="/assets/job.js" defer></script>
+<script src="/assets/job.js?v=20261117-resume" defer></script>
