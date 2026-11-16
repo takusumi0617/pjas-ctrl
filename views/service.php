@@ -8,9 +8,10 @@ use Pjas\Support\Labels;
 
 $s    = $service;
 $name = View::e($s['name']);
-$tabIcons=['overview'=>'monitoring','releases'=>'history','vhost'=>'code','files'=>'folder','jobs'=>'receipt_long','settings'=>'tune'];
+$tabIcons=['overview'=>'monitoring','releases'=>'history','vhost'=>'code','files'=>'folder','jobs'=>'receipt_long','settings'=>'tune','environment'=>'shield'];
 $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' => '公開設定',
          'files' => 'ファイル', 'jobs' => '作業の履歴', 'settings' => '設定'];
+if (Auth::can('owner')) $tabs = array_slice($tabs,0,1,true)+['environment'=>'実行環境']+array_slice($tabs,1,null,true);
 ?>
 <div class="row service-toolbar">
   <h1><?= $name ?></h1>
@@ -21,7 +22,6 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
     } ?>
   <?php if(isset($isolation)): ?><span class="tag <?= !empty($isolation['isolated'])?'t-ok':'t-warn' ?>"><?= !empty($isolation['isolated'])?'サイト専用ユーザーで隔離':'共通ユーザー・隔離への移行が必要' ?></span><?php endif; ?>
   <span class="spacer"></span>
-  <?php if (Auth::can('owner')): ?><a class="btn" href="/components?service=<?= $name ?>"><?= \Pjas\Support\Icons::render('shield') ?>隔離コンポーネント</a><?php endif; ?>
   <form method="post" action="/services/<?= $name ?>/health"><?= Csrf::field() ?>
     <button class="btn"><?= \Pjas\Support\Icons::render('refresh') ?>いま動作を確認する</button></form>
   <?php if (Auth::canSite($s['name'],'operator')): ?>
@@ -254,8 +254,15 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
     </tbody>
   </table></div>
 
+<?php elseif ($tab === 'environment' && Auth::can('owner')): ?>
+  <p class="sub">このサイトのPHP、実行ユーザーと処理の構成を管理します。</p>
+  <?php if ($componentSite): ?>
+    <?php extract($componentPanel, EXTR_OVERWRITE); require __DIR__.'/partials/components.php'; ?>
+  <?php else: ?>
+    <?php require __DIR__.'/isolation.php'; ?>
+  <?php endif; ?>
 <?php elseif ($tab === 'settings'): ?>
-<?php require __DIR__.'/isolation.php'; ?>
+<?php if (Auth::can('owner')): ?><p class="note">PHPと実行ユーザーの管理は <a href="/services/<?= $name ?>?tab=environment">実行環境</a> で行います。</p><?php endif; ?>
 <?php if(Auth::can('owner')):?><details class="card"><summary class="card-h">サイトの管理を終了する・削除する</summary><div class="card-b"><p>残すものを確認してから、管理解除または30日間復元できる削除を選べます。</p><a class="btn d" href="/services/<?= $name ?>/delete">削除方法と影響を確認する</a></div></details><?php endif;?>
   <div class="sub">このサイトの設定です。公開アドレスや公開フォルダを変えたときは、保存したあと
     「公開設定」タブで反映してください。</div>
@@ -274,7 +281,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
           <option value="<?= View::e($rt) ?>" <?= $s['runtime'] === $rt ? 'selected' : '' ?>>
             <?= View::e(Labels::runtime($rt)) ?></option>
         <?php endforeach; ?></select>
-        <?php if(!empty($isolation['isolated'])): ?><input type="hidden" name="runtime" value="<?= View::e($s['runtime']) ?>"><div class="hint">PHPの変更は上の「隔離とPHPアップグレード」で適用してください。</div><?php endif; ?>
+        <?php if(!empty($isolation['isolated'])): ?><input type="hidden" name="runtime" value="<?= View::e($s['runtime']) ?>"><div class="hint">PHPの変更は「実行環境」タブで適用してください。</div><?php endif; ?>
         <div class="hint">PHP で動くサイトかどうかを選びます。HTML や画像だけのサイトは「静的ファイルのみ」です。</div></div>
 
       <div class="field"><label>公開するフォルダ</label>

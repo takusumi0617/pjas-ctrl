@@ -301,6 +301,10 @@ final class ServiceController
 
         try {$data['runtimeCatalog']=AgentClient::call('runtime.catalog',[],Auth::actor())['runtimes'];$data['isolation']=AgentClient::call('isolation.status',['service'=>Deployer::spec($s)],Auth::actor());}
         catch(AgentException $e){$data['isolationError']=$e->getMessage();}
+        $data['componentSite']=(bool)\Pjas\Support\Db::one('SELECT service_id FROM component_sites WHERE service_id=?',[$s['id']]);
+        if ($tab==='environment' && $data['componentSite'] && Auth::can('owner')) {
+            $data['componentPanel']=ComponentController::panel($s);
+        }
         View::render('service', $data);
     }
 
@@ -314,7 +318,7 @@ final class ServiceController
         }
         try {
             $isolation=AgentClient::call('isolation.status',['service'=>Deployer::spec($s)],Auth::actor());
-            if(!empty($isolation['isolated'])&&($v['runtime']!==$s['runtime']||$v['extra_conf']!==''||$v['allow_override']!=='None'))throw new AgentException('隔離サイトのPHP変更は「隔離とPHPアップグレード」で行ってください。追加Apache設定と.htaccessは使用できません');
+            if(!empty($isolation['isolated'])&&($v['runtime']!==$s['runtime']||$v['extra_conf']!==''||$v['allow_override']!=='None'))throw new AgentException('隔離サイトのPHP変更は「実行環境」タブで行ってください。追加Apache設定と.htaccessは使用できません');
         } catch(AgentException $e){View::redirect('/services/'.$s['name'].'?tab=settings',$e->getMessage(),'err');}
         ServiceRepo::update($s['name'], $v);
         Audit::log(Auth::actor(), 'service.update', $s['name'], $v);
@@ -331,8 +335,8 @@ final class ServiceController
             $hooks=$result['runtime']==='static'?$s['hooks']:\Pjas\Shared\PhpRuntime::command($s['hooks'],$result['runtime']);
             \Pjas\Support\Db::run("UPDATE services SET runtime=?,hooks=?,extra_conf='',allow_override='None' WHERE id=?",[$result['runtime'],$hooks,$s['id']]);
             Audit::log(Auth::actor(),'isolation.apply',$s['name'],$result);
-            View::redirect('/services/'.$s['name'].'?tab=settings','隔離・PHP移行を適用しました。停止中のまま動作を確認し、公開を再開してください');
-        } catch(AgentException|\InvalidArgumentException $e) { View::redirect('/services/'.$s['name'].'?tab=settings',$e->getMessage(),'err'); }
+            View::redirect('/services/'.$s['name'].'?tab=environment','隔離・PHP移行を適用しました。停止中のまま動作を確認し、公開を再開してください');
+        } catch(AgentException|\InvalidArgumentException $e) { View::redirect('/services/'.$s['name'].'?tab=environment',$e->getMessage(),'err'); }
     }
 
     public function health(array $a): void

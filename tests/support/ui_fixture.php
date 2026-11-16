@@ -3,6 +3,7 @@ declare(strict_types=1);
 namespace Pjas\Http {
     final class Auth {
         public static string $role='owner';
+        public static function canSite(string $site,string $role):bool{return self::can($role);}
         public static function user():array{return ['email'=>'admin@example.test','role'=>self::$role];}
         public static function can(string $role):bool{return self::$role==='owner'||(self::$role==='operator'&&$role==='operator');}
     }

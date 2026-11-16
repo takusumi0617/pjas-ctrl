@@ -1,5 +1,5 @@
 <?php use Pjas\Shared\PhpRuntime; use Pjas\Http\View; use Pjas\Http\Csrf; use Pjas\Http\Auth; require_once dirname(__DIR__).'/shared/PhpRuntime.php'; ?>
-<div class="card"><div class="card-h">隔離とPHPアップグレード</div><div class="card-b">
+<div class="card"><div class="card-h">PHPと実行ユーザー</div><div class="card-b">
 <?php if(isset($isolationError)): ?><p class="hint"><?= View::e($isolationError) ?></p>
 <?php elseif(isset($isolation)): ?>
 <p>現在: <?= !empty($isolation['isolated'])?'サイト専用ユーザーで隔離':'共通ユーザー（未隔離）' ?> / <?= View::e($isolation['runtime']) ?></p>

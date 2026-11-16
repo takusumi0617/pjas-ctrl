@@ -11,18 +11,25 @@ final class ComponentController
     public const OPS=['components.webplan','components.webapply','components.plan','components.apply','components.release','components.publish','components.setup','components.action','components.rollback','components.backup','components.restoreplan','components.restore','components.resume','tls.plan','tls.apply'];
     public function index(): void
     {
-        $sites=ServiceRepo::all(); $site=null; $state=[]; $error=''; $selection=(string)($_GET['service']??'');
-        if ($selection!=='') {
-            $site=ServiceRepo::findOrFail($selection); Auth::requireSite($selection,'owner');
-            try { $state=AgentClient::call('components.status',['service'=>$selection],Auth::actor()); $state['tls']=AgentClient::call('tls.status',['service'=>$selection],Auth::actor()); }
-            catch (AgentException $e) { $error=$e->getMessage(); }
-        }
-        $review=$_SESSION['component_review'][$selection]??null;
-        View::render('components',['title'=>'隔離コンポーネント','sites'=>$sites,'site'=>$site,'state'=>$state,'review'=>$review,'error'=>$error]);
+        $selection=(string)($_GET['service']??'');
+        if ($selection==='') View::redirect('/services');
+        $site=ServiceRepo::findOrFail($selection); Auth::requireSite($site['name'],'owner');
+        View::redirect('/services/'.rawurlencode($site['name']).'?tab=environment');
     }
-    public function action(): void
+    public static function panel(array $site): array
     {
-        $site=ServiceRepo::findOrFail((string)($_POST['service']??'')); Auth::requireSite($site['name'],'owner');
+        Auth::requireSite($site['name'],'owner');
+        $state=[]; $error='';
+        try {
+            $state=AgentClient::call('components.status',['service'=>$site['name']],Auth::actor());
+            $state['tls']=AgentClient::call('tls.status',['service'=>$site['name']],Auth::actor());
+        } catch (AgentException $e) { $error=$e->getMessage(); }
+        return ['site'=>$site,'state'=>$state,'error'=>$error,
+            'review'=>$_SESSION['component_review'][$site['name']]??null];
+    }
+    public function action(array $args=[]): void
+    {
+        $site=ServiceRepo::findOrFail((string)($args['name']??$_POST['service']??'')); Auth::requireSite($site['name'],'owner');
         try {
             $op=(string)($_POST['operation']??'');
             if (!in_array($op,self::OPS,true)) throw new \InvalidArgumentException('操作を選んでください');
@@ -35,7 +42,7 @@ final class ComponentController
             else unset($_SESSION['component_review'][$site['name']]);
             Db::run('INSERT INTO component_sites(service_id,phase,observed_at) VALUES (?,?,datetime(\'now\')) ON CONFLICT(service_id) DO UPDATE SET phase=excluded.phase,observed_at=excluded.observed_at',[$site['id'],$result['phase']??'registered']);
             Audit::log(Auth::actor(),$op,$site['name'],['result'=>'ok']);
-            View::redirect('/components?service='.rawurlencode($site['name']),isset($result['review'])?'変更内容を確認してください':'操作が完了しました');
-        } catch (\InvalidArgumentException|AgentException $e) { View::redirect('/components?service='.rawurlencode($site['name']),$e->getMessage(),'err'); }
+            View::redirect('/services/'.rawurlencode($site['name']).'?tab=environment',isset($result['review'])?'変更内容を確認してください':'操作が完了しました');
+        } catch (\InvalidArgumentException|AgentException $e) { View::redirect('/services/'.rawurlencode($site['name']).'?tab=environment',$e->getMessage(),'err'); }
     }
 }

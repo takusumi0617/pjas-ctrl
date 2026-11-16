@@ -28,7 +28,6 @@ $nav=static function(string $href,string $icon,string $label)use($path):string {
 <?= $nav('/rollback','history','以前のバージョンに戻す') ?>
 <div class="sep">管理</div>
 <?php if(Auth::can('owner')): ?>
-<?= $nav('/components','shield','隔離コンポーネント') ?>
 <?= $nav('/server','server_person','サーバー') ?>
 <?= $nav('/connections','settings_ethernet','接続設定と初回準備') ?>
 <?= $nav('/retired-sites','delete_sweep','削除済みサイト') ?>
