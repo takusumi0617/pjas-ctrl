@@ -21,6 +21,12 @@ try {
     $scoped=array_replace($cfg,['isolation_site'=>'alpha','isolation_runtime'=>'php8.5-fpm','apache_user'=>$cfg['web_user']]);
     $isolated=(new Vhost($scoped,new Paths($cfg['www_root'])))->render($spec);
     check(str_contains($isolated,'/run/php/pjas-alpha-8.5.sock')&&!str_contains($isolated,'/run/php/php8.5-fpm.sock'),'隔離サイトは共通FPMソケットを参照しない');
+    $release=$cfg['www_root'].'/alpha/releases/20261116-010101';mkdir($release.'/public',0755,true);mkdir($release.'/bootstrap');
+    file_put_contents($release.'/artisan','marker');file_put_contents($release.'/bootstrap/app.php','marker');file_put_contents($release.'/public/index.php','<?php');symlink($release,$cfg['www_root'].'/alpha/current');
+    $laravel=(new Vhost($scoped,new Paths($cfg['www_root'])))->render($spec);
+    check(str_contains($laravel,'FallbackResource /index.php')&&str_contains($laravel,'AllowOverride None'),'LaravelのURLを.htaccessなしでフロントコントローラーへ転送');
+    check(!str_contains((new Vhost($scoped,new Paths($cfg['www_root'])))->render(array_replace($spec,['runtime'=>'static'])),'FallbackResource /index.php'),'静的サイトにはPHPへのフォールバックを追加しない');
+    unlink($release.'/bootstrap/app.php');check(!SiteIsolation::frontController($cfg,$spec),'index.phpだけではLaravelと判定しない');file_put_contents($release.'/bootstrap/app.php','marker');
     file_put_contents($cfg['apache_sites'].'/.pjas-inherited-alpha.json','{}');
     rejects(fn()=>(new Vhost($scoped,new Paths($cfg['www_root'])))->render($spec));
     unlink($cfg['apache_sites'].'/.pjas-inherited-alpha.json');

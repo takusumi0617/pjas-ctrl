@@ -161,6 +161,7 @@ final class Vhost
         $body .= "        AllowOverride {$spec['allow_override']}\n";
         $body .= "        Require all granted\n";
         $body .= "        Options -Indexes +FollowSymLinks\n";
+        if(isset($this->cfg['isolation_site'])&&\Pjas\Agentd\SiteIsolation::frontController($this->cfg,$spec))$body .= "        DirectoryIndex index.php index.html\n        FallbackResource /index.php\n";
         $body .= "    </Directory>\n";
         // メンテナンス切替: shared/maintenance.on があれば 503 を返す
         $body .= "    RewriteEngine On\n";

@@ -62,6 +62,18 @@ final class SiteIsolation
         (new ControlStore($this->cfg))->write('isolation-'.$name,['runtime'=>$runtime,'status'=>'ready']);
         return $this->scope($name);
     }
+    /** Recognize a Laravel release without executing application code or trusting .htaccess. */
+    public static function frontController(array $cfg,array $spec): bool
+    {
+        if($spec['runtime']==='static'||$spec['docroot']==='')return false;
+        $paths=new Paths($cfg['www_root']);$release=realpath($paths->current($spec['name']));$base=realpath($paths->base($spec['name']));
+        if(!$release||!$base||!str_starts_with($release.'/',$base.'/'))return false;
+        foreach(['artisan','bootstrap/app.php',trim($spec['docroot'],'/').'/index.php'] as $relative){
+            $file=$release.'/'.$relative;$real=realpath($file);
+            if(is_link($file)||!is_file($file)||!$real||!str_starts_with($real,$release.'/'))return false;
+        }
+        return true;
+    }
     public static function socket(string $name,string $runtime): string { return '/run/php/pjas-'.Spec::name($name).'-'.PhpRuntime::version($runtime).'.sock'; }
     public static function pool(string $name,string $runtime,string $apache,string $base='/var/www'): string
     {
