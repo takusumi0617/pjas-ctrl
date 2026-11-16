@@ -3,6 +3,7 @@ declare(strict_types=1);
 namespace Pjas\Agentd;
 use Pjas\Support\Db;
 use Pjas\Domain\Deployer;
+use Pjas\Domain\JobRepo;
 use Pjas\Shared\PhpRuntime;
 
 /** Executed as the management DB owner, so SQLite sidecar ownership stays intact. */
@@ -13,7 +14,14 @@ final class SiteUpgradeDb
         $name=Spec::name($name);
         $s=Db::one("SELECT s.* FROM services s LEFT JOIN service_lifecycle l ON l.service_id=s.id WHERE s.name=? AND (l.state IS NULL OR l.state='active')",[$name]);
         if(!$s)throw new OpException('有効な登録サイトがありません');
-        return ['service'=>$s,'spec'=>Deployer::spec($s),'tasks'=>Db::all('SELECT t.*,? AS service FROM scheduled_tasks t WHERE service_id=? ORDER BY id',[$name,$s['id']]),'busy'=>(int)Db::one("SELECT count(*) AS n FROM jobs WHERE service_id=? AND state NOT IN ('succeeded','failed')",[$s['id']])['n']];
+        $pending=[];
+        foreach(Db::all("SELECT id,type,state,started_at FROM jobs WHERE service_id=? AND state NOT IN ('succeeded','failed') ORDER BY id",[$s['id']]) as $job){
+            $path=JobRepo::statusPath((int)$job['id']);$status=[];
+            if(!is_link($path)&&is_file($path)&&filesize($path)<=2097152){$data=json_decode((string)file_get_contents($path),true);if(is_array($data))$status=$data;}
+            if(in_array($status['state']??'', ['succeeded','failed'],true)){JobRepo::sync((int)$job['id']);continue;}
+            $job['agent_state']=$status['state']??'missing';$pending[]=$job;
+        }
+        return ['pending_jobs'=>$pending,'service'=>$s,'spec'=>Deployer::spec($s),'tasks'=>Db::all('SELECT t.*,? AS service FROM scheduled_tasks t WHERE service_id=? ORDER BY id',[$name,$s['id']]),'busy'=>(int)Db::one("SELECT count(*) AS n FROM jobs WHERE service_id=? AND state NOT IN ('succeeded','failed')",[$s['id']])['n']];
     }
     public static function fields(array $bundle,string $mode,string $runtime): array
     {

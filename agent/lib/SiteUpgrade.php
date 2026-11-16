@@ -112,7 +112,7 @@ final class SiteUpgrade
         if(Components::protectedSite($this->cfg,$name))throw new OpException('v2サイトは専用のコンポーネント手順を使用してください');
         if($this->store->read('upgrade-active-'.$name))throw new OpException('未完了の移行があります。statusで確認してください');
         $bundle=($this->database)('read',$name,[]);$spec=Spec::service($bundle['spec']);
-        if($bundle['busy'])throw new OpException('実行待ち・実行中の作業があります');
+        if($bundle['busy'])throw new OpException('実行待ち・実行中の作業があります。pjas-site-upgrade jobs '.$name.' でIDと状態を確認してください');
         $paths=new Paths($this->cfg['www_root']);$tag=$paths->currentTag($name);
         if(!$tag)throw new OpException('先に既存サイトの取り込みを完了してください');
         $release=$paths->release($name,$tag);if(is_link($paths->base($name))||is_link($release)||!is_dir($release)||$paths->assertInside($name,$paths->current($name))!==realpath($release))throw new OpException('公開先が正規のリリースではありません');

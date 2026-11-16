@@ -54,6 +54,12 @@ try{
     check(!SiteUpgrade::hasStartHold("[Unit]\nConditionPathExists=$hold\nConditionArchitecture=\n",$hold),'別のConditionの空代入による条件解除も検出');
     check(!SiteUpgrade::hasStartHold("[Unit]\n# ConditionPathExists=$hold\nConditionPathExists=|$hold\n",$hold),'コメントやOR条件だけでは起動禁止と扱わない');
     $upgrade=new SiteUpgrade($cfg,$db,$operations);
+    Db::run("INSERT INTO jobs(service_id,type,state) VALUES (?,'deploy','queued')",[$sid]);$completed=(int)Db::conn()->lastInsertId();
+    file_put_contents($cfg['job_dir'].'/'.$completed.'.json',json_encode(['state'=>'failed','detail'=>'completed earlier']));
+    check(SiteUpgradeDb::read('demo')['busy']===0&&Db::one('SELECT state FROM jobs WHERE id=?',[$completed])['state']==='failed','agentが完了済みのジョブだけをDBへ同期する');
+    Db::run("INSERT INTO jobs(service_id,type,state) VALUES (?,'deploy','running')",[$sid]);$running=(int)Db::conn()->lastInsertId();
+    $pending=SiteUpgradeDb::read('demo');check($pending['busy']===1&&$pending['pending_jobs'][0]['id']===$running&&$pending['pending_jobs'][0]['agent_state']==='missing','状態ファイルがないジョブは失敗扱いせずIDを報告');
+    Db::run('DELETE FROM jobs WHERE id=?',[$running]);
     $plan=$upgrade->plan('demo','php8.5-fpm');
     check(!str_contains(json_encode($plan),'must-not-leak')&&$states[$unit]['ActiveState']==='active','計画は機密値を表示せず稼働状態も変更しない');
     rejects(fn()=>$upgrade->apply($plan['id'],false,true));

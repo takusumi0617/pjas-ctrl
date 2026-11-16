@@ -121,3 +121,12 @@ sudo php8.5 bin/pjas-site-upgrade batch-apply "$PJAS_BATCH_ID" \
 計画時にPHPとファイル構成を検査し、既に進行中の移行や対応できない設定があればblockedとします。blockedが一件でもあれば一括applyは開始しません。先にそのサイトを個別に解決して計画を作り直してください。
 
 一括applyは1サイトずつ停止・移行・再開します。途中で失敗すると、そのサイトの個別移行IDを表示して残りを止めます。成功済みサイトをまとめて巻き戻しません。個別のstatus/apply/activate/rollbackで対処後、同じ一括IDのbatch-applyを再実行すると、完了済みサイトを飛ばして続行します。個別rollbackしたサイトは新しい一括計画を作成してください。共有FPM再起動は他サイトにも短時間影響します。
+
+## 未完了ジョブの確認
+
+```bash
+sudo php8.5 bin/pjas-site-upgrade jobs pjas-calc
+sudo php8.5 bin/pjas-site-upgrade jobs pjas-memo
+```
+
+agentの状態ファイルがsucceeded/failedなら、通常のJobRepo同期で管理DBへ取り込みます。running、状態ファイル欠落、壊れた記録は勝手に完了扱いにしません。残ったジョブのID・種類・DB状態・開始日時・agent側の状態だけを表示します。完了同期後は一括計画を作り直してください。
