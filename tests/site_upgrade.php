@@ -73,6 +73,9 @@ try{
     $override=file_get_contents($cfg['daemon_unit_dir'].'/'.$unit.'.d/zzzzzz-pjas-isolation.conf');
     check(str_contains($override,'/usr/bin/php8.5 worker.php')&&str_contains($override,'SupplementaryGroups='),'同じunitの実行ユーザーとPHPだけをdrop-inで移行');
     $upgrade->apply($plan['id'],true,true);check($isolationCalls===1,'完了済みの隔離をapplyで重ねて実行しない');
+    mkdir($cfg['www_root'].'/demo/current/server');file_put_contents($cfg['www_root'].'/demo/current/server/index.php','<?php');
+    $routed=$upgrade->routing($plan['id'],'server/index.php');check($routed['routing']==='php-api-front-controller'&&$routed['paused'],'preparedのままAPI設定を追加し、再移行せず再開に備える');
+    rejects(fn()=>$upgrade->routing($plan['id'],'../shared/private.php'));
     $failHealth=true;rejects(fn()=>$upgrade->activate($plan['id'],true));
     check($states[$unit]['ActiveState']==='inactive'&&(new SitePause($cfg))->read('demo')['enabled']&&!is_file($cfg['cron_dir'].'/pjas-task-'.$taskId),'HTTP検査失敗時はサイト・ワーカー・cronを再停止');
     $upgrade->rollback($plan['id'],true);

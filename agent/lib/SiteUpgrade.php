@@ -150,7 +150,7 @@ final class SiteUpgrade
     }
     private function summary(array $j): array
     {
-        return ['id'=>$j['id'],'site'=>$j['name'],'phase'=>$j['phase'],'source'=>$j['bundle']['spec']['runtime'],'target'=>$j['runtime'],'standardizes_apache'=>true,'restarts_shared_fpm'=>$j['bundle']['spec']['runtime']!=='static','workers'=>array_keys($j['workers']),'routing'=>SiteIsolation::frontController($this->cfg,Spec::service($j['bundle']['spec']))?'laravel-front-controller':'standard','health'=>$j['health']??null,'cron_ids'=>array_column($j['bundle']['tasks'],'id'),'paused'=>!empty((new SitePause($this->cfg))->read($j['name'])['enabled']),'last_error'=>$j['error']??null,'journal'=>$this->store->root().'/site-upgrade-'.$j['id'].'.json'];
+        return ['id'=>$j['id'],'site'=>$j['name'],'phase'=>$j['phase'],'source'=>$j['bundle']['spec']['runtime'],'target'=>$j['runtime'],'standardizes_apache'=>true,'restarts_shared_fpm'=>$j['bundle']['spec']['runtime']!=='static','workers'=>array_keys($j['workers']),'routing'=>!empty((new SiteIsolation($this->cfg))->state($j['name'])['api_front_controller'])?'php-api-front-controller':(SiteIsolation::frontController($this->cfg,Spec::service($j['bundle']['spec']))?'laravel-front-controller':'standard'),'health'=>$j['health']??null,'cron_ids'=>array_column($j['bundle']['tasks'],'id'),'paused'=>!empty((new SitePause($this->cfg))->read($j['name'])['enabled']),'last_error'=>$j['error']??null,'journal'=>$this->store->root().'/site-upgrade-'.$j['id'].'.json'];
     }
     public function status(string $id): array {if(!preg_match('/\A[a-f0-9]{24}\z/D',$id)){$pending=$this->store->read('upgrade-active-'.Spec::name($id));$id=$pending['id']??throw new OpException('このサイトに進行中の移行はありません');}return $this->summary($this->load($id));}
     private function locked(string $id,\Closure $fn): array
@@ -219,6 +219,24 @@ final class SiteUpgrade
                 }
                 return $this->summary($j);
             }catch(\Throwable $e){$j['error']='処理を停止しました。statusとroot専用journalを確認し、applyの再開またはrollbackを実行してください';$this->save($j);throw new OpException($j['error'].' ID: '.$j['id'].' / '.$e->getMessage());}
+        });
+    }
+    public function routing(string $id,string $script): array
+    {
+        return $this->locked($id,function(array $j)use($script):array{
+            if($j['phase']!=='prepared')throw new OpException('routingはpreparedの移行だけに設定できます');
+            $spec=array_replace(Spec::service($j['bundle']['spec']),['runtime'=>$j['runtime'],'extra_conf'=>'','allow_override'=>'None']);
+            SiteIsolation::apiScript($this->cfg,$spec,$script);
+            $store=new ControlStore($this->cfg);$old=(new SiteIsolation($this->cfg))->state($j['name']);
+            if(($old['status']??'')!=='ready'||($old['runtime']??'')!==$j['runtime'])throw new OpException('隔離状態と移行先PHPが一致しません');
+            if(empty((new SitePause($this->cfg))->read($j['name'])['enabled']))throw new OpException('先にサイトを停止してください');
+            try{
+                $store->write('isolation-'.$j['name'],array_replace($old,['api_front_controller'=>$script]));
+                $cfg=$this->op('scope',['cfg'=>$this->context($j),'name'=>$j['name']]);
+                $this->op('pause-state',['cfg'=>$cfg,'spec'=>$spec,'state'=>(new SitePause($cfg))->read($j['name'])]);
+            }catch(\Throwable $e){$store->write('isolation-'.$j['name'],$old);throw $e;}
+            $j['health']=null;unset($j['error']);$this->save($j);
+            return $this->summary($j);
         });
     }
     public function activate(string $id,bool $confirm): array

@@ -27,6 +27,13 @@ try {
     check(str_contains($laravel,'FallbackResource /index.php')&&str_contains($laravel,'AllowOverride None'),'LaravelのURLを.htaccessなしでフロントコントローラーへ転送');
     check(!str_contains((new Vhost($scoped,new Paths($cfg['www_root'])))->render(array_replace($spec,['runtime'=>'static'])),'FallbackResource /index.php'),'静的サイトにはPHPへのフォールバックを追加しない');
     unlink($release.'/bootstrap/app.php');check(!SiteIsolation::frontController($cfg,$spec),'index.phpだけではLaravelと判定しない');file_put_contents($release.'/bootstrap/app.php','marker');
+    mkdir($release.'/server');file_put_contents($release.'/server/index.php','<?php');
+    $apiCfg=array_replace($scoped,['isolation_api_front_controller'=>'server/index.php']);
+    $api=(new Vhost($apiCfg,new Paths($cfg['www_root'])))->render($spec);
+    check(str_contains($api,'ProxyPassMatch ^/api(?:/.*)?$ unix:/run/php/pjas-alpha-8.5.sock|fcgi://localhost'.$cfg['www_root'].'/alpha/current/server/index.php'),'公開外のAPIは専用FPMの固定PHPファイルにだけ振り分ける');
+    check(!str_contains($api,'Alias /api'),'serverフォルダを直接公開しない');
+    rejects(fn()=>SiteIsolation::apiScript($cfg,$spec,'../shared/index.php'));
+    rejects(fn()=>SiteIsolation::apiScript($cfg,array_replace($spec,['runtime'=>'static']),'server/index.php'));
     file_put_contents($cfg['apache_sites'].'/.pjas-inherited-alpha.json','{}');
     rejects(fn()=>(new Vhost($scoped,new Paths($cfg['www_root'])))->render($spec));
     unlink($cfg['apache_sites'].'/.pjas-inherited-alpha.json');

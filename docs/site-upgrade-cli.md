@@ -132,3 +132,14 @@ sudo php8.5 bin/pjas-site-upgrade jobs pjas-memo
 agentの状態ファイルがsucceeded/failedなら、通常のJobRepo同期で管理DBへ取り込みます。running、状態ファイル欠落、壊れた記録は勝手に完了扱いにしません。残ったジョブのID・種類・DB状態・開始日時・agent側の状態だけを表示します。完了同期後は一括計画を作り直してください。
 
 Laravel構成（artisan・bootstrap/app.php・公開フォルダのindex.php）が同じリリース内にある場合、標準の隔離VirtualHostに `FallbackResource /index.php` を追加します。`.htaccess`を有効化せず、`/up`などのアプリルートを処理します。単独statusのroutingは `laravel-front-controller` になり、再開時のhealthには実際のHTTPコードと期待値を保存します。これはアプリ側のルート定義・依存ライブラリ・PHP拡張の正常性を保証するものではありません。
+
+## 静的UIとPHP APIが別フォルダにある場合
+
+公開フォルダがFlutter等の静的UIで、APIがリリース内の `server/index.php` にある場合、preparedの移行へAPI設定を追加できます。
+
+```bash
+sudo php8.5 bin/pjas-site-upgrade routing 個別移行ID --api-front-controller=server/index.php
+sudo php8.5 bin/pjas-site-upgrade activate 個別移行ID --confirm-activation
+```
+
+`/api` と `/api/...` だけを専用FPMソケット経由で固定したPHPファイルへ渡します。serverフォルダをAlias等で公開せず、元のリクエストURIはアプリに渡します。APIファイルはリリース内の実在するPHPファイルに限定し、共有領域へのリンクや親参照は拒否します。設定はroot管理の隔離状態に保存され、PHP更新でも維持します。rollbackは元の隔離状態へ戻します。

@@ -22,7 +22,7 @@ final class SiteIsolation
         foreach (posix_getgrgid($pw['gid'])['members'] as $member) if ($member!==$user) throw new OpException('サイトのグループが共有されています');
         $groups=Proc::must(['/usr/bin/id','-G',$user]);
         if (array_values(array_unique(preg_split('/\s+/',trim($groups))))!==[(string)$gr['gid']]) throw new OpException('サイト専用ユーザーに補助グループを付けないでください');
-        return array_replace($this->cfg,['web_user'=>$user,'web_group'=>$user,'isolation_site'=>$name,'isolation_runtime'=>$state['runtime'],'apache_user'=>$this->cfg['apache_user']]);
+        return array_replace($this->cfg,['web_user'=>$user,'web_group'=>$user,'isolation_site'=>$name,'isolation_runtime'=>$state['runtime'],'isolation_api_front_controller'=>$state['api_front_controller']??null,'apache_user'=>$this->cfg['apache_user']]);
     }
     public function provision(array $spec): array
     {
@@ -59,7 +59,7 @@ final class SiteIsolation
                 Proc::must([$this->cfg['systemctl'],'reload-or-restart',$runtime]);
             } catch (\Throwable $e) { if($old===null)@unlink($pool);else file_put_contents($pool,$old);throw $e; }
         }
-        (new ControlStore($this->cfg))->write('isolation-'.$name,['runtime'=>$runtime,'status'=>'ready']);
+        (new ControlStore($this->cfg))->write('isolation-'.$name,array_replace($existing,['runtime'=>$runtime,'status'=>'ready']));
         return $this->scope($name);
     }
     /** Recognize a Laravel release without executing application code or trusting .htaccess. */
@@ -73,6 +73,14 @@ final class SiteIsolation
             if(is_link($file)||!is_file($file)||!$real||!str_starts_with($real,$release.'/'))return false;
         }
         return true;
+    }
+    public static function apiScript(array $cfg,array $spec,string $relative): string
+    {
+        $relative=Spec::relPath($relative,'API front controller');
+        if($spec['runtime']==='static'||!preg_match('~\A[A-Za-z0-9_./-]+\.php\z~D',$relative))throw new OpException('APIのPHPファイルをリリース内の相対パスで指定してください');
+        $paths=new Paths($cfg['www_root']);$release=realpath($paths->current($spec['name']));$file=$paths->current($spec['name']).'/'.$relative;$real=realpath($file);
+        if(!$release||!$real||!is_file($file)||is_link($file)||!str_starts_with($real,$release.'/')||!str_starts_with($release.'/',realpath($paths->base($spec['name'])).'/'))throw new OpException('APIファイルがリリース内にありません');
+        return $file;
     }
     public static function socket(string $name,string $runtime): string { return '/run/php/pjas-'.Spec::name($name).'-'.PhpRuntime::version($runtime).'.sock'; }
     public static function pool(string $name,string $runtime,string $apache,string $base='/var/www'): string
