@@ -106,3 +106,18 @@ sudo python3 agent/lib/isolate_tree.py --check /var/www/対象サイト名
 ```
 
 内容・実行ビット・所有者・時刻・拡張属性をコピーし、一時ファイルから原子的に置き換えます。外部リンク、sharedとのリンク、別リリース間のリンク、特殊ファイルは拒否します。失敗した隔離処理は先にrollbackし、分離後は新しい移行計画を作成してください。
+
+## 複数サイトの一括移行
+
+```bash
+PJAS_BATCH_ID="$(sudo php8.5 bin/pjas-site-upgrade batch-plan pjas-calc,pjas-cert,pjas-chat,pjas-drive,pjas-financial,pjas-gamebank,pjas-memo,pjas-v3 --php=8.5 --id-only)"
+sudo php8.5 bin/pjas-site-upgrade batch-status "$PJAS_BATCH_ID"
+sudo php8.5 bin/pjas-site-upgrade batch-apply "$PJAS_BATCH_ID" \
+  --accept-standard-apache --external-processes-stopped --confirm-activation --skip-manual
+```
+
+静的サイトはstaticのまま隔離します。PHPと隔離の両方が完了したサイトはcurrentとして変更しません。v2はmanualとして報告し、`--skip-manual`がない場合は一件も停止しません。v2の変更・CA初期化・異常の修復は一括処理には含みません。
+
+計画時にPHPとファイル構成を検査し、既に進行中の移行や対応できない設定があればblockedとします。blockedが一件でもあれば一括applyは開始しません。先にそのサイトを個別に解決して計画を作り直してください。
+
+一括applyは1サイトずつ停止・移行・再開します。途中で失敗すると、そのサイトの個別移行IDを表示して残りを止めます。成功済みサイトをまとめて巻き戻しません。個別のstatus/apply/activate/rollbackで対処後、同じ一括IDのbatch-applyを再実行すると、完了済みサイトを飛ばして続行します。個別rollbackしたサイトは新しい一括計画を作成してください。共有FPM再起動は他サイトにも短時間影響します。

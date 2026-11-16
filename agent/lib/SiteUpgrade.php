@@ -59,7 +59,7 @@ final class SiteUpgrade
         (new SitePause($cfg))->write($spec['name'],$state);
         return (new Vhost($cfg,new Paths($cfg['www_root'])))->apply(['service'=>$spec]);
     }
-    private function preflight(string $runtime,string $name): array
+    public function preflight(string $runtime,string $name): array
     {
         PhpRuntime::requireInstalled($runtime);
         Proc::must(['/usr/bin/python3',__DIR__.'/isolate_tree.py','--check',$this->cfg['www_root'].'/'.Spec::name($name)],null,600);
