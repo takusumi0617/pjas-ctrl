@@ -191,7 +191,7 @@ final class Vhost
             $api=\Pjas\Agentd\SiteIsolation::apiScript($this->cfg,$spec,$this->cfg['isolation_api_front_controller']);
             $apiSocket=\Pjas\Agentd\SiteIsolation::socket($name,$spec['runtime']);
             $apiDirectory=dirname($api);
-            $body .= "    <Directory \"{$apiDirectory}\">\n        CGIPassAuth On\n    </Directory>\n    ProxyPassMatch ^/api(?:/.*)?$ unix:{$apiSocket}|fcgi://localhost{$api}\n";
+            $body .= "    <Directory \"{$apiDirectory}\">\n        CGIPassAuth On\n    </Directory>\n    ProxyPassMatch ^/api(?:/.*)?$ unix:{$apiSocket}|fcgi://localhost{$api}\n    ProxyFCGISetEnvIf \"%{REQUEST_URI} =~ m#^/api(?:/.*)?$#\" SCRIPT_FILENAME \"{$api}\"\n    ProxyFCGISetEnvIf \"%{REQUEST_URI} =~ m#^/api(?:/.*)?$#\" !PATH_INFO\n    ProxyFCGISetEnvIf \"%{REQUEST_URI} =~ m#^/api(?:/.*)?$# && req('Authorization') != ''\" HTTP_AUTHORIZATION \"%{req:Authorization}\"\n";
         }
         $body .= "    ErrorLog  \${APACHE_LOG_DIR}/{$name}-error.log\n";
         $body .= "    CustomLog \${APACHE_LOG_DIR}/{$name}-access.log combined\n";

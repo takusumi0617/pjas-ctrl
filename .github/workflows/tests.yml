@@ -21,7 +21,7 @@ jobs:
       - name: 非特権の専用テストユーザーを準備
         run: |
           sudo apt-get update
-          sudo apt-get install -y acl
+          sudo apt-get install -y acl apache2-bin
           sudo useradd --create-home --user-group pjas-test
           sudo install -d -o pjas-test -g pjas-test /tmp/pjas-ctrl-tests
           git archive HEAD | sudo -u pjas-test tar -x -C /tmp/pjas-ctrl-tests
@@ -40,4 +40,5 @@ jobs:
           python3 tests/security_archives.py
           python3 tests/component_files.py
           python3 tests/isolate_tree.py
+          PJAS_TEST_APACHE=/usr/sbin/apache2 python3 tests/api_fcgi.py
           BASH

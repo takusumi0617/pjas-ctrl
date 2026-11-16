@@ -92,3 +92,5 @@ root以外での実行は終了コード77で未実施を示します。実行�
 通常サイトの実ホスト検証は `sudo php8.5 bin/pjas-sites-check` を実行します。root以外は終了コード77で未実施を示します。単一UIDだけが割り当てられた開発環境では、他UIDによる拒否やApache再起動の検証はできません。
 
 `tests/site_upgrade.php` は実SQLiteでDBの比較・更新を検証し、systemd・隔離・HTTP処理を模擬して移行、中断後の再開、HTTP失敗時の再停止、設定復旧を確認します。実ホストでのsystemdの起動とUIDの検証は別途必要です。
+
+`tests/api_fcgi.py` は実Apacheを非特権で起動し、生成VirtualHostのconfigtestとFastCGI受信値を検証します。`PJAS_TEST_APACHE=/usr/sbin/apache2 python3 tests/api_fcgi.py` で実行します。CLIのPHPがPATH上に必要です。APIの固定SCRIPT_FILENAME、URI/クエリ/Authorization保持、通常PHPと静的UIの独立性を確認し、CIでも実行します。
