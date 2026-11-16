@@ -70,6 +70,22 @@ final class SiteUpgrade
         foreach(explode("\n",$text) as $line)if(str_contains($line,'=')){[$k,$v]=explode('=',$line,2);$out[$k]=$v;}
         return $out;
     }
+    /** Conditions exposes evaluation state on some systemd versions, not loaded configuration. */
+    public static function hasStartHold(string $text,string $path): bool
+    {
+        $text=preg_replace('/\\\\\r?\n[ \t]*/',' ',$text);$section='';$held=false;
+        foreach(preg_split('/\R/',$text) as $line){
+            $line=trim($line);if($line===''||str_starts_with($line,'#')||str_starts_with($line,';'))continue;
+            if(preg_match('/^\[([^\]]+)\]$/',$line,$m)){$section=$m[1];continue;}
+            if($section!=='Unit'||!str_contains($line,'='))continue;
+            [$key,$value]=array_map('trim',explode('=',$line,2));
+            if(!str_starts_with($key,'Condition'))continue;
+            // An empty assignment to any Condition*= resets the entire condition list.
+            if($value==='')$held=false;
+            elseif($key==='ConditionPathExists'&&$value===$path)$held=true;
+        }
+        return $held;
+    }
     private function fingerprint(array $bundle): string
     {
         $tasks=array_map(fn($t)=>array_intersect_key($t,array_flip(['id','name','schedule','command','enabled'])),$bundle['tasks']);
@@ -173,7 +189,11 @@ final class SiteUpgrade
                     $this->store->write('upgrade-active-'.$j['name'],['id'=>$j['id']]);
                     foreach($j['workers'] as $unit=>$w)$this->put($w['hold'],"[Unit]\nConditionPathExists=".$this->store->root().'/never-start-'.$j['id']."\n");
                     $this->sys(['daemon-reload']);
-                    foreach($j['workers'] as $unit=>$w){$conditions=$this->sys(['show','--value','--property=Conditions','--',$unit]);if(!str_contains($conditions,'never-start-'.$j['id']))throw new OpException('unitの起動禁止条件が別の設定で上書きされています');}
+                    foreach($j['workers'] as $unit=>$w){
+                        $dropIns=preg_split('/\s+/',trim($this->sys(['show','--value','--property=DropInPaths','--',$unit])),-1,PREG_SPLIT_NO_EMPTY);
+                        $definition=$this->sys(['cat','--no-pager','--',$unit]);
+                        if(!in_array($w['hold'],$dropIns,true)||!self::hasStartHold($definition,$this->store->root().'/never-start-'.$j['id']))throw new OpException('unitの起動禁止設定が読み込まれていないか、後続の設定で解除されています');
+                    }
                     $oldCfg=$j['old_isolation']?$this->op('scope',['cfg'=>$ctx,'name'=>$j['name']]):$ctx;
                     $this->op('pause',['cfg'=>$oldCfg,'spec'=>$spec,'action'=>'pause']);
                     $this->changeDb($j,'quiesce');foreach($this->taskPaths($j) as $p)$this->put($p,null);

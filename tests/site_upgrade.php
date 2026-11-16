@@ -22,9 +22,10 @@ try{
         $calls[]=$kind;
         if($kind==='systemctl'){
             $action=$args[0];$target=end($args);
-            if($action==='cat'){$p=$cfg['daemon_unit_dir'].'/'.$target.'.d/zzzzzz-pjas-isolation.conf';return $source.(is_file($p)?file_get_contents($p):'');}
+            if($action==='cat'){$p=$cfg['daemon_unit_dir'].'/'.$target.'.d/zzzzzz-pjas-isolation.conf';$h=$cfg['daemon_unit_dir'].'/'.$target.'.d/zzzzzz-pjas-upgrade-hold.conf';return $source.(is_file($p)?file_get_contents($p):'').(is_file($h)?file_get_contents($h):'');}
             if($action==='show'){
-                if(in_array('--property=Conditions',$args,true)){$p=$cfg['daemon_unit_dir'].'/'.$target.'.d/zzzzzz-pjas-upgrade-hold.conf';return is_file($p)?file_get_contents($p):'';}
+                if(in_array('--property=Conditions',$args,true))return '';
+                if(in_array('--property=DropInPaths',$args,true)){$p=$cfg['daemon_unit_dir'].'/'.$target.'.d/zzzzzz-pjas-upgrade-hold.conf';return is_file($p)?$p:'';}
                 $st=$states[$target];if(is_file($cfg['daemon_unit_dir'].'/'.$target.'.d/zzzzzz-pjas-isolation.conf')){$st['User']=$st['Group']=SiteIsolation::identity('demo');$st['NoNewPrivileges']='yes';$st['SupplementaryGroups']=$st['AmbientCapabilities']=$st['CapabilityBoundingSet']='';}
                 return implode("\n",array_map(fn($k,$v)=>$k.'='.$v,array_keys($st),$st));
             }
@@ -48,6 +49,10 @@ try{
         if($kind==='health')return ['ok'=>!$failHealth,'paused'=>false];
         throw new RuntimeException($kind);
     };
+    $hold='/var/lib/pjas-control/never-start-test';
+    check(SiteUpgrade::hasStartHold("[Unit]\nConditionPathExists=$hold\n[Service]\nUser=www-data\n",$hold),'Conditionsの評価状態に依存せず読み込む停止条件を確認');
+    check(!SiteUpgrade::hasStartHold("[Unit]\nConditionPathExists=$hold\nConditionArchitecture=\n",$hold),'別のConditionの空代入による条件解除も検出');
+    check(!SiteUpgrade::hasStartHold("[Unit]\n# ConditionPathExists=$hold\nConditionPathExists=|$hold\n",$hold),'コメントやOR条件だけでは起動禁止と扱わない');
     $upgrade=new SiteUpgrade($cfg,$db,$operations);
     $plan=$upgrade->plan('demo','php8.5-fpm');
     check(!str_contains(json_encode($plan),'must-not-leak')&&$states[$unit]['ActiveState']==='active','計画は機密値を表示せず稼働状態も変更しない');
