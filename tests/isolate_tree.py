@@ -34,6 +34,10 @@ with tempfile.TemporaryDirectory() as tmp:
     assert f'user:{os.getuid()}' not in __import__('subprocess').check_output(['getfacl', '-cnp', str(shared / '.env')], text=True)
     print('ok descriptor traversal preserves external symlinks and grants only public shared ACLs')
     os.link(outside, public / 'hardlink')
+    before = stat.S_IMODE(base.stat().st_mode)
+    findings = m.check_tree(str(base))
+    assert any(x['kind'] == 'hardlink' and x['path'].endswith('/hardlink') for x in findings)
+    assert stat.S_IMODE(base.stat().st_mode) == before
     try:
         m.protect(str(base), os.getuid(), os.getgid(), os.getuid(), 'public')
         raise AssertionError('hardlink accepted')
@@ -41,3 +45,8 @@ with tempfile.TemporaryDirectory() as tmp:
         pass
     assert stat.S_IMODE(outside.stat().st_mode) == 0o600
     print('ok hardlink rejection never changes the external file')
+
+    fifo = shared / 'pipe'
+    os.mkfifo(fifo)
+    assert any(x['kind'] == 'special' and x['path'] == 'shared/pipe' for x in m.check_tree(str(base)))
+    print('ok read-only preflight reports hardlink and FIFO paths without opening or mutating them')

@@ -25,9 +25,47 @@ def acl(fd, owner, group, apache, access):
         os.setxattr(fd, 'system.posix_acl_access', struct.pack('<I', 2) + b''.join(struct.pack('<HHI', *e) for e in entries))
 
 
+def check_tree(base):
+    """Read-only inventory. Never open special files or follow symlinks."""
+    findings = []
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY | os.O_CLOEXEC
+
+    def scan(fd, relative):
+        for name in os.listdir(fd):
+            path = relative + '/' + name if relative else name
+            info = os.stat(name, dir_fd=fd, follow_symlinks=False)
+            if stat.S_ISLNK(info.st_mode):
+                continue
+            if stat.S_ISDIR(info.st_mode):
+                child = os.open(name, flags, dir_fd=fd)
+                try:
+                    opened = os.fstat(child)
+                    if (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
+                        raise ValueError('tree changed during inspection: ' + repr(path))
+                    scan(child, path)
+                finally:
+                    os.close(child)
+            elif stat.S_ISREG(info.st_mode):
+                if info.st_nlink != 1:
+                    findings.append({'kind': 'hardlink', 'path': path, 'links': info.st_nlink})
+            else:
+                findings.append({'kind': 'special', 'path': path, 'type': stat.S_IFMT(info.st_mode)})
+
+    fd = os.open(base, flags)
+    try:
+        scan(fd, '')
+    finally:
+        os.close(fd)
+    return findings
+
+
 def protect(base, uid, gid, apache, docroot):
     if docroot.startswith('/') or '..' in docroot.split('/'):
         raise ValueError('invalid document root')
+    findings = check_tree(base)
+    if findings:
+        first = findings[0]
+        raise ValueError(f"{first['kind']}: {first['path']!r}; run isolate_tree.py --check BASE for the full list")
     root_uid = os.geteuid()
     links = []
     flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
@@ -36,7 +74,7 @@ def protect(base, uid, gid, apache, docroot):
         st = os.fstat(fd)
         directory = stat.S_ISDIR(st.st_mode)
         if not directory and (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1):
-            raise ValueError('special or hard-linked file')
+            raise ValueError(f'special or hard-linked file: {relative!r} (links={st.st_nlink})')
         os.fchown(fd, uid if shared else root_uid, gid)
         os.fchmod(fd, (0o700 if directory else 0o600) if shared else (0o750 if directory else 0o640))
         access = (5 if directory else 4) if public else 0
@@ -54,7 +92,7 @@ def protect(base, uid, gid, apache, docroot):
                     links.append(os.path.join(base, child_rel))
                 continue
             if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
-                raise ValueError('special file')
+                raise ValueError(f'special file: {child_rel!r}')
             child = os.open(name, flags | (os.O_DIRECTORY if stat.S_ISDIR(info.st_mode) else 0), dir_fd=fd)
             try:
                 if os.fstat(child).st_ino != info.st_ino or os.fstat(child).st_dev != info.st_dev:
@@ -97,4 +135,11 @@ def protect(base, uid, gid, apache, docroot):
 
 
 if __name__ == '__main__':
+    if len(sys.argv) == 3 and sys.argv[1] == '--check':
+        import json
+        findings = check_tree(sys.argv[2])
+        for finding in findings:
+            print(json.dumps(finding, ensure_ascii=False))
+        print(json.dumps({'issues': len(findings)}))
+        sys.exit(1 if findings else 0)
     protect(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), sys.argv[5])

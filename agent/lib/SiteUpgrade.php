@@ -49,7 +49,7 @@ final class SiteUpgrade
             'acl-restore'=>Proc::must(['/usr/bin/setfacl','--restore='.$args['file']],null,600),
             'cron'=>(new ScheduledTask($cfg,$paths))->apply(['task'=>$args['task']]),
             'health'=>(new Health($cfg))->check(['service'=>$args['spec']]),
-            'preflight'=>PhpRuntime::requireInstalled($args['runtime']),
+            'preflight'=>$this->preflight($args['runtime'],$args['name']),
             'drain'=>$this->drain($args['name'],$args['scripts']),
             default=>throw new OpException('未定義の移行操作です'),
         };
@@ -58,6 +58,12 @@ final class SiteUpgrade
     {
         (new SitePause($cfg))->write($spec['name'],$state);
         return (new Vhost($cfg,new Paths($cfg['www_root'])))->apply(['service'=>$spec]);
+    }
+    private function preflight(string $runtime,string $name): array
+    {
+        PhpRuntime::requireInstalled($runtime);
+        Proc::must(['/usr/bin/python3',__DIR__.'/isolate_tree.py','--check',$this->cfg['www_root'].'/'.Spec::name($name)],null,600);
+        return [];
     }
     private function aclSave(string $path,string $file): array
     {
@@ -173,7 +179,7 @@ final class SiteUpgrade
             $ctx=$this->context($j);$spec=Spec::service($j['bundle']['spec']);
             try{
                 if($j['phase']==='planned'){
-                    $this->op('preflight',['runtime'=>$j['runtime']]);
+                    $this->op('preflight',['runtime'=>$j['runtime'],'name'=>$j['name']]);
                     if((new Paths($this->cfg['www_root']))->currentTag($j['name'])!==$j['current_tag'])throw new OpException('公開リリースが計画時から変更されました');
                     $paths=new Paths($this->cfg['www_root']);$release=$paths->release($j['name'],$j['current_tag']);if(is_link($release)||$paths->assertInside($j['name'],$paths->current($j['name']))!==realpath($release))throw new OpException('公開先の参照が計画時から変更されました');
                     if($this->fingerprint(($this->database)('read',$j['name'],[]))!==$j['fingerprint'])throw new OpException('DBが計画時から変更されました。新しい計画を作成してください');
