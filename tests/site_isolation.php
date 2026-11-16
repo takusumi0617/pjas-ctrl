@@ -32,6 +32,8 @@ try {
     $api=(new Vhost($apiCfg,new Paths($cfg['www_root'])))->render($spec);
     check(str_contains($api,'ProxyPassMatch ^/api(?:/.*)?$ unix:/run/php/pjas-alpha-8.5.sock|fcgi://localhost'.$cfg['www_root'].'/alpha/current/server/index.php'),'公開外のAPIは専用FPMの固定PHPファイルにだけ振り分ける');
     check(!str_contains($api,'Alias /api'),'serverフォルダを直接公開しない');
+    check(str_contains($api,'<Directory "'.$cfg['www_root'].'/alpha/current/server">'."\n        CGIPassAuth On\n    </Directory>"),'CGIPassAuthをDirectoryコンテキスト内に配置する');
+    check(!preg_match('/^    CGIPassAuth/m',$api),'CGIPassAuthをVirtualHost直下へ出力しない');
     rejects(fn()=>SiteIsolation::apiScript($cfg,$spec,'../shared/index.php'));
     rejects(fn()=>SiteIsolation::apiScript($cfg,array_replace($spec,['runtime'=>'static']),'server/index.php'));
     file_put_contents($cfg['apache_sites'].'/.pjas-inherited-alpha.json','{}');

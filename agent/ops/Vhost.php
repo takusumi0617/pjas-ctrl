@@ -190,7 +190,8 @@ final class Vhost
         if(isset($this->cfg['isolation_site'])&&!empty($this->cfg['isolation_api_front_controller'])){
             $api=\Pjas\Agentd\SiteIsolation::apiScript($this->cfg,$spec,$this->cfg['isolation_api_front_controller']);
             $apiSocket=\Pjas\Agentd\SiteIsolation::socket($name,$spec['runtime']);
-            $body .= "    CGIPassAuth On\n    ProxyPassMatch ^/api(?:/.*)?$ unix:{$apiSocket}|fcgi://localhost{$api}\n";
+            $apiDirectory=dirname($api);
+            $body .= "    <Directory \"{$apiDirectory}\">\n        CGIPassAuth On\n    </Directory>\n    ProxyPassMatch ^/api(?:/.*)?$ unix:{$apiSocket}|fcgi://localhost{$api}\n";
         }
         $body .= "    ErrorLog  \${APACHE_LOG_DIR}/{$name}-error.log\n";
         $body .= "    CustomLog \${APACHE_LOG_DIR}/{$name}-access.log combined\n";
