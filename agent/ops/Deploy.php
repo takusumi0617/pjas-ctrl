@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 namespace Pjas\Agentd\Ops;
+require_once dirname(__DIR__).'/lib/SiteIsolation.php';
 
 use Pjas\Agentd\JobLog;
 use Pjas\Agentd\OpException;
@@ -139,6 +140,7 @@ final class Deploy
             if(isset($this->cfg['control_dir'])){$backup=(new Backups($this->cfg,$this->paths))->createUnlocked($spec,'before-rollback');$log->set('backup',$backup['id']);}
             $log->line("rollback {$name}: {$prev} → {$tag}（共有データは最新の状態を維持）");
             $this->linkShared($name, $spec, $this->paths->release($name, $tag), $log);
+            \Pjas\Agentd\SiteIsolation::protect($this->cfg,$name,$spec['docroot']);
             $this->switchCurrent($name, $tag, $log);
             $this->reloadRuntime($spec, $log);
             if (!$this->health->poll($spec, fn($m)=>$log->line($m))) throw new OpException('戻したバージョンの動作確認に失敗したため、元のバージョンへ復帰します');
@@ -301,6 +303,7 @@ final class Deploy
                 throw new OpException('apachectl configtest に失敗しました');
             }
 
+            \Pjas\Agentd\SiteIsolation::protect($this->cfg,$name,$spec['docroot']);
             // [8] 切替 + リロード
             $this->switchCurrent($name, $tag, $log);
             if (!empty($opts['apply_vhost'])) {
@@ -727,7 +730,7 @@ final class Deploy
         }
         $php = '/usr/bin/php' . str_replace(['php', '-fpm'], '', $spec['runtime']);
         if (!is_executable($php)) {
-            $php = '/usr/bin/php';
+            throw new OpException('指定したPHP CLIがありません: '.$php);
         }
         $r = Proc::run(['/usr/bin/find', $relDir, '-name', '*.php', '-type', 'f',
                         '-not', '-path', '*/vendor/*', '-not', '-path', '*/node_modules/*'], null, 120);

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 namespace Pjas\Domain;
+require_once dirname(__DIR__,2).'/shared/PhpRuntime.php';
 
 use Pjas\Support\Db;
 
@@ -9,7 +10,7 @@ final class ServiceRepo
 {
     public const NAME_RE   = '/^[a-z0-9][a-z0-9-]{0,31}$/';
     public const DOMAIN_RE = '/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i';
-    public const RUNTIMES  = ['php8.5-fpm', 'php8.4-fpm', 'php8.3-fpm', 'php8.2-fpm', 'php8.1-fpm', 'static'];
+    public const RUNTIMES = \Pjas\Shared\PhpRuntime::RUNTIMES;
 
     /** @return array<int,array<string,mixed>> */
     public static function all(): array
@@ -55,7 +56,7 @@ final class ServiceRepo
             $err[] = 'ブラウザで開くアドレスの形式が正しくありません。例: billing.example.com';
         }
 
-        $out['runtime'] = (string) ($in['runtime'] ?? 'php8.4-fpm');
+        $out['runtime'] = (string) ($in['runtime'] ?? \Pjas\Shared\PhpRuntime::DEFAULT_RUNTIME);
         if (!in_array($out['runtime'], self::RUNTIMES, true)) {
             $err[] = 'サイトの種類を正しく選んでください';
         }

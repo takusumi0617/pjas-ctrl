@@ -5,7 +5,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/php8.4 /opt/pjas-ctrl/agent/pjas-agentd.php
+ExecStart=/usr/bin/php8.5 /opt/pjas-ctrl/agent/pjas-agentd.php
 Restart=always
 RestartSec=2
 
@@ -16,7 +16,7 @@ PrivateTmp=yes
 NoNewPrivileges=no
 StateDirectory=pjas-control
 StateDirectoryMode=0700
-ReadWritePaths=-/var/lib/pjas-control -/var/lib/pjas-pauses -/var/lib/pjas-repositories -/var/lib/pjas-daemons /etc/systemd/system /var/www /etc/apache2/sites-available /etc/apache2/sites-enabled -/var/lib/apache2/site /etc/cron.d /var/log/pjas /var/lib/pjas /run
+ReadWritePaths=-/var/lib/pjas-control -/var/lib/pjas-pauses -/var/lib/pjas-repositories -/var/lib/pjas-daemons /etc/systemd/system -/etc/php /var/www /etc/apache2/sites-available /etc/apache2/sites-enabled -/var/lib/apache2/site /etc/cron.d /var/log/pjas /var/lib/pjas /run
 RuntimeDirectory=pjas
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 LockPersonality=yes

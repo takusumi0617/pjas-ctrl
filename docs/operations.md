@@ -67,7 +67,7 @@ SQLiteはSQLiteのバックアップAPIでコピーするため、稼働中のWA
 別のサーバーで中身を取り出す例です。
 
 ```bash
-php8.4 bin/pjas-decrypt-backup demo-保存番号.pjas pjas-backup-key.txt restored.tar.gz
+php8.5 bin/pjas-decrypt-backup demo-保存番号.pjas pjas-backup-key.txt restored.tar.gz
 mkdir recovered
 # 空の復旧用フォルダに取り出す。本番への上書きは内容を確認してから行う。
 tar -xzf restored.tar.gz -C recovered

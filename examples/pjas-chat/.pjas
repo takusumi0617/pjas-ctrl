@@ -2,7 +2,7 @@
   "version": 1,
   "site": {
     "name": "pjas-chat",
-    "runtime": "php8.4-fpm",
+    "runtime": "php8.5-fpm",
     "document_root": "dist",
     "https": true,
     "health_path": "/"
@@ -17,7 +17,7 @@
     {
       "name": "websocket",
       "label": "チャットの即時通知",
-      "command": "exec /usr/bin/php8.4 websocket/server.php start",
+      "command": "exec /usr/bin/php8.5 websocket/server.php start",
       "working_directory": ".",
       "start_on_install": true,
       "start_on_boot": true
@@ -28,7 +28,7 @@
       "name": "expire",
       "label": "期限切れメッセージの削除",
       "schedule": "*/5 * * * *",
-      "command": "/usr/bin/php8.4 cron/expire.php",
+      "command": "/usr/bin/php8.5 cron/expire.php",
       "enabled": true
     }
   ]

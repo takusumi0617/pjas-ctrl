@@ -1,11 +1,11 @@
 {
   "version": 2,
-  "site": {"name": "pjas-cert", "domain": "cert.example.com", "runtime": "php8.4-fpm", "document_root": "public", "https": true},
+  "site": {"name": "pjas-cert", "domain": "cert.example.com", "runtime": "php8.5-fpm", "document_root": "public", "https": true},
   "requirements": ["cert-platform"],
   "components": [
     {"id": "web", "type": "php", "execution_profile": "cert-web", "storage": ["cert-ui"], "secrets": ["cert-api"], "depends_on": ["ca"], "health_checks": ["web-ready"]},
-    {"id": "ca", "type": "worker", "execution_profile": "cert-ca", "command": ["/usr/bin/php8.4", "bin/ca-worker.php"], "storage": ["cert-ca-state"], "setup": ["cert-ca-init"], "health_checks": ["ca-ready", "ca-expiry"]},
-    {"id": "sign", "type": "worker", "execution_profile": "cert-sign", "command": ["/usr/bin/php8.4", "bin/sign-worker.php"], "storage": ["cert-sign-state"], "depends_on": ["ca"], "health_checks": ["sign-ready", "sign-queue"]}
+    {"id": "ca", "type": "worker", "execution_profile": "cert-ca", "command": ["/usr/bin/php8.5", "bin/ca-worker.php"], "storage": ["cert-ca-state"], "setup": ["cert-ca-init"], "health_checks": ["ca-ready", "ca-expiry"]},
+    {"id": "sign", "type": "worker", "execution_profile": "cert-sign", "command": ["/usr/bin/php8.5", "bin/sign-worker.php"], "storage": ["cert-sign-state"], "depends_on": ["ca"], "health_checks": ["sign-ready", "sign-queue"]}
   ],
   "backup_policy": "cert-backup"
 }

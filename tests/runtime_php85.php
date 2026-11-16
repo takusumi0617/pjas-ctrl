@@ -15,6 +15,6 @@ check(str_contains($conf,'/run/php/php8.5-fpm.sock') && !str_contains($conf,'/ru
 check(str_contains(Labels::runtime('php8.5-fpm'),'8.5'),'選択肢のラベルにPHP 8.5を表示する');
 $schema=json_decode(file_get_contents(dirname(__DIR__).'/docs/pjas-v2.schema.json'),true,512,JSON_THROW_ON_ERROR);
 check(in_array('php8.5-fpm',$schema['properties']['site']['properties']['runtime']['enum'],true),'公開JSON Schemaと実装のPHP 8.5対応を一致させる');
-$bad=$input;$bad['runtime']='php8.6-fpm';
+$bad=$input;$bad['runtime']='php8.7-fpm';
 rejects(fn()=>ServiceRepo::validate($bad,false));
 rejects(fn()=>Spec::service($bad));

@@ -1,0 +1,91 @@
+<?php
+declare(strict_types=1);
+namespace Pjas\Agentd;
+require_once dirname(__DIR__,2).'/shared/PhpRuntime.php';
+use Pjas\Shared\PhpRuntime;
+
+/** Site identities are agent-owned state, never identities supplied by an RPC caller. */
+final class SiteIsolation
+{
+    public function __construct(private array $cfg) {}
+    public static function identity(string $name): string { return 'pj-'.substr(hash('sha256',Spec::name($name)),0,24); }
+    public function state(string $name): array { return (new ControlStore($this->cfg))->read('isolation-'.Spec::name($name)); }
+    public function scope(string $name,bool $preparing=false): array
+    {
+        $state=$this->state($name);
+        if (!$state) return $this->cfg;
+        if(!$preparing&&($state['status']??'')!=='ready')throw new OpException('隔離の準備が未完了です。登録または移行を再実行してください');
+        $apache=isset($this->cfg['apache_user'])?posix_getpwnam($this->cfg['apache_user']):false;$legacy=posix_getpwnam($this->cfg['web_user']);
+        if(!$apache||$apache['uid']===0||($legacy&&$apache['uid']===$legacy['uid']))throw new OpException('ApacheとPHPの実行ユーザーを分離してください');
+        $user=self::identity($name); $pw=posix_getpwnam($user);$gr=posix_getgrnam($user);
+        if (!$pw||!$gr||$pw['uid']===0||$pw['gid']!==$gr['gid']||$gr['members']) throw new OpException('サイト専用ユーザーの権限を確認してください');
+        foreach (posix_getgrgid($pw['gid'])['members'] as $member) if ($member!==$user) throw new OpException('サイトのグループが共有されています');
+        $groups=Proc::must(['/usr/bin/id','-G',$user]);
+        if (array_values(array_unique(preg_split('/\s+/',trim($groups))))!==[(string)$gr['gid']]) throw new OpException('サイト専用ユーザーに補助グループを付けないでください');
+        return array_replace($this->cfg,['web_user'=>$user,'web_group'=>$user,'isolation_site'=>$name,'isolation_runtime'=>$state['runtime'],'apache_user'=>$this->cfg['apache_user']]);
+    }
+    public function provision(array $spec): array
+    {
+        $name=Spec::name($spec['name']);$runtime=$spec['runtime'];PhpRuntime::requireInstalled($runtime);
+        $root=$this->cfg['www_root'];$st=lstat($root);
+        if(is_link($root)||!$st||$st['uid']!==0||($st['mode']&0022))throw new OpException('サイトの親フォルダはroot所有・他ユーザー書き込み禁止にしてください');
+        if (posix_geteuid()!==0) throw new OpException('サイト隔離の準備にはrootが必要です');
+        foreach (['/usr/bin/setfacl','/usr/bin/getfacl'] as $bin) if(!is_executable($bin))throw new OpException('aclパッケージをインストールしてください');
+        $apache=$this->cfg['apache_user']??null;
+        if(!$apache||!posix_getpwnam($apache)||posix_getpwnam($apache)['uid']===posix_getpwnam($this->cfg['web_user'])['uid'])throw new OpException('初回準備でApacheとPHPの実行ユーザーを分離してください');
+        $base=$this->cfg['www_root'].'/'.$name;
+        if(!is_dir($base.'/shared')){if(is_link($base)||is_link($base.'/shared'))throw new OpException('サイト領域がリンクです');if(!is_dir($base)&&!mkdir($base,0750))throw new OpException('サイト領域を作成できません');if(!mkdir($base.'/shared',0700))throw new OpException('共有領域を作成できません');}
+        $user=self::identity($name);$existing=$this->state($name);
+        $allocated=(new ControlStore($this->cfg))->read('identity-'.$name);
+        if (!$existing && !$allocated && (posix_getpwnam($user)||posix_getgrnam($user))) throw new OpException('専用ユーザー名が既存アカウントと衝突しています');
+        if (!$existing) {
+            if(!$allocated) {
+                Proc::must([$this->cfg['systemctl'],'start','pjas-site-identity@'.$name.'.service']);
+                $allocated=(new ControlStore($this->cfg))->read('identity-'.$name);
+                if(($allocated['user']??'')!==$user)throw new OpException('専用アカウントの作成を確認できません');
+            }
+            (new ControlStore($this->cfg))->write('isolation-'.$name,['runtime'=>$runtime,'status'=>'preparing']);
+        }
+        $scoped=$this->scope($name,true);
+        if ($runtime!=='static') {
+            $version=PhpRuntime::version($runtime);$pool='/etc/php/'.$version.'/fpm/pool.d/pjas-'.$name.'.conf';
+            if(is_link($pool))throw new OpException('FPM設定先がリンクです');
+            foreach(['.tmp','.sessions'] as $part){$dir=$base.'/shared/'.$part;if(is_link($dir))throw new OpException('PHP一時領域がリンクです');if(!is_dir($dir)&&!mkdir($dir,0700))throw new OpException('PHP一時領域を作成できません');chown($dir,$user);chgrp($dir,$user);chmod($dir,0700);}
+            $body=self::pool($name,$runtime,$scoped['apache_user'],$base);
+            $old=is_file($pool)?file_get_contents($pool):null;
+            try {
+                if(file_put_contents($pool,$body,LOCK_EX)===false)throw new OpException('FPM設定を保存できません');chmod($pool,0644);
+                Proc::must([PhpRuntime::fpm($runtime),'--test']);
+                Proc::must([$this->cfg['systemctl'],'reload-or-restart',$runtime]);
+            } catch (\Throwable $e) { if($old===null)@unlink($pool);else file_put_contents($pool,$old);throw $e; }
+        }
+        (new ControlStore($this->cfg))->write('isolation-'.$name,['runtime'=>$runtime,'status'=>'ready']);
+        return $this->scope($name);
+    }
+    public static function socket(string $name,string $runtime): string { return '/run/php/pjas-'.Spec::name($name).'-'.PhpRuntime::version($runtime).'.sock'; }
+    public static function pool(string $name,string $runtime,string $apache,string $base='/var/www'): string
+    {
+        $user=self::identity($name);
+        if(!preg_match('/\A[a-z_][a-z0-9_-]*\z/D',$apache))throw new OpException('Apacheユーザーが不正です');
+        return "[pjas-{$name}]\nuser = {$user}\ngroup = {$user}\nlisten = ".self::socket($name,$runtime)."\nlisten.owner = {$apache}\nlisten.group = {$apache}\nlisten.mode = 0600\npm = ondemand\npm.max_children = 5\npm.process_idle_timeout = 10s\nclear_env = yes\nsecurity.limit_extensions = .php\nphp_admin_flag[display_errors] = off\nphp_admin_value[sys_temp_dir] = {$base}/shared/.tmp\nphp_admin_value[upload_tmp_dir] = {$base}/shared/.tmp\nphp_admin_value[session.save_path] = {$base}/shared/.sessions\n";
+    }
+    public static function protect(array $cfg,string $name,string $docroot): void
+    {
+        if (($cfg['isolation_site']??null)!==$name) return;
+        $paths=new Paths($cfg['www_root']);$user=self::identity($name);
+        $pw=posix_getpwnam($user);$group=posix_getgrnam($user);$apache=posix_getpwnam($cfg['apache_user']);
+        if(!$pw||!$group||!$apache)throw new OpException('隔離アカウントがありません');
+        Proc::must(['/usr/bin/python3',__DIR__.'/isolate_tree.py',$paths->base($name),(string)$pw['uid'],(string)$group['gid'],(string)$apache['uid'],Spec::relPath($docroot,'DocumentRoot')],null,600);
+    }
+    public function status(array $params): array
+    {
+        $spec=Spec::service($params['service']??null);$name=$spec['name'];$state=$this->state($name);
+        $blockers=[];$warnings=[];
+        if (is_file($this->cfg['apache_sites'].'/.pjas-inherited-'.$name.'.json'))$warnings[]='継承Apache設定を退避して標準設定に切り替えます。独自のAPI・プロキシ・別名ドメインは引き継ぎません';
+        // The daemon registry is stored separately; inspect its actual rows too.
+        foreach ((new \Pjas\Agentd\Ops\Daemon($this->cfg))->listing(['service'=>$name])['daemons']??[] as $row)$blockers[]='常駐プログラムを停止し、関連付けを解除してから移行してください';
+        foreach(glob(($this->cfg['cron_script_dir']??'/var/lib/pjas/cron').'/task-*.sh')?:[] as $file) if(str_contains((string)file_get_contents($file),$this->cfg['www_root'].'/'.$name.'/'))$blockers[]='定期処理を無効にしてから移行してください';
+        if(trim($spec['extra_conf'])!=='')$warnings[]='追加Apache設定を退避して削除します。アプリの公開ルートを確認してください';
+        return ['isolated'=>($state['status']??'')==='ready','state'=>$state,'user'=>$state?self::identity($name):$this->cfg['web_user'],'runtime'=>$state['runtime']??$spec['runtime'],'warnings'=>$warnings,'blockers'=>array_values(array_unique($blockers))];
+    }
+}

@@ -24,7 +24,7 @@ use Pjas\Agentd\Spec;
 use Pjas\Domain\VhostRenderer;
 
 $cases = [
-    ['name' => 'billing', 'domain' => 'billing.example.com', 'runtime' => 'php8.4-fpm',
+    ['name' => 'billing', 'domain' => 'billing.example.com', 'runtime' => 'php8.5-fpm',
      'docroot' => 'public', 'allow_override' => 'FileInfo', 'extra_conf' => 'Header always set X-Frame-Options DENY',
      'tls' => 1],
     ['name' => 'docs', 'domain' => 'docs.example.com', 'runtime' => 'static',
@@ -37,7 +37,7 @@ $cases = [
 $chatGuide = file_get_contents(PJAS_ROOT . '/docs/pjas-chat-apache.md');
 preg_match('/```apache\n(.*?)\n```/s', $chatGuide, $match);
 $chatExtra = $match[1];
-$cases[] = ['name' => 'pjas-chat', 'domain' => 'chat.example.com', 'runtime' => 'php8.4-fpm',
+$cases[] = ['name' => 'pjas-chat', 'domain' => 'chat.example.com', 'runtime' => 'php8.5-fpm',
     'docroot' => 'dist', 'allow_override' => 'None', 'extra_conf' => $chatExtra, 'tls' => 1];
 
 $cases[] = ['name'=>'php85','domain'=>'php85.example.com','runtime'=>'php8.5-fpm','docroot'=>'public','allow_override'=>'None','extra_conf'=>'','tls'=>1];

@@ -52,8 +52,8 @@ try {
     $calls = file_get_contents($dir . '/calls');
     check(str_contains($calls, 'try-restart worker.service') && !str_contains($calls, 'try-restart sleeper.service'), '移行後に稼働中だけを再起動し停止中は保持');
     $d->save(['service' => 'site-a', 'original_unit' => 'worker.service', 'label' => '変更', 'edit_execution' => 1,
-        'exec_start' => '/usr/bin/php8.4 {{site_root}}/websocket/server.php start', 'working_subdir' => '']);
-    check(str_contains(file_get_contents($dir . '/units/worker.service.d/zzzz-pjas-ctrl.conf'), 'ExecStart=/usr/bin/php8.4 ' . $dir . '/site-a/current/'), '既存デーモンのコマンドを画面入力で編集');
+        'exec_start' => '/usr/bin/php8.5 {{site_root}}/websocket/server.php start', 'working_subdir' => '']);
+    check(str_contains(file_get_contents($dir . '/units/worker.service.d/zzzz-pjas-ctrl.conf'), 'ExecStart=/usr/bin/php8.5 ' . $dir . '/site-a/current/'), '既存デーモンのコマンドを画面入力で編集');
     rejects(fn() => $d->save(['service' => 'site-a', 'original_unit' => 'worker.service', 'label' => '範囲外', 'edit_execution' => 1, 'exec_start' => '/usr/bin/php x', 'working_subdir' => '../other']));
     $before = file_get_contents($dir . '/units/worker.service.d/zzzz-pjas-ctrl.conf');
     touch($dir . '/fail');

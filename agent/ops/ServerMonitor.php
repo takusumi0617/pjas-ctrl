@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 namespace Pjas\Agentd\Ops;
+require_once dirname(__DIR__,2).'/shared/PhpRuntime.php';
 use Pjas\Agentd\{ControlStore,Proc,OpException};
 require_once dirname(__DIR__).'/lib/ControlStore.php';
 /** Single-host, bounded read-only collector. No user-provided commands or paths. */
@@ -20,7 +21,7 @@ final class ServerMonitor
     }
     private function units(): array
     {
-        $units=['apache2.service','php8.4-fpm.service','pjas-agentd.service','pjas-control-web.service','pjas-monitor.timer'];
+        $units=['apache2.service','php'.\Pjas\Shared\PhpRuntime::controlVersion().'-fpm.service','pjas-agentd.service','pjas-control-web.service','pjas-monitor.timer'];
         foreach(glob('/lib/systemd/system/php*-fpm.service')?:[] as $file)if(preg_match('/\Aphp[0-9]+\.[0-9]+-fpm\.service\z/D',basename($file)))$units[]=basename($file);
         return array_values(array_unique($units));
     }
@@ -49,7 +50,7 @@ final class ServerMonitor
             $streak=$old['streak']??[];foreach(['cpu'=>$usage,'memory'=>$memory] as $key=>$value){$streak[$key]=$value!==null&&$value>=90?($streak[$key]??0)+1:0;$add($key,$value!==null&&$streak[$key]<3,($key==='cpu'?'CPUの使用率':'メモリの使用率').': '.($value===null?'測定できません':$value.'%').($streak[$key]>=3?'。高い状態が続いています。負荷の高いサイトを確認してください。':''));}
             foreach($disks as $i=>$d)$add('disk.'.$i,$d['used']!==null&&$d['used']<90&&$d['free']>=1073741824,$d['path'].' の空き容量: '.round($d['free']/1073741824,1).'GB。不要な保存データやバックアップを確認してください。');
             $units=$this->unitStates();$add('service.read',count($units)>0,'主要サービスの状態'.($units?'を取得しました':'を取得できません。systemdを確認してください。'));
-            foreach($units as $u){if(!$u['loaded']){if(in_array($u['unit'],['apache2.service','php8.4-fpm.service','pjas-agentd.service','pjas-control-web.service','pjas-monitor.timer'],true))$add('service.'.$u['unit'],false,$u['unit'].' が見つかりません。初回準備を確認してください。');continue;}if(!$u['enabled']&&$u['state']==='inactive')continue;$add('service.'.$u['unit'],in_array($u['state'],['active','activating'],true),$u['unit'].' の状態: '.$u['state'].'。停止している場合はサービスの記録を確認してください。');}
+            foreach($units as $u){if(!$u['loaded']){if(in_array($u['unit'],['apache2.service','php'.\Pjas\Shared\PhpRuntime::controlVersion().'-fpm.service','pjas-agentd.service','pjas-control-web.service','pjas-monitor.timer'],true))$add('service.'.$u['unit'],false,$u['unit'].' が見つかりません。初回準備を確認してください。');continue;}if(!$u['enabled']&&$u['state']==='inactive')continue;$add('service.'.$u['unit'],in_array($u['state'],['active','activating'],true),$u['unit'].' の状態: '.$u['state'].'。停止している場合はサービスの記録を確認してください。');}
             // Reuse the local APT cache; never perform updates or network refreshes here.
             $cacheFiles=array_merge(glob('/var/lib/apt/lists/*_InRelease')?:[],glob('/var/lib/apt/lists/*_Release')?:[]);$cacheTime=0;foreach($cacheFiles as $f)$cacheTime=max($cacheTime,(int)@filemtime($f));
             $updates=$old['updates']??[];if(($updates['time']??0)<$now-3600){$r=$this->run(['/usr/bin/apt','list','--upgradable'],8);$updates=['time'=>$now,'ok'=>$r['code']===0,'count'=>0,'security'=>0,'cache_time'=>$cacheTime];if($updates['ok'])foreach(explode("\n",$r['out']) as $l)if(str_contains($l,'[upgradable from:')){$updates['count']++;if(str_contains($l,'-security'))$updates['security']++;}}

@@ -52,7 +52,7 @@ final class DaemonDefinition
     {
         if ($command === '' || strlen($command) > 4000 || preg_match('/[\x00-\x1f\x7f]/', $command)
             || !preg_match('~^/[^\s]+(?:\s|$)|^"/[^"\r\n]+"(?:\s|$)~', $command)) {
-            throw new OpException('起動コマンドは絶対パスから始まる1行で指定してください（例: /usr/bin/php8.4 websocket/server.php start）');
+            throw new OpException('起動コマンドは絶対パスから始まる1行で指定してください（例: /usr/bin/php8.5 websocket/server.php start）');
         }
         // 実行権限を変更する systemd の + / ! 等の接頭辞は絶対パスの検証で拒否する。
         return $command;

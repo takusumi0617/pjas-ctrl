@@ -1,0 +1,12 @@
+[Unit]
+Description=PJAS dedicated site identity (%i)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/php8.5 /opt/pjas-ctrl/bin/pjas-site-identity %i
+User=root
+Group=root
+UMask=0077
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes

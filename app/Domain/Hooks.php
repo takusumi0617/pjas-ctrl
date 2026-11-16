@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 namespace Pjas\Domain;
+require_once dirname(__DIR__,2).'/shared/PhpRuntime.php';
 
 /**
  * after_deploy フックの許可リスト。
@@ -13,18 +14,7 @@ namespace Pjas\Domain;
 final class Hooks
 {
     /** 完全一致の正規表現。引数も含めて縛る。 */
-    public const ALLOWED = [
-        '/^\/usr\/bin\/php8\.[1-5] \/usr\/bin\/composer install( --no-dev)?( -o| --optimize-autoloader)?( --no-interaction)?$/',
-        '/^\/usr\/bin\/php8\.[1-5] \/usr\/bin\/composer dump-autoload( -o| --optimize)?$/',
-        '/^\/usr\/bin\/php8\.[1-5] artisan (migrate --force|config:cache|route:cache|view:cache|storage:link|optimize|optimize:clear)$/',
-        '/^composer install( --no-dev)?( -o| --optimize-autoloader)?( --no-interaction)?$/',
-        '/^composer dump-autoload( -o| --optimize)?$/',
-        '/^php artisan (migrate --force|config:cache|route:cache|view:cache|storage:link|optimize|optimize:clear)$/',
-        '/^php bin\/console (cache:clear|doctrine:migrations:migrate --no-interaction)$/',
-        '/^npm ci( --omit=dev)?$/',
-        '/^npm run build$/',
-    ];
-
+    public const ALLOWED = \Pjas\Shared\PhpRuntime::HOOKS;
     public static function isAllowed(string $cmd): bool
     {
         $cmd = trim($cmd);
@@ -35,6 +25,7 @@ final class Hooks
         if (preg_match('/[;&|`$><\n\r\\\\]/', $cmd)) {
             return false;
         }
+        if(preg_match('~^/usr/bin/php([0-9]+\.[0-9]+) ~',$cmd,$m)&&!in_array('php'.$m[1].'-fpm',\Pjas\Shared\PhpRuntime::RUNTIMES,true))return false;
         foreach (self::ALLOWED as $re) {
             if (preg_match($re, $cmd)) {
                 return true;

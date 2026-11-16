@@ -3,7 +3,7 @@
 declare(strict_types=1);
 /** Existing installations: preserve all PHP/Apache config, catalog and resource limits. */
 if (PHP_SAPI!=='cli' || !function_exists('posix_geteuid') || posix_geteuid()!==0) {
-    fwrite(STDERR,"サーバー上でsudo php8.4 bin/pjas-security-update --check または --apply を実行してください。\n"); exit(77);
+    fwrite(STDERR,"サーバー上でsudo php8.5 bin/pjas-security-update --check または --apply を実行してください。\n"); exit(77);
 }
 $root=dirname(__DIR__);
 spl_autoload_register(static function(string $class)use($root):void{
@@ -28,7 +28,7 @@ try {
         $siteLocks[]=$fp;
     }
     ComponentPolicy::safe($root); ComponentPolicy::safe($root.'/agent/config.php');
-    foreach (['/usr/bin/php8.4','/usr/bin/systemctl','/usr/bin/systemd-analyze'] as $bin) {
+    foreach (['/usr/bin/php'.\Pjas\Shared\PhpRuntime::controlVersion(),'/usr/bin/systemctl','/usr/bin/systemd-analyze'] as $bin) {
         if (!is_executable($bin)) throw new RuntimeException('必要な実行ファイルがありません: '.$bin);
     }
     $files=SecurityUpdate::files($root); $managed=SecurityUpdate::managedUnits($cfg);

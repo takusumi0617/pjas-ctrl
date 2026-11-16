@@ -29,7 +29,8 @@ final class ServiceController
 
     public function newForm(): void
     {
-        View::render('service_new', ['title' => 'サイト登録', 'errors' => [], 'in' => []]);
+        try{$catalog=AgentClient::call('runtime.catalog',[],Auth::actor())['runtimes'];}catch(AgentException $e){$catalog=[];}
+        View::render('service_new', ['title' => 'サイト登録', 'errors' => [], 'in' => [],'runtimeCatalog'=>$catalog]);
     }
 
     public function githubPreview(): void
@@ -72,6 +73,7 @@ final class ServiceController
         }
         try {
             $v = ServiceRepo::validate($_POST, true);
+            if($v['extra_conf']!==''||$v['allow_override']!=='None')throw new ValidationException(['新規の隔離サイトは標準Apache設定・AllowOverride Noneを使用してください']);
             $repo = $selection['repo'];
             $ref = $selection['ref'];
             $file = $_FILES['archive'] ?? ['error'=>UPLOAD_ERR_NO_FILE];
@@ -104,6 +106,7 @@ final class ServiceController
                 'github_repo' => $repo,
                 'github_auth' => $selection['auth'],
                 'service' => [
+                    'runtime' => $v['runtime'],
                     'name'   => $v['name'],
                     'shared' => array_values(array_filter(explode(',', $v['shared_paths']))),
                 ],
@@ -189,12 +192,12 @@ final class ServiceController
                 $v = ServiceRepo::validate($in, true);
                 AgentClient::call('service.create', [
                     'service' => [
+                        'runtime' => $v['runtime'],
                         'name'   => $v['name'],
                         'shared' => array_values(array_filter(explode(',', $v['shared_paths']))),
                     ],
                 ], $actor);
                 ServiceRepo::create($v);
-                \Pjas\Support\Db::run('INSERT INTO component_sites(service_id) VALUES (?)',[ServiceRepo::findOrFail($v['name'])['id']]);
                 Audit::log($actor, 'service.create', $v['name'], ['domain' => $v['domain'], 'via' => 'import']);
 
                 $note = '登録しました';
@@ -296,6 +299,8 @@ final class ServiceController
             }
         }
 
+        try {$data['runtimeCatalog']=AgentClient::call('runtime.catalog',[],Auth::actor())['runtimes'];$data['isolation']=AgentClient::call('isolation.status',['service'=>Deployer::spec($s)],Auth::actor());}
+        catch(AgentException $e){$data['isolationError']=$e->getMessage();}
         View::render('service', $data);
     }
 
@@ -307,10 +312,27 @@ final class ServiceController
         } catch (ValidationException $e) {
             View::redirect('/services/' . $s['name'] . '?tab=settings', implode(' / ', $e->errors), 'err');
         }
+        try {
+            $isolation=AgentClient::call('isolation.status',['service'=>Deployer::spec($s)],Auth::actor());
+            if(!empty($isolation['isolated'])&&($v['runtime']!==$s['runtime']||$v['extra_conf']!==''||$v['allow_override']!=='None'))throw new AgentException('隔離サイトのPHP変更は「隔離とPHPアップグレード」で行ってください。追加Apache設定と.htaccessは使用できません');
+        } catch(AgentException $e){View::redirect('/services/'.$s['name'].'?tab=settings',$e->getMessage(),'err');}
         ServiceRepo::update($s['name'], $v);
         Audit::log(Auth::actor(), 'service.update', $s['name'], $v);
         View::redirect('/services/' . $s['name'] . '?tab=settings',
             '設定を保存しました。公開アドレスなどを変更した場合は「公開設定」タブで反映してください。');
+    }
+
+    public function isolation(array $a): void
+    {
+        $s=ServiceRepo::findOrFail($a['name']);Auth::requireSite($s['name'],'owner');
+        try {
+            Auth::reauthenticate((string)($_POST['password']??''));
+            $result=AgentClient::call('isolation.apply',['service'=>Deployer::spec($s),'runtime'=>(string)($_POST['runtime']??''),'confirm'=>($_POST['confirm']??'')==='1','standardize'=>($_POST['standardize']??'')==='1'],Auth::actor());
+            $hooks=$result['runtime']==='static'?$s['hooks']:\Pjas\Shared\PhpRuntime::command($s['hooks'],$result['runtime']);
+            \Pjas\Support\Db::run("UPDATE services SET runtime=?,hooks=?,extra_conf='',allow_override='None' WHERE id=?",[$result['runtime'],$hooks,$s['id']]);
+            Audit::log(Auth::actor(),'isolation.apply',$s['name'],$result);
+            View::redirect('/services/'.$s['name'].'?tab=settings','隔離・PHP移行を適用しました。停止中のまま動作を確認し、公開を再開してください');
+        } catch(AgentException|\InvalidArgumentException $e) { View::redirect('/services/'.$s['name'].'?tab=settings',$e->getMessage(),'err'); }
     }
 
     public function health(array $a): void

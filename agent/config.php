@@ -1,4 +1,6 @@
 <?php
+require_once dirname(__DIR__).'/shared/PhpRuntime.php';
+$controlPhp=\Pjas\Shared\PhpRuntime::controlVersion();
 // pjas-agentd 設定 (root で読まれる)。web 側 config.php と整合させること。
 return [
     // v2 grants are edited by a root administrator, never through the web UI.
@@ -7,7 +9,6 @@ return [
     'control_dir'   => '/var/lib/pjas-control',
     'preview_root'  => '/var/www/pjas-previews',
     'preview_user'  => 'pjas-preview',
-    'php_fpm_bin'   => '/usr/sbin/php-fpm8.4',
     'socket'        => '/run/pjas-agent.sock',
     'socket_group'  => 'pjas',      // web ユーザーが所属するグループ
     'socket_mode'   => 0660,
@@ -21,6 +22,8 @@ return [
     'cron_script_dir' => '/var/lib/pjas/cron',
     'cron_log_dir'  => '/var/log/pjas/cron',
 
+    // Apache must never share a UID with application workers or PHP-FPM.
+    'apache_user'   => 'pjas-apache',
     'web_user'      => 'www-data',
     'web_group'     => 'www-data',
 
@@ -40,7 +43,7 @@ return [
 
     // root 所有の関連付け台帳・実行スクリプト。管理画面からは書き換え不可。
     'pause_dir' => '/var/lib/pjas-pauses',
-    'pause_fpm_socket' => '/run/php/php8.4-fpm.sock',
+    'pause_fpm_socket' => '/run/php/php'.$controlPhp.'-fpm.sock',
     'github_repo_dir' => '/var/lib/pjas-repositories',
     'daemon_dir' => '/var/lib/pjas-daemons',
     'daemon_unit_dir' => '/etc/systemd/system',

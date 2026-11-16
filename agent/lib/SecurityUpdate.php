@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 namespace Pjas\Agentd;
+require_once dirname(__DIR__,2).'/shared/PhpRuntime.php';
 
 /** Plan a narrowly scoped upgrade without rewriting PHP, Apache or local drop-ins. */
 final class SecurityUpdate
@@ -88,8 +89,8 @@ final class SecurityUpdate
             $files[$unitDir.'/'.$name.'.service.d/90-pjas-security.conf']=
                 (string)file_get_contents($root.'/systemd/'.$name.'-security.conf');
         }
-        $files[$unitDir.'/pjas-components-boot.service']=str_replace('/opt/pjas-ctrl',$root,
-            (string)file_get_contents($root.'/systemd/pjas-components-boot.service'));
+        $files[$unitDir.'/pjas-components-boot.service']=\Pjas\Shared\PhpRuntime::renderTemplate(str_replace('/opt/pjas-ctrl',$root,
+            (string)file_get_contents($root.'/systemd/pjas-components-boot.service')),\Pjas\Shared\PhpRuntime::controlVersion());
         return $files;
     }
 

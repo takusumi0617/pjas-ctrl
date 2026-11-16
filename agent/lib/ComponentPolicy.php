@@ -41,7 +41,7 @@ final class ComponentPolicy
         $p = $this->grant('profiles', $id, $site);
         foreach (['user','group'] as $key) if (!preg_match('/\A[a-z_][a-z0-9_-]{0,31}\z/D', $p[$key] ?? '')) throw new OpException('実行ユーザー設定が不正です');
         $u = posix_getpwnam($p['user']); $g = posix_getgrnam($p['group']);
-        $forbidden = ['root','www-data','pjas',$this->cfg['socket_group']??'pjas',$this->cfg['web_group']??'www-data',$this->cfg['web_user'] ?? 'www-data','pjas-control',$this->cfg['preview_user'] ?? 'pjas-preview'];
+        $forbidden = ['root','pjas-apache',$this->cfg['apache_user']??'pjas-apache','www-data','pjas',$this->cfg['socket_group']??'pjas',$this->cfg['web_group']??'www-data',$this->cfg['web_user'] ?? 'www-data','pjas-control',$this->cfg['preview_user'] ?? 'pjas-preview'];
         if ($p['user']!==$p['group'] || !$u || !$g || $u['uid'] === 0 || $g['gid'] === 0 || in_array($p['user'],$forbidden,true) || in_array($p['group'],$forbidden,true) || $g['gid'] !== $u['gid']) throw new OpException('専用の非特権ユーザー・プライマリグループが必要です');
         if (!in_array($p['type'] ?? null, ['php','worker'],true)) throw new OpException('プロファイル種別が不正です');
         // A UID/GID is exclusive to a site; group sharing defeats storage isolation.

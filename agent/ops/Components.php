@@ -154,7 +154,8 @@ final class Components
             if (!$c['health_checks']) throw new OpException('各コンポーネントの準備完了確認が必要です');
             if ($c['type']==='php') {
                 $this->executable($profile['fpm_binary']??'');
-                $apache=$profile['apache_user']??'www-data';
+                $apache=$profile['apache_user']??($this->cfg['apache_user']??'www-data');
+                if(isset($this->cfg['apache_user'])&&$apache!==$this->cfg['apache_user'])throw new OpException('v2台帳のapache_userを専用Apacheユーザーへ更新してください');
                 if (!preg_match('/\A[a-z_][a-z0-9_-]{0,31}\z/D',$apache) || !posix_getpwnam($apache)) throw new OpException('Apacheユーザーが不正です');
             }
             $existing=null;
@@ -230,7 +231,7 @@ final class Components
             // A private root-managed directory is readable by this profile only.
             foreach ($r['secrets'] as $secretId=>$st) $unit.='Environment='.$q('PJAS_SECRET_'.strtoupper(str_replace('-','_',$secretId)).'='.$run.'/secrets/'.$secretId)."\n";
             if ($c['type']==='php') {
-                $fpm="[global]\ndaemonize = no\nerror_log = /dev/null\npid = {$run}/tmp/fpm.pid\n[{$site}-{$id}]\nuser = {$pr['user']}\ngroup = {$pr['group']}\nlisten = {$run}/socket/php.sock\nlisten.mode = 0600\nlisten.acl_users = ".($pr['apache_user']??'www-data')."\npm = ondemand\npm.max_children = 8\npm.process_idle_timeout = 10s\nclear_env = yes\ncatch_workers_output = no\nsecurity.limit_extensions = .php\nphp_admin_value[session.save_path] = {$run}/sessions\nphp_admin_value[sys_temp_dir] = {$run}/tmp\n";
+                $fpm="[global]\ndaemonize = no\nerror_log = /dev/null\npid = {$run}/tmp/fpm.pid\n[{$site}-{$id}]\nuser = {$pr['user']}\ngroup = {$pr['group']}\nlisten = {$run}/socket/php.sock\nlisten.mode = 0600\nlisten.acl_users = ".($pr['apache_user']??($this->cfg['apache_user']??'www-data'))."\npm = ondemand\npm.max_children = 8\npm.process_idle_timeout = 10s\nclear_env = yes\ncatch_workers_output = no\nsecurity.limit_extensions = .php\nphp_admin_value[session.save_path] = {$run}/sessions\nphp_admin_value[sys_temp_dir] = {$run}/tmp\n";
                 foreach ($r['storage'] as $sid=>$st) $fpm.='env[PJAS_STORAGE_'.strtoupper(str_replace('-','_',$sid)).'] = '.$st['path']."\n";
                 foreach ($r['secrets'] as $sid=>$st) $fpm.='env[PJAS_SECRET_'.strtoupper(str_replace('-','_',$sid)).'] = '.$run.'/secrets/'.$sid."\n";
                 $files[$this->fpmPath($site,$id)]=$fpm;

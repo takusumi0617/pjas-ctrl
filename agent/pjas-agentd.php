@@ -51,6 +51,7 @@ spl_autoload_register(static function (string $class): void {
 });
 
 $cfg   = require __DIR__ . '/config.php';
+function registryFor(array $cfg): array {
 $paths = new Paths((string) $cfg['www_root']);
 
 $vhost   = new Vhost($cfg, $paths);
@@ -73,6 +74,9 @@ $server=new \Pjas\Agentd\Ops\ServerMonitor($cfg);
 $components=new \Pjas\Agentd\Ops\Components($cfg);
 $certificates=new \Pjas\Agentd\Ops\Certificates($cfg);
 $registry = [
+    'runtime.catalog'=>static fn(array $p):array=>['runtimes'=>\Pjas\Shared\PhpRuntime::catalog()],
+    'isolation.status'=>[(new \Pjas\Agentd\SiteIsolation($cfg)),'status'],
+    'isolation.apply'=>[(new \Pjas\Agentd\Ops\Isolation($cfg)),'apply'],
     'components.webplan'=>[$components,'webPlan'],
     'components.webapply'=>[$components,'webApply'],
     'components.plan'=>[$components,'plan'],
@@ -165,6 +169,10 @@ $registry = [
     'cron.delete'     => [$cron, 'delete'],
 ];
 
+return $registry;
+}
+$registry=registryFor($cfg);
+
 // ---------------------------------------------------------------- ソケット
 
 $sockPath = (string) $cfg['socket'];
@@ -246,13 +254,26 @@ function handle(string $line, array $registry): array
         if (is_string($target)) \Pjas\Agentd\Ops\Components::guard($cfg,$target,$op);
         if (!empty($params['target_service'])) \Pjas\Agentd\Ops\Components::guard($cfg,\Pjas\Agentd\Spec::name($params['target_service']),$op);
         if(is_string($target)&&!str_starts_with($op,'site.')){
-            if(in_array($op,['github.configure','github.connection','cron.apply','cron.delete','daemon.save','daemon.action','apache.apply','apache.pause','fs.write','service.create','service.destroy','preview.save'],true)){
+            if(in_array($op,['github.configure','github.connection','cron.apply','cron.delete','daemon.save','daemon.action','apache.apply','apache.pause','fs.write','service.create','service.destroy','preview.save','isolation.apply'],true)){
                 $path=$cfg['apache_sites'].'/.pjas-deploy-'.\Pjas\Agentd\Spec::name($target).'.lock';if(is_link($path))throw new OpException('作業ロックが不正です');$siteLock=fopen($path,'c');
                 if(!$siteLock||!flock($siteLock,LOCK_EX|LOCK_NB))throw new OpException('このサイトは別の作業中です。終了後にやり直してください');
             }
             \Pjas\Agentd\SiteLifecycleGuard::active($cfg,$target);
         }
-        $data = ($registry[$op])($params);
+        $requestCfg=$cfg;
+        if(is_string($target)&&!\Pjas\Agentd\Ops\Components::protectedSite($cfg,$target)) {
+            $iso=new \Pjas\Agentd\SiteIsolation($cfg);
+            if($op==='service.create' && (!is_dir($cfg['www_root'].'/'.$target)||$iso->state($target))) $requestCfg=$iso->provision(Spec::service($params['service']));
+            elseif($op!=='isolation.status'&&$op!=='isolation.apply') $requestCfg=$iso->scope($target);
+            if(isset($requestCfg['isolation_site'])&&!in_array($op,['isolation.apply','isolation.status'],true)) {
+                $runtime=$params['service']['runtime']??null;
+                if($runtime!==null&&$runtime!==$requestCfg['isolation_runtime'])throw new OpException('PHPバージョンの変更は隔離・PHP移行画面で適用してください');
+                if(!empty($params['service']['extra_conf'])||($params['service']['allow_override']??'None')!=='None')throw new OpException('隔離サイトでは追加Apache設定・.htaccessを使えません');
+            }
+        }
+        if(isset($requestCfg['isolation_site'])&&!empty($params['target_service'])&&$params['target_service']!==$target)throw new OpException('隔離サイト間の移動はできません');
+        $requestRegistry=registryFor($requestCfg);
+        $data = ($requestRegistry[$op])($params);
         syslog(LOG_INFO, sprintf('%s ok actor=%s %.1fms', $op, $actor, (microtime(true) - $started) * 1000));
         return ['ok' => true, 'data' => is_array($data) ? $data : []];
     } catch (OpException $e) {

@@ -23,7 +23,7 @@ UnknownCustomDirective "keep me"
 Require ip 10.0.0.0/8
 </Location>
 ProxyPass /ws ws://127.0.0.1:8081
-ProxyPassMatch ^/api(?:/.*)?$ unix:/run/php/php8.4-fpm.sock|fcgi://localhost/var/www/pjas-chat/api/index.php
+ProxyPassMatch ^/api(?:/.*)?$ unix:/run/php/php8.5-fpm.sock|fcgi://localhost/var/www/pjas-chat/api/index.php
 SetEnv DATA /var/www/pjas-chat/shared/db.sqlite
 SSLEngine on
 SSLCertificateFile /old/cert.pem
@@ -32,7 +32,7 @@ SSLCertificateChainFile /old/chain.pem
 </VirtualHost>
 </IfModule>
 CONF;
-$spec = ['name' => 'pjas-chat', 'domain' => 'chat.example.com', 'docroot' => 'dist', 'runtime' => 'php8.4-fpm', 'tls' => 1, 'allow_override' => 'None', 'extra_conf' => ''];
+$spec = ['name' => 'pjas-chat', 'domain' => 'chat.example.com', 'docroot' => 'dist', 'runtime' => 'php8.5-fpm', 'tls' => 1, 'allow_override' => 'None', 'extra_conf' => ''];
 $out = InheritedVhost::render($original, $spec, '/var/www/pjas-chat/current', '/new/cert.pem', '/new/key.pem');
 foreach (['UnknownCustomDirective "keep me"', 'Require ip 10.0.0.0/8', 'ProxyPass /ws ws://127.0.0.1:8081',
     'DocumentRoot /var/www/pjas-chat/current/dist', '<Directory "/var/www/pjas-chat/current/dist">',

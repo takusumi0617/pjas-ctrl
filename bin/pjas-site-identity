@@ -1,0 +1,19 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+// Fixed root service: account creation needs atomic writes to /etc, which the agent cannot perform.
+if(PHP_SAPI!=='cli'||posix_geteuid()!==0||count($argv)!==2)exit(77);
+$root=dirname(__DIR__);
+foreach(['OpException','Spec','ControlStore','Proc','SiteIsolation'] as $class)require_once $root.'/agent/lib/'.$class.'.php';
+use Pjas\Agentd\{Spec,ControlStore,Proc,SiteIsolation};
+try {
+    $cfg=require $root.'/agent/config.php';$name=Spec::name($argv[1]);$user=SiteIsolation::identity($name);$store=new ControlStore($cfg);$lock=$store->lock('site-identity');
+    try {
+        $allocated=$store->read('identity-'.$name);
+        if(!$allocated){
+            if(posix_getpwnam($user)||posix_getgrnam($user))throw new RuntimeException('専用アカウント名が既存ユーザーと衝突しています');
+            Proc::must(['/usr/sbin/useradd','--system','--user-group','--no-create-home','--home-dir',$cfg['www_root'].'/'.$name.'/shared','--shell','/usr/sbin/nologin',$user]);
+            $store->write('identity-'.$name,['user'=>$user]);
+        } elseif(($allocated['user']??'')!==$user||!posix_getpwnam($user)||!posix_getgrnam($user))throw new RuntimeException('専用アカウント台帳とOSが一致しません');
+    }finally{flock($lock,LOCK_UN);fclose($lock);}
+}catch(Throwable $e){fwrite(STDERR,$e->getMessage()."\n");exit(1);}

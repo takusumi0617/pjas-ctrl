@@ -22,7 +22,7 @@
 | `tests/` | PHP・Pythonの回帰テスト |
 | `examples/` | アプリ別のマニフェスト・Apache・許可台帳の例 |
 
-Composerやnpmによるctrl自身の依存導入は不要です。PHP 8.1以上と `pdo_sqlite`, `sqlite3`, `mbstring`, `openssl`, `pcntl`, `posix`、Python 3、Git、OpenSSL CLI、`tar`、`unzip`、`curl`、`setpriv` を用意します。標準の本番サービス・初回準備の検証にはPHP 8.4とApache・systemdが必要です。
+Composerやnpmによるctrl自身の依存導入は不要です。PHP 8.1以上と `pdo_sqlite`, `sqlite3`, `mbstring`, `openssl`, `pcntl`, `posix`、Python 3、Git、OpenSSL CLI、`tar`、`unzip`、`curl`、`setpriv` を用意します。標準の本番サービス・初回準備の検証にはPHP 8.5とApache・systemdが必要です。
 
 ## ローカルで管理画面を起動する
 
@@ -55,6 +55,7 @@ php -S 127.0.0.1:8080 -t public public/index.php
   done
   python3 tests/security_archives.py
   python3 tests/component_files.py
+  python3 tests/isolate_tree.py
 )
 ```
 
@@ -83,7 +84,9 @@ php -S 127.0.0.1:8080 -t public public/index.php
 v2サイトの設定・起動後、対象サーバーで次を実行します。
 
 ```bash
-sudo php8.4 /opt/pjas-ctrl/bin/pjas-components-check pjas-cert
+sudo php8.5 /opt/pjas-ctrl/bin/pjas-components-check pjas-cert
 ```
 
 root以外での実行は終了コード77で未実施を示します。実行ユーザー・保護領域・秘密ファイル・コード権限・ApacheからFPMソケットへの接続を確認します。CAエンジン固有の整合性や、外部署名ワーカーとの二重稼働防止は、対応するアダプターと実環境で確認してください。
+
+通常サイトの実ホスト検証は `sudo php8.5 bin/pjas-sites-check` を実行します。root以外は終了コード77で未実施を示します。単一UIDだけが割り当てられた開発環境では、他UIDによる拒否やApache再起動の検証はできません。
