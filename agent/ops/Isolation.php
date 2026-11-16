@@ -30,7 +30,7 @@ final class Isolation
         $vhost=new Vhost($this->cfg,$paths);$conf=$vhost->confPath($name);$oldConf=(string)file_get_contents($conf);
         file_put_contents($backup.'/apache.conf',$oldConf);file_put_contents($backup.'/state.json',json_encode($oldState,JSON_THROW_ON_ERROR));
         // Terminate old PHP requests after Apache has switched to the independent pause page.
-        if($oldRuntime!=='static')Proc::must([$this->cfg['systemctl'],'restart',$oldRuntime]);
+        if($oldRuntime!=='static'&&empty($this->cfg['isolation_fpm_drained']))Proc::must([$this->cfg['systemctl'],'restart',$oldRuntime]);
         $oldCfg=$oldState?$iso->scope($name):$this->cfg;
         $safety=(new Backups($oldCfg,$paths))->createUnlocked($spec,'before-isolation');
         $targetPool=$runtime==='static'?null:'/etc/php/'.PhpRuntime::version($runtime).'/fpm/pool.d/pjas-'.$name.'.conf';

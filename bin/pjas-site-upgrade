@@ -1,0 +1,67 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+require dirname(__DIR__).'/app/bootstrap.php';
+spl_autoload_register(static function(string $class):void{
+    if(str_starts_with($class,'Pjas\\Agentd\\Ops\\'))$path=PJAS_ROOT.'/agent/ops/'.substr($class,16).'.php';
+    elseif(str_starts_with($class,'Pjas\\Agentd\\'))$path=PJAS_ROOT.'/agent/lib/'.substr($class,12).'.php';
+    elseif(str_starts_with($class,'Pjas\\Shared\\'))$path=PJAS_ROOT.'/shared/'.substr($class,12).'.php';else return;
+    if(is_file($path))require_once $path;
+});
+use Pjas\Agentd\{SiteUpgrade,SiteUpgradeDb,Proc,ControlStore,OpException};
+use Pjas\Support\Config;
+if(PHP_SAPI!=='cli')exit(77);
+try{
+    // No elevated operation in this branch. It runs as the existing SQLite file owner.
+    if(($argv[1]??'')==='_db'){
+        $st=stat((string)Config::get('db'));
+        if(!$st||posix_geteuid()!==$st['uid']||posix_geteuid()===0)throw new OpException('管理DBの非root所有者で実行してください');
+        $op=$argv[2]??'';$name=$argv[3]??'';
+        $result=match($op){'read'=>SiteUpgradeDb::read($name),'write'=>SiteUpgradeDb::change($name,json_decode(stream_get_contents(STDIN),true,512,JSON_THROW_ON_ERROR)),default=>throw new OpException('DB操作が不正です')};
+        echo json_encode($result,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";exit(0);
+    }
+    $command=$argv[1]??'help';
+    if(in_array($command,['help','--help','-h'],true)){
+        echo <<<'HELP'
+使い方（rootで実行）:
+  php8.5 bin/pjas-site-upgrade plan SITE --php=8.5 [--id-only]
+  php8.5 bin/pjas-site-upgrade apply ID --accept-standard-apache --external-processes-stopped
+  php8.5 bin/pjas-site-upgrade status IDまたはSITE
+  php8.5 bin/pjas-site-upgrade activate ID --confirm-activation
+  php8.5 bin/pjas-site-upgrade rollback ID --confirm-rollback
+
+plan は常駐unit・cron・PHP変更の計画をroot専用journalへ保存します。
+apply は停止・退避・隔離・DB更新を行い、サイトとワーカーを停止状態で維持します。
+apply の再実行は再開可能な段階だけを再開します。隔離処理中断時はrollbackを使います。
+activate は元々稼働していたワーカーとcron、サイトの公開状態を復帰します。
+rollback は公開前の設定・権限・関連付けを復旧し、アプリデータは巻き戻しません。
+v2サイトは対象外です。独自Apache設定の標準化と共有FPM再起動を伴います。
+HELP;
+        echo "\n";exit(0);
+    }
+    if(posix_geteuid()!==0){fwrite(STDERR,"rootで実行してください。変更は未実施です。\n");exit(77);}
+    $cfg=require PJAS_ROOT.'/agent/config.php';$store=new ControlStore($cfg);
+    $dbOwner=posix_getpwuid(stat((string)Config::get('db'))['uid']);
+    if(!$dbOwner||$dbOwner['uid']===0)throw new OpException('先に管理DBの所有者をpjas-controlへ分離してください');
+    $database=static function(string $op,string $name,array $payload)use($dbOwner,$store):array{
+        $input=null;
+        try{
+            if($op==='write'){$input=$store->directory('site-upgrades').'/db-input-'.bin2hex(random_bytes(8));if(file_put_contents($input,json_encode($payload,JSON_THROW_ON_ERROR))===false)throw new OpException('DB入力を作成できません');chmod($input,0600);}
+            $r=Proc::run([PHP_BINARY,__FILE__,'_db',$op,$name],null,60,$dbOwner['name'],[], $input);
+            if($r['code']!==0)throw new OpException('DB操作に失敗しました: '.trim($r['err']));
+            return json_decode($r['out'],true,512,JSON_THROW_ON_ERROR);
+        }finally{if($input!==null&&is_file($input))unlink($input);}
+    };
+    $upgrade=new SiteUpgrade($cfg,$database);$target=$argv[2]??'';$flags=array_slice($argv,3);
+    $allowed=match($command){'plan'=>['--id-only'],'apply'=>['--accept-standard-apache','--external-processes-stopped'],'activate'=>['--confirm-activation'],'rollback'=>['--confirm-rollback'],'status'=>[],default=>throw new OpException('helpで操作を確認してください')};
+    $runtime='php8.5-fpm';foreach($flags as $flag){if($command==='plan'&&preg_match('/\A--php=(8\.[0-9]+|static)\z/D',$flag,$m)){$runtime=$m[1]==='static'?'static':'php'.$m[1].'-fpm';continue;}if(!in_array($flag,$allowed,true))throw new OpException('未知のオプションです: '.$flag);}
+    $result=match($command){
+        'plan'=>$upgrade->plan($target,$runtime),
+        'apply'=>$upgrade->apply($target,in_array('--accept-standard-apache',$flags,true),in_array('--external-processes-stopped',$flags,true)),
+        'status'=>$upgrade->status($target),
+        'activate'=>$upgrade->activate($target,in_array('--confirm-activation',$flags,true)),
+        'rollback'=>$upgrade->rollback($target,in_array('--confirm-rollback',$flags,true)),
+    };
+    if($command==='plan'&&in_array('--id-only',$flags,true)){echo $result['id']."\n";exit(0);}
+    echo json_encode($result,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+}catch(Throwable $e){fwrite(STDERR,'移行操作を完了できませんでした: '.$e->getMessage()."\n");exit(1);}

@@ -29,21 +29,31 @@ sudo php8.5 bin/pjas-install-features --apply --php=8.5
 
 ## 既存サイトの移行
 
-1. 対象サイトの設定画面で、現在の隔離状態・PHP・移行を妨げる処理を確認します。
-2. 登録済みの常駐処理は停止して関連付けを解除し、cronは無効にします。ctrl外のワーカー・外部cron・予約実行も停止します。移行後、専用ユーザーの処理として登録し直します。
-3. サイトを一時停止します。独自Apache設定は移行時に退避して標準設定へ切り替えます。APIプロキシ・別名ドメイン・独自Alias・.htaccess依存のアプリは、そのままでは動かない場合があります。標準DocumentRootで動く構成、またはv2の管理者レビューによる構成を先に用意します。
-4. 「隔離とPHPアップグレード」でPHP 8.5を選び、確認欄と現在のパスワードを入力して適用します。
-5. 共有データの暗号化バックアップ、所有者・ACL・Apache設定の退避後、旧FPMを再起動して処理を終了し、専用ユーザー・プール・権限を適用します。共有FPMの再起動は、そのFPMを使う他サイトにも影響します。PHP構文検査は指定したCLIで行い、別バージョンへフォールバックしません。
-6. 成功後も一時停止を維持します。実ホスト検証を実行し、アプリの互換性・拡張・依存関係を確認したうえで公開を再開し、HTTP応答・DB読み書き・アップロード・常駐処理・cronを確認します。必要ならすぐ再停止してください。構文検査だけでPHP互換性が保証されるわけではありません。
+常駐プログラム・cronがあるサイトは、[CLI移行スクリプト](site-upgrade-cli.md)を使用してください。関連付け解除は不要です。従来のUIには解除操作がないため、画面上で停止・解除・再登録を組み合わせる手順は使用しません。
 
-失敗時は可能な範囲で旧ACL・所有者・Apache設定・FPM設定・隔離状態へ戻し、一時停止を維持します。画面に表示される `/var/lib/pjas-control/isolation-backups/…` と暗号化バックアップを確認してください。作成済みの専用ユーザーは再試行用に残します。
+```bash
+cd /opt/pjas-ctrl
+PJAS_UPGRADE_ID="$(sudo php8.5 bin/pjas-site-upgrade plan 対象サイト名 --php=8.5 --id-only)"
+sudo php8.5 bin/pjas-site-upgrade status "$PJAS_UPGRADE_ID"
+sudo php8.5 bin/pjas-site-upgrade apply "$PJAS_UPGRADE_ID" \
+  --accept-standard-apache --external-processes-stopped
+sudo php8.5 bin/pjas-site-upgrade activate "$PJAS_UPGRADE_ID" --confirm-activation
+```
+
+`apply`は常駐処理とcronを退避・停止し、サイトを一時停止してから隔離を適用します。元のunit名・関連付け・環境設定・メモリ制限を維持し、専用ユーザーと選択PHPへの変更をdrop-inに追加します。完了後も停止状態を維持し、`activate`で元々稼働していた処理だけを再開します。起動・HTTP検査に失敗した場合は再停止します。
+
+外部の定期実行・ワーカーは事前に停止してください。実行中のcron等が検出された場合は、その終了を待ち、同じIDで`apply`を再実行します。隔離処理そのものが中断した場合は、同じ処理を繰り返さずCLIの`rollback`を使用します。
+
+独自Apache設定は退避して標準設定へ切り替えます。APIプロキシ・別名ドメイン・.htaccess依存のサイトは、先に対応構成を準備してください。共有FPMの再起動は同じバージョンを使う他サイトにも影響します。
+
+常駐処理・cronがないサイトは、引き続き設定画面の「隔離とPHPアップグレード」から移行できます。
 
 ```bash
 sudo php8.5 bin/pjas-sites-check
 sudo php8.5 bin/pjas-components-check pjas-cert  # v2利用時
 ```
 
-検証コマンドは実際に別UIDで他サイトの共有領域へアクセスできないこと、共有データの書き込み、公開コードの保護、ソケット権限、旧プールの残存、DBと実行設定の一致を調べます。未移行サイトがあれば終了コード1、root以外は77です。
+未移行サイトがあれば検証は終了コード1、root以外は77です。PHPの構文検査・HTTP検査に加えて、アプリのDB読み書き・アップロード等も確認してください。
 
 ## PHP 8.6と以降の追加
 

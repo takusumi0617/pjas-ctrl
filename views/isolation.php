@@ -3,6 +3,7 @@
 <?php if(isset($isolationError)): ?><p class="hint"><?= View::e($isolationError) ?></p>
 <?php elseif(isset($isolation)): ?>
 <p>現在: <?= !empty($isolation['isolated'])?'サイト専用ユーザーで隔離':'共通ユーザー（未隔離）' ?> / <?= View::e($isolation['runtime']) ?></p>
+<p>常駐処理・cronを含むサイトはサーバーの <code>bin/pjas-site-upgrade</code> でまとめて移行できます。関連付けを手動で解除する必要はありません。</p>
 <p>サイトを一時停止してから適用します。ファイル権限とApache設定を退避し、専用ユーザー・サイト別FPMへ切り替えます。完了後も停止を維持します。対象アプリのPHP互換性と応答を確認してから再開してください。</p>
 <?php foreach($isolation['warnings']??[] as $warning): ?><p class="hint"><?= View::e($warning) ?></p><?php endforeach; ?>
 <?php foreach($isolation['blockers'] as $blocker): ?><p class="hint"><?= View::e($blocker) ?></p><?php endforeach; ?>

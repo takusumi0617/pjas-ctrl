@@ -90,3 +90,5 @@ sudo php8.5 /opt/pjas-ctrl/bin/pjas-components-check pjas-cert
 root以外での実行は終了コード77で未実施を示します。実行ユーザー・保護領域・秘密ファイル・コード権限・ApacheからFPMソケットへの接続を確認します。CAエンジン固有の整合性や、外部署名ワーカーとの二重稼働防止は、対応するアダプターと実環境で確認してください。
 
 通常サイトの実ホスト検証は `sudo php8.5 bin/pjas-sites-check` を実行します。root以外は終了コード77で未実施を示します。単一UIDだけが割り当てられた開発環境では、他UIDによる拒否やApache再起動の検証はできません。
+
+`tests/site_upgrade.php` は実SQLiteでDBの比較・更新を検証し、systemd・隔離・HTTP処理を模擬して移行、中断後の再開、HTTP失敗時の再停止、設定復旧を確認します。実ホストでのsystemdの起動とUIDの検証は別途必要です。

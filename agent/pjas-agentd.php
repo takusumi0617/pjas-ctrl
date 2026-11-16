@@ -251,8 +251,8 @@ function handle(string $line, array $registry): array
     $started = microtime(true);$siteLock=null;
     try {
         $target=$params['service']??($params['task']['service']??null);if(is_array($target))$target=$target['name']??null;
-        if (is_string($target)) \Pjas\Agentd\Ops\Components::guard($cfg,$target,$op);
-        if (!empty($params['target_service'])) \Pjas\Agentd\Ops\Components::guard($cfg,\Pjas\Agentd\Spec::name($params['target_service']),$op);
+        if (is_string($target)) {\Pjas\Agentd\Ops\Components::guard($cfg,$target,$op);\Pjas\Agentd\SiteLifecycleGuard::upgrade($cfg,$target);}
+        if (!empty($params['target_service'])) {\Pjas\Agentd\Ops\Components::guard($cfg,\Pjas\Agentd\Spec::name($params['target_service']),$op);\Pjas\Agentd\SiteLifecycleGuard::upgrade($cfg,\Pjas\Agentd\Spec::name($params['target_service']));}
         if(is_string($target)&&!str_starts_with($op,'site.')){
             if(in_array($op,['github.configure','github.connection','cron.apply','cron.delete','daemon.save','daemon.action','apache.apply','apache.pause','fs.write','service.create','service.destroy','preview.save','isolation.apply'],true)){
                 $path=$cfg['apache_sites'].'/.pjas-deploy-'.\Pjas\Agentd\Spec::name($target).'.lock';if(is_link($path))throw new OpException('作業ロックが不正です');$siteLock=fopen($path,'c');
