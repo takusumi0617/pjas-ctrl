@@ -35,12 +35,15 @@ final class VhostController
     {
         $s     = ServiceRepo::findOrFail($a['name']);
         $actor = Auth::actor();
+        $pending=\Pjas\Domain\SettingsChanges::pending((int)$s['id']);
         $job   = JobRepo::create((int) $s['id'], 'vhost', $actor, 'apply');
 
         try {
+            $mode=($_POST['update_mode']??'auto')==='settings'?'settings':'auto';
+            if($mode==='settings' && !hash_equals(hash('sha256',json_encode(Deployer::spec($s),JSON_THROW_ON_ERROR)),(string)($_POST['spec_hash']??'')))throw new AgentException('保存内容がプレビュー後に変更されました。変更点を開き直してください');
             $r = \Pjas\Agent\AgentClient::call('apache.apply', [
                 'job_id'  => $job,
-                'update_mode' => 'auto',
+                'update_mode' => $mode,
                 'current_hash' => (string) ($_POST['current_hash'] ?? ''),
                 'migration_source' => (string) ($_POST['migration_source'] ?? ''),
                 'migration_hash' => (string) ($_POST['migration_hash'] ?? ''),
@@ -58,12 +61,13 @@ final class VhostController
         Db::insert('INSERT INTO vhosts (service_id, rendered_hash, applied_by) VALUES (?,?,?)',
             [$s['id'], (string) ($r['hash'] ?? ''), $actor]);
         $disabled = array_values((array) ($r['disabled'] ?? []));
+        if($mode==='settings'&&$pending)\Pjas\Domain\SettingsChanges::clearIfCurrent((int)$s['id'],$pending);
         Audit::log($actor, 'apache.vhost.apply', $s['name'],
             ['hash' => $r['hash'] ?? '', 'disabled' => $disabled, 'update_mode' => $r['update_mode'] ?? 'auto', 'history_revision' => $r['history_revision'] ?? '']);
 
         $msg = ($r['update_mode'] ?? '') === 'errors'
             ? '標準エラーページだけ更新しました。現在のHTTP・HTTPSの独自設定は維持しています'
-            : '公開設定を新しく作成しました';
+            : ($mode==='settings'?'保存した登録内容を公開設定へ反映しました':'公開設定を新しく作成しました');
         if ($disabled) {
             $msg .= '。同じアドレスを使っていた古い設定を無効にしました: ' . implode(', ', $disabled);
         }

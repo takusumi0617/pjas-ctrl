@@ -1,35 +1,18 @@
-// ジョブログを SSE で追従する。完了済みジョブでは接続しない。
-const meta = document.getElementById('job-meta');
-const log = document.getElementById('log');
-const stateEl = document.getElementById('state');
-const streamState = document.getElementById('stream-state');
-const id = meta.dataset.id;
-
-if (meta.dataset.state === 'succeeded' || meta.dataset.state === 'failed') {
-  streamState.textContent = '完了';
-} else {
-  log.textContent = '';                       // SSE が先頭から再送するので一旦クリア
-  const es = new EventSource('/jobs/' + id + '/stream');
-  streamState.textContent = '実行中の内容を表示しています…';
-
-  es.onmessage = (e) => {
-    log.textContent += e.data + '\n';
-    log.scrollTop = log.scrollHeight;
-  };
-  es.addEventListener('done', (e) => {
-    es.close();
-    if(meta.dataset.type==='prepare'){window.location.reload();return;}
-    streamState.textContent = '完了';
-    stateEl.innerHTML = e.data === 'succeeded'
-      ? '<span class="tag t-ok">成功</span>'
-      : '<span class="tag t-err">失敗</span>';
-  });
-  es.addEventListener('timeout', () => {
-    es.close();
-    streamState.textContent = '表示が止まりました。ページを再読み込みしてください';
-  });
-  es.onerror = () => {
-    streamState.textContent = '接続が切れました。ページを再読み込みしてください';
-    es.close();
-  };
-}
+(() => {
+ const meta=document.getElementById('job-meta'),log=document.getElementById('log'),state=document.getElementById('state'),status=document.getElementById('stream-state'),reconnect=document.getElementById('stream-reconnect');
+ if(!meta||!log||!state||!status||!reconnect)return;
+ let es=null,offset=Number(meta.dataset.offset||0),done=['succeeded','failed'].includes(meta.dataset.state);
+ const pause=message=>{es?.close();status.textContent=message;reconnect.hidden=false;};
+ const connect=()=>{
+  if(done)return;es?.close();reconnect.hidden=true;status.textContent='ログへ接続しています…';
+  es=new EventSource('/jobs/'+meta.dataset.id+'/stream?offset='+offset);
+  es.onopen=()=>{status.textContent='接続中・受信済みのログを保持しています';};
+  es.addEventListener('chunk',event=>{const nearBottom=log.scrollHeight-log.scrollTop-log.clientHeight<80;log.textContent+=JSON.parse(event.data);offset=Number(event.lastEventId)||offset;if(nearBottom)log.scrollTop=log.scrollHeight;});
+  es.addEventListener('reset',()=>{offset=0;log.textContent='';});
+  es.addEventListener('done',event=>{done=true;es.close();status.textContent='ログ受信完了';state.textContent=event.data==='succeeded'?'成功':'失敗';state.className='tag '+(event.data==='succeeded'?'t-ok':'t-err');if(meta.dataset.type==='prepare')window.location.reload();});
+  es.addEventListener('timeout',()=>pause('表示の接続時間が終了しました。作業の終了を意味しません。'));
+  es.onerror=()=>pause('ログの接続が切れました。受信済みの内容は保持しています。');
+ };
+ reconnect.addEventListener('click',connect);
+ if(done)status.textContent='ログ受信完了';else connect();
+})();

@@ -8,49 +8,52 @@ use Pjas\Support\Labels;
 
 $s    = $service;
 $name = View::e($s['name']);
-$tabIcons=['overview'=>'monitoring','releases'=>'history','vhost'=>'code','files'=>'folder','jobs'=>'receipt_long','settings'=>'tune','environment'=>'shield'];
+$tabIcons=['overview'=>'monitoring','releases'=>'history','vhost'=>'code','files'=>'folder','jobs'=>'receipt_long','settings'=>'tune','environment'=>'shield','processes'=>'terminal'];
 $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' => '公開設定',
          'files' => 'ファイル', 'jobs' => '作業の履歴', 'settings' => '設定'];
-if (Auth::can('owner')) $tabs = array_slice($tabs,0,1,true)+['environment'=>'実行環境']+array_slice($tabs,1,null,true);
+if(!empty($componentSite))$tabs=['overview'=>'概要','jobs'=>'作業の履歴','settings'=>'登録情報'];
+if (Auth::can('owner')) $tabs = array_slice($tabs,0,1,true)+(!empty($componentSite)?['environment'=>'実行環境']:['environment'=>'実行環境','processes'=>'常駐・定期処理'])+array_slice($tabs,1,null,true);
 ?>
+<a class="site-breadcrumb" href="/services">← サイト一覧</a>
 <div class="row service-toolbar">
   <h1><?= $name ?></h1>
-  <?= !empty($pause['enabled']) ? '<span class="tag t-warn">一時停止中</span>' : match ((string) $s['state']) {
-        'healthy'   => '<span class="tag t-ok">正常</span>',
-        'unhealthy' => '<span class="tag t-err">異常</span>',
-        default     => '<span class="tag t-mut">未確認</span>',
-    } ?>
-  <?php if(isset($isolation)): ?><span class="tag <?= !empty($isolation['isolated'])?'t-ok':'t-warn' ?>"><?= !empty($isolation['isolated'])?'サイト専用ユーザーで隔離':'共通ユーザー・隔離への移行が必要' ?></span><?php endif; ?>
+  <?php $presentation=$presentation??\Pjas\Domain\SitePresentation::summarize($s,[],null); ?>
+  <span class="tag <?= $presentation['tone'] ?>"><?= View::e($presentation['label']) ?></span>
   <span class="spacer"></span>
   <form method="post" action="/services/<?= $name ?>/health"><?= Csrf::field() ?>
     <button class="btn"><?= \Pjas\Support\Icons::render('refresh') ?>いま動作を確認する</button></form>
-  <?php if (Auth::canSite($s['name'],'operator')): ?>
+  <?php if (Auth::canSite($s['name'],'operator') && empty($componentSite)): ?>
     <a class="btn p" href="/deploy?service=<?= $name ?>"><?= \Pjas\Support\Icons::render('cloud_upload') ?>新しいバージョンを公開</a>
     <a class="btn" href="/rollback?service=<?= $name ?>"><?= \Pjas\Support\Icons::render('history') ?>以前のバージョンに戻す</a>
     <a class="btn" href="/services/<?= $name ?>/operations"><?= \Pjas\Support\Icons::render('backup') ?>バックアップ・運用</a>
   <?php endif; ?>
-  <?php if (Auth::can('owner')): ?><button type="button" class="power-toggle <?= !empty($pause['enabled']) ? 'is-paused' : 'is-live' ?>" id="pause-toggle" role="switch" aria-checked="<?= !empty($pause['enabled']) ? 'false' : 'true' ?>" aria-label="サイトの公開状態を変更" aria-haspopup="dialog" aria-controls="pause-dialog" <?= empty($pause['can_pause']) ? 'disabled title="先に公開設定を反映してください"' : '' ?>><?= \Pjas\Support\Icons::render('power_settings_new') ?><span><?= !empty($pause['enabled']) ? '停止中' : '公開中' ?></span><span class="power-track" aria-hidden="true"></span></button><?php endif; ?>
+  <?php if (Auth::can('owner')): ?><button type="button" class="power-toggle <?= !empty($pause['enabled']) ? 'is-paused' : 'is-live' ?>" id="pause-toggle" role="switch" aria-checked="<?= !empty($pause['enabled']) ? 'false' : 'true' ?>" aria-label="サイトの公開状態を変更" aria-haspopup="dialog" aria-controls="pause-dialog" <?= empty($pause['can_pause']) ? 'disabled title="先に公開設定を反映してください"' : '' ?>><?= \Pjas\Support\Icons::render('power_settings_new') ?><span><?= !isset($pause)?'状態不明':(!empty($pause['enabled'])?'停止中':'公開中') ?></span><span class="power-track" aria-hidden="true"></span></button><?php endif; ?>
 </div>
 <div class="sub"><span class="mono"><?= View::e($s['domain']) ?></span> ·
-  <?= $current
+  <?= !empty($componentSite)?'処理ごとのコードと稼働状態は実行環境で確認':($current
         ? '公開中のバージョン: <span class="mono">' . View::e($current['label'] ?: $current['tag']) . '</span>'
-        : 'まだ一度も公開されていません' ?>
+        : 'まだ一度も公開されていません') ?>
   <span class="muted mono" style="font-size:11px">(<?= View::e($wwwRoot . '/' . $s['name']) ?>/current)</span></div>
 
-<div class="tabs">
-  <?php foreach ($tabs as $k => $label): ?>
-    <a class="tab<?= $tab === $k ? ' on' : '' ?>" href="/services/<?= $name ?>?tab=<?= $k ?>"><?= \Pjas\Support\Icons::render($tabIcons[$k]) ?><span><?= $label ?></span></a>
+<?php if(!empty($settingsPending)):?><div class="note settings-pending"><b>登録内容を保存済み・公開設定は未確認</b><p>変更項目：<?= View::e(implode('、',$settingsPending['fields'])) ?>。稼働中のApache設定との差分を確認してください。</p><?php if(Auth::can('owner')):?><a class="btn" href="/services/<?= $name ?>?tab=vhost&amp;mode=settings">変更点を確認して反映</a><?php endif;?></div><?php endif;?>
+<nav class="tabs" aria-label="サイト詳細">
+  <?php foreach(['overview','environment','processes','settings','jobs'] as $k):if(!isset($tabs[$k]))continue;$label=$tabs[$k]; ?>
+    <a class="tab<?= $tab===$k?' on':'' ?>" <?= $tab===$k?'aria-current="page"':'' ?> href="/services/<?= $name ?>?tab=<?= $k ?>"><?= \Pjas\Support\Icons::render($tabIcons[$k]) ?><span><?= View::e($label) ?></span></a>
   <?php endforeach; ?>
-</div>
+  <?php $extraTabs=array_diff_key($tabs,array_flip(['overview','environment','processes','settings','jobs']));if($extraTabs):?>
+  <details class="site-extra-tabs" <?= isset($extraTabs[$tab])?'open':'' ?>><summary class="tab">詳細<?= isset($extraTabs[$tab])?'：'.View::e($extraTabs[$tab]):'' ?></summary><div class="row"><?php foreach($extraTabs as $k=>$label):?><a class="tab<?= $tab===$k?' on':'' ?>" href="/services/<?= $name ?>?tab=<?= $k ?>"><?= View::e($label) ?></a><?php endforeach;?></div></details>
+  <?php endif;?>
+</nav>
 
 <?php if (!empty($agentErr)): ?>
   <div class="note err flash">サーバー側の作業プログラムでエラーが起きました: <?= View::e($agentErr) ?></div>
 <?php endif; ?>
 
+<?php if(!empty($pauseErr)):?><div class="note err" role="alert">公開状態を取得できません：<?= View::e($pauseErr) ?>。過去の状態から公開中と判断しません。</div><?php endif;?>
 <?php if (!empty($pause['enabled'])): ?><div class="note">このサイトは一時停止中です。HTTP <?= (int) $pause['code'] ?> と指定したHTMLを返しています。</div><?php endif; ?>
 
 <?php if ($tab === 'overview'): ?>
-  <?php if ($current === null && Auth::canSite($s['name'],'operator')): ?>
+  <?php if ($current === null && empty($componentSite) && Auth::canSite($s['name'],'operator')): ?>
     <div class="note" style="margin-bottom:14px">
       このサイトはまだ管理下のバージョンを持っていません。
       すでにサーバーにファイルが置かれている場合は、それをそのまま最初のバージョンとして取り込めます
@@ -72,10 +75,10 @@ if (Auth::can('owner')) $tabs = array_slice($tabs,0,1,true)+['environment'=>'実
       <dl class="kv">
         <dt>公開アドレス</dt><dd class="mono"><?= View::e($s['domain']) ?></dd>
         <dt>公開するフォルダ</dt><dd class="mono">current/<?= View::e($s['docroot']) ?></dd>
-        <dt>サイトの種類</dt><dd><?= View::e(Labels::runtime((string) $s['runtime'])) ?></dd>
-        <dt>動作確認</dt><dd><span class="mono"><?= View::e($s['health_path']) ?></span> を開いて
-            <span class="mono"><?= (int) $s['health_status'] ?></span> が返れば正常
-            <div class="muted">最終チェック: <?= View::e((string) ($s['checked_at'] ?? 'まだ確認していません')) ?></div></dd>
+        <dt>サイトの種類</dt><dd><?= !empty($componentSite)?'処理ごとの専用環境（実行環境で確認）':View::e(Labels::runtime((string) $s['runtime'])) ?></dd>
+        <dt>動作確認</dt><dd><?php if(!empty($componentSite)):?>実行環境で各処理の検査結果を確認してください。<?php else:?><span class="mono"><?= View::e($s['health_path']) ?></span> を開いて
+            <span class="mono"><?= (int) $s['health_status'] ?></span> が返れば正常<?php endif;?>
+            <div class="muted">最終チェック: <?= View::e(\Pjas\Support\Time::display($presentation['checked_at']??null)) ?></div></dd>
         <dt>通信の暗号化</dt><dd><?= $s['tls'] ? 'https を使用' : '使用しない' ?></dd>
         <dt>残す過去バージョン</dt><dd><?= (int) $s['keep_releases'] ?> 件</dd>
         <dt>引き継ぐファイル</dt><dd><?= View::e(ServiceRepo::sharedPathsText($s['shared_paths'])) ?><?= in_array('@databases',explode(',',$s['shared_paths']),true) ? ' ＋ DBファイル（自動検出）' : '' ?></dd>
@@ -87,7 +90,7 @@ if (Auth::can('owner')) $tabs = array_slice($tabs,0,1,true)+['environment'=>'実
       <?php foreach (array_slice($jobs, 0, 8) as $j): ?>
         <tr>
           <td><a href="/jobs/<?= (int) $j['id'] ?>">#<?= (int) $j['id'] ?></a> <?= View::e(Labels::jobType((string) $j['type'])) ?></td>
-          <td class="mono muted"><?= View::e($j['started_at']) ?></td>
+          <td class="mono muted"><?= View::e(\Pjas\Support\Time::display($j['started_at'])) ?></td>
           <td><?= match ((string) $j['state']) {
                 'succeeded' => '<span class="tag t-ok">成功</span>',
                 'failed'    => '<span class="tag t-err">失敗</span>',
@@ -133,12 +136,12 @@ if (Auth::can('owner')) $tabs = array_slice($tabs,0,1,true)+['environment'=>'実
   </table></div>
 
 <?php elseif ($tab === 'vhost'): ?>
-  <?php $errorsOnly = ($resolved_mode ?? 'errors') === 'errors'; ?>
+  <?php $settingsMode=($update_mode??'auto')==='settings'; $errorsOnly = ($resolved_mode ?? 'errors') === 'errors'; ?>
   <div class="sub">変更点を確認して「公開設定を反映する」を押してください。</div>
   <?php if ($errorsOnly): ?>
     <div class="note" style="margin-bottom:12px">現在の80・443などの公開設定を維持し、VirtualHostごとにctrlの共通エラーページを追加・更新します。手作業の追記や独自のエラーページ指定も残ります。</div>
   <?php else: ?>
-    <div class="note" style="margin-bottom:12px">公開設定がまだないため、登録した設定から初めての公開設定を作成します。</div>
+    <div class="note" style="margin-bottom:12px"><?= $settingsMode?'保存した登録内容から、このサイトの標準公開設定を更新します。差分と影響を確認してください。':'公開設定がまだないため、登録した設定から初めての公開設定を作成します。' ?></div>
     <?php if (!empty($conflicts)): ?>
       <div class="note">同じアドレスを使う既存の設定があります。独自設定を引き継ぐ場合は、下の継承元を選んで変更点を確認してください。反映時に無効化する設定: <?= View::e(implode(', ', $conflicts)) ?></div>
     <?php endif; ?>
@@ -190,7 +193,7 @@ if (Auth::can('owner')) $tabs = array_slice($tabs,0,1,true)+['environment'=>'実
       <span class="spacer"></span>
       <form method="post" action="/services/<?= $name ?>/vhost">
         <?= Csrf::field() ?>
-        <input type="hidden" name="update_mode" value="auto">
+        <input type="hidden" name="update_mode" value="<?= $settingsMode?'settings':'auto' ?>"><input type="hidden" name="spec_hash" value="<?= View::e(hash('sha256',json_encode(\Pjas\Domain\Deployer::spec($s),JSON_THROW_ON_ERROR))) ?>">
         <input type="hidden" name="current_hash" value="<?= View::e($current_hash ?? '') ?>">
         <input type="hidden" name="migration_source" value="<?= View::e($migration_source ?? '') ?>">
         <input type="hidden" name="migration_hash" value="<?= View::e($migration_hash ?? '') ?>">
@@ -241,8 +244,8 @@ if (Auth::can('owner')) $tabs = array_slice($tabs,0,1,true)+['environment'=>'実
         <td><?= View::e(Labels::jobType((string) $j['type'])) ?></td>
         <td class="muted"><?= View::e(mb_strimwidth((string) $j['detail'], 0, 60, '…')) ?></td>
         <td><?= View::e($j['actor']) ?></td>
-        <td class="mono"><?= View::e($j['started_at']) ?></td>
-        <td class="mono"><?= View::e((string) ($j['finished_at'] ?? '')) ?></td>
+        <td class="mono"><?= View::e(\Pjas\Support\Time::display($j['started_at'])) ?></td>
+        <td class="mono"><?= View::e(\Pjas\Support\Time::display($j['finished_at']??null)) ?></td>
         <td><?= match ((string) $j['state']) {
               'succeeded' => '<span class="tag t-ok">成功</span>',
               'failed'    => '<span class="tag t-err">失敗</span>',
@@ -254,14 +257,20 @@ if (Auth::can('owner')) $tabs = array_slice($tabs,0,1,true)+['environment'=>'実
     </tbody>
   </table></div>
 
+<?php elseif ($tab === 'processes' && Auth::can('owner')): ?>
+<?php if($componentSite):?><div class="note">処理ごとの稼働管理は <a href="/services/<?= $name ?>?tab=environment">実行環境</a> で行います。</div><?php else:?>
+<?php extract($processPanel,EXTR_OVERWRITE);require __DIR__.'/daemons.php';?>
+<?php $tasks=$siteTasks;$services=[$s];$embedded=true;$returnService=$s['name'];require __DIR__.'/scheduled_tasks.php';?>
+<?php endif;?>
 <?php elseif ($tab === 'environment' && Auth::can('owner')): ?>
   <p class="sub">このサイトのPHP、実行ユーザーと処理の構成を管理します。</p>
   <?php if ($componentSite): ?>
     <?php extract($componentPanel, EXTR_OVERWRITE); require __DIR__.'/partials/components.php'; ?>
   <?php else: ?>
-    <?php require __DIR__.'/isolation.php'; ?>
+    <?php require __DIR__.'/isolation.php'; require __DIR__.'/partials/upgrade.php'; ?>
   <?php endif; ?>
 <?php elseif ($tab === 'settings'): ?>
+<?php if(!empty($settingsDraft)){$s=array_replace($s,$settingsDraft);$s['tls']=!empty($settingsDraft['tls']);} ?>
 <?php if (Auth::can('owner')): ?><p class="note">PHPと実行ユーザーの管理は <a href="/services/<?= $name ?>?tab=environment">実行環境</a> で行います。</p><?php endif; ?>
 <?php if(Auth::can('owner')):?><details class="card"><summary class="card-h">サイトの管理を終了する・削除する</summary><div class="card-b"><p>残すものを確認してから、管理解除または30日間復元できる削除を選べます。</p><a class="btn d" href="/services/<?= $name ?>/delete">削除方法と影響を確認する</a></div></details><?php endif;?>
   <div class="sub">このサイトの設定です。公開アドレスや公開フォルダを変えたときは、保存したあと
@@ -269,11 +278,11 @@ if (Auth::can('owner')) $tabs = array_slice($tabs,0,1,true)+['environment'=>'実
   <?php if (!Auth::can('owner')): ?>
     <div class="note">設定を変更できるのは「すべて管理できる」権限の利用者だけです。現在は内容の確認のみできます。</div>
   <?php endif; ?>
-  <form method="post" action="/services/<?= $name ?>/settings">
+  <form method="post" action="/services/<?= $name ?>/settings"><?php if($componentSite):?><div class="note">このサイトの構成は実行環境のマニフェストから変更します。以下は登録情報の参照です。</div><?php endif;?><fieldset <?= $componentSite||!Auth::can('owner')?'disabled':'' ?> class="settings-fields">
     <?= Csrf::field() ?>
     <div class="card step"><div class="card-h">基本</div><div class="card-b">
       <div class="field"><label>ブラウザで開くアドレス</label>
-        <input name="domain" value="<?= View::e($s['domain']) ?>">
+        <input id="settings-domain" name="domain" value="<?= View::e($s['domain']) ?>" aria-invalid="<?= !empty($fieldErrors['domain'])?'true':'false' ?>" aria-describedby="settings-domain-error"><span id="settings-domain-error" class="field-error" role="alert"><?= View::e($fieldErrors['domain']??'') ?></span>
         <div class="hint">利用者がブラウザで開くアドレスです。変更後は「公開設定」タブで反映が必要です。</div></div>
 
       <div class="field"><label>サイトの種類</label><select name="runtime" <?= !empty($isolation['isolated'])?'disabled':'' ?>>
@@ -285,11 +294,11 @@ if (Auth::can('owner')) $tabs = array_slice($tabs,0,1,true)+['environment'=>'実
         <div class="hint">PHP で動くサイトかどうかを選びます。HTML や画像だけのサイトは「静的ファイルのみ」です。</div></div>
 
       <div class="field"><label>公開するフォルダ</label>
-        <input name="docroot" value="<?= View::e($s['docroot']) ?>">
+        <input id="settings-docroot" name="docroot" value="<?= View::e($s['docroot']) ?>" aria-invalid="<?= !empty($fieldErrors['docroot'])?'true':'false' ?>" aria-describedby="settings-docroot-error"><span id="settings-docroot-error" class="field-error" role="alert"><?= View::e($fieldErrors['docroot']??'') ?></span>
         <div class="hint">アップロードしたファイルのうち、実際にブラウザへ公開する場所です
           (多くの PHP アプリでは <span class="mono">public</span>)。</div></div>
 
-      <div class="field"><label>フォルダごとの設定ファイル (.htaccess) の扱い</label><select name="allow_override">
+      <div class="field"><label>フォルダごとの設定ファイル (.htaccess) の扱い</label><select name="allow_override" <?= !empty($isolation['isolated'])?'disabled':'' ?>>
         <?php
         $aoLabels = [
             'None'     => '使わない (推奨・いちばん安全)',
@@ -299,7 +308,7 @@ if (Auth::can('owner')) $tabs = array_slice($tabs,0,1,true)+['environment'=>'実
         foreach ($aoLabels as $ao => $aoLabel): ?>
           <option value="<?= $ao ?>" <?= $s['allow_override'] === $ao ? 'selected' : '' ?>>
             <?= $aoLabel ?> (<?= $ao ?>)</option>
-        <?php endforeach; ?></select>
+        <?php endforeach; ?></select><?php if(!empty($isolation['isolated'])):?><input type="hidden" name="allow_override" value="None"><p class="hint">専用環境ではURLの振り分けを実行環境で管理します。</p><?php endif;?>
         <div class="hint">WordPress など、URL の書き換えルールが必要なアプリでは「URL の書き換えだけ許可する」を選びます。</div></div>
 
       <div class="field"><label class="inline"><input type="checkbox" name="tls" <?= $s['tls'] ? 'checked' : '' ?>>
@@ -325,24 +334,24 @@ if (Auth::can('owner')) $tabs = array_slice($tabs,0,1,true)+['environment'=>'実
         <div class="hint">設定ファイルや利用者がアップロードした画像など、公開のたびに消えては困るものを指定します
           (カンマまたは改行区切り)。</div></div>
       <div class="field"><input type="hidden" name="auto_databases_set" value="1">
-        <label class="inline"><input type="checkbox" name="auto_databases" value="1" <?= in_array('@databases',explode(',',$s['shared_paths']),true) ? 'checked' : '' ?>>データベースファイルを自動で引き継ぐ</label>
+        <label class="inline"><input type="checkbox" name="auto_databases" value="1" <?= (!empty($settingsDraft)?!empty($settingsDraft['auto_databases']):in_array('@databases',explode(',',$s['shared_paths']),true)) ? 'checked' : '' ?>>データベースファイルを自動で引き継ぐ</label>
         <div class="hint">次の公開・取り込み・ロールバックから適用します。初回のDB移行は書き込みを止めて実行してください。DBの内容は古いバージョンに戻しません。</div>
       </div>
     </div></div>
 
     <div class="card step"><div class="card-h">詳細設定（分からなければそのままで大丈夫です）</div><div class="card-b">
       <div class="field"><label>公開のあとに自動実行する処理</label>
-        <textarea name="hooks" rows="4" class="mono"><?= View::e($s['hooks']) ?></textarea>
+        <textarea name="hooks" rows="4" class="mono"><?= View::e($s['hooks']) ?></textarea><span class="field-error" role="alert"><?= View::e($fieldErrors['hooks']??'') ?></span>
         <div class="hint">1 行に 1 つずつ書きます。安全のため、あらかじめ許可されたものだけが実行できます。</div></div>
 
       <div class="field"><label>Apache 設定に追加する行（上級者向け）</label>
-        <textarea name="extra_conf" rows="4" class="mono"><?= View::e($s['extra_conf']) ?></textarea>
+        <textarea name="extra_conf" rows="4" class="mono" <?= !empty($isolation['isolated'])?'disabled':'' ?>><?= View::e($s['extra_conf']) ?></textarea>
         <div class="hint">通常は空欄で構いません。WebSocket 転送や別フォルダのAPIにも対応します。<br>
           <span class="mono">{{site_root}}</span> はサイトの公開中フォルダ、
           <span class="mono">{{document_root}}</span> は公開するフォルダに置き換わります。<br>
           <span class="mono">&lt;Directory {{document_root}}&gt; ... &lt;/Directory&gt;</span> 内に画面の配信設定を書けます。使える項目:
           <span class="mono"><?= View::e(implode(', ', VhostRenderer::ALLOWED_DIRECTIVES)) ?></span></div></div>
-        <?php if ($s['name'] === 'pjas-chat'): ?>
+        <?php if ($s['name'] === 'pjas-chat' && empty($isolation['isolated'])): ?>
         <details><summary>pjas-chat 用の設定例（コピーして上の欄へ貼り付け）</summary>
         <p>公開するフォルダを dist、PHP を php8.5-fpm に設定してください。追加欄に既存の指定がある場合は内容を確認して統合します。</p>
         <textarea readonly rows="15" class="mono">&lt;Directory {{document_root}}&gt;
@@ -360,13 +369,13 @@ ProxyPassMatch ^/api(?:/.*)?$ unix:/run/php/php8.5-fpm.sock|fcgi://localhost{{si
         <?php endif; ?>
     </div></div>
 
-    <?php if (Auth::can('owner')): ?>
-      <div class="row" style="margin-top:16px"><span class="spacer"></span><button class="btn p">保存する</button></div>
+    <?php if (Auth::can('owner')&&!$componentSite): ?>
+      <div class="row" style="margin-top:16px"><span class="spacer"></span><button class="btn p">保存して変更点を確認</button></div>
     <?php endif; ?>
-  </form>
+  </fieldset></form>
 <?php endif; ?>
 
-<?php if (Auth::can('owner')): ?><p><a class="btn" href="/daemons">このサイトの常駐プログラムを管理</a></p><?php endif; ?>
+
 
 <?php if (Auth::can('owner') && !empty($pause['can_pause'])): ?>
 <?php require __DIR__ . '/partials/pause_dialog.php'; ?>

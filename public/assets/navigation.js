@@ -1,3 +1,5 @@
+// Associate visible field labels with their controls, including repeated embedded forms.
+document.querySelectorAll('.field').forEach((field,index)=>{const label=field.querySelector('label');const control=field.querySelector('input:not([type=hidden]),select,textarea');if(label&&control&&!label.contains(control)&&!label.htmlFor){if(!control.id)control.id='field-'+index;label.htmlFor=control.id;}});
 (() => {
   const button = document.querySelector('.side-toggle');
   const side = document.querySelector('.side');

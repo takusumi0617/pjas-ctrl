@@ -4,7 +4,7 @@ require __DIR__.'/support/ui_fixture.php';
 function check(bool $ok,string $message):void{if(!$ok)throw new RuntimeException($message);echo 'ok '.$message."\n";}
 $owner=uiFixture();
 preg_match_all('~<a class="nav[^>]*>(.*?)</a>~s',$owner,$links);
-check(count($links[0])===13,'管理者の全メニューが表示される');
+check(count($links[0])===10,'管理者の全メニューが表示される');
 foreach ($links[1] as $link) check(substr_count($link,'<svg ')===1 && trim(strip_tags($link))!=='','各メニューにアイコンと読み上げ可能なラベルがある');
 check(substr_count($owner,'aria-current="page"')===1,'選択中のメニューだけに現在位置を表示する');
 $viewer=uiFixture('viewer');
@@ -17,7 +17,7 @@ try {\Pjas\Support\Icons::render('\" onload=alert(1)');throw new RuntimeExceptio
 
 function environmentFixture(bool $components):string {
     \Pjas\Http\Auth::$role='owner';
-    $service=['name'=>'demo','state'=>'healthy','domain'=>'demo.example.test'];
+    $service=['runtime'=>'php8.5-fpm','name'=>'demo','state'=>'healthy','domain'=>'demo.example.test'];
     $tab='environment';$componentSite=$components;$current=null;$wwwRoot='/var/www';$pause=['can_pause'=>false];
     $isolation=['isolated'=>true,'runtime'=>'php8.5-fpm','blockers'=>[]];
     $componentPanel=['site'=>$service,'state'=>['current'=>'20261116','releases'=>[]],'review'=>null,'error'=>''];

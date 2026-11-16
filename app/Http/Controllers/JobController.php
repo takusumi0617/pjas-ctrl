@@ -55,27 +55,27 @@ final class JobController
         }
 
         $path   = JobRepo::logPath($id);
-        $offset = (int) ($_SERVER['HTTP_LAST_EVENT_ID'] ?? 0);
+        $offset = max(0,(int) ($_SERVER['HTTP_LAST_EVENT_ID'] ?? $_GET['offset'] ?? 0));
         $start  = time();
 
         while (time() - $start < 300) {
             if(\Pjas\Http\Auth::user()===null||($job['service_id']?!\Pjas\Http\Auth::canSite($site['name']):!\Pjas\Http\Auth::can('owner')))return;
             clearstatcache(false, $path);
             $size = is_file($path) ? (int) filesize($path) : 0;
+            if($offset>$size){$offset=0;echo "event: reset\ndata: -\n\n";flush();}
             if ($size > $offset) {
                 $fh = fopen($path, 'rb');
                 fseek($fh, $offset);
-                $chunk  = (string) fread($fh, $size - $offset);
+                $chunk  = (string) fread($fh, min(65536,$size - $offset));
                 fclose($fh);
-                $offset = $size;
-                foreach (preg_split('/\R/', rtrim($chunk)) ?: [] as $line) {
-                    echo "id: {$offset}\ndata: " . str_replace("\n", '', $line) . "\n\n";
-                }
+                $offset += strlen($chunk);
+                echo "id: {$offset}\nevent: chunk\ndata: ".json_encode($chunk,JSON_INVALID_UTF8_SUBSTITUTE)."\n\n";
                 flush();
             }
 
             $job = JobRepo::sync($id);
-            if ($job && in_array($job['state'], ['succeeded', 'failed'], true)) {
+            clearstatcache(false,$path);$size=is_file($path)?(int)filesize($path):0;
+            if ($offset >= $size && $job && in_array($job['state'], ['succeeded', 'failed'], true)) {
                 echo "event: done\ndata: {$job['state']}\n\n";
                 flush();
                 return;

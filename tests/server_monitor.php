@@ -20,4 +20,10 @@ try{
  $out=$monitor->snapshot();$checks=array_column($out['checks'],null,'key');
  check(!$checks['service.apache2.service']['ok']&&!$checks['ssh']['ok']&&!$checks['updates']['ok'],'停止した主要サービス・SSH失敗急増・セキュリティ更新を検知する');
  check(count(array_filter($out['changes'],static fn($c)=>$c['file']==='/etc/removed-fixture.conf'&&$c['type']==='削除'))===1&&!isset($out['fingerprints']),'設定削除を検知し秘密の本文を保存しない');
+ $calls=[];$restart=new ServerMonitor($cfg,static function($args)use(&$calls){$calls[]=$args;return ['code'=>0,'out'=>'active','err'=>''];});
+ $restart->restart(['unit'=>'php'.\Pjas\Shared\PhpRuntime::controlVersion().'-fpm.service']);
+ check(count(array_filter($calls,static fn($args)=>in_array('start',$args,true)&&in_array('pjas-control-web.service',$args,true)))===1,'管理用PHP再起動時は稼働していたHTTPを起動して確認する');
+ $calls=[];$restart=new ServerMonitor($cfg,static function($args)use(&$calls){$calls[]=$args;return ['code'=>in_array('is-active',$args,true)?3:0,'out'=>'','err'=>''];});
+ $restart->restart(['unit'=>'php'.\Pjas\Shared\PhpRuntime::controlVersion().'-fpm.service']);
+ check(!array_filter($calls,static fn($args)=>in_array('start',$args,true)),'元々停止中の管理用HTTPを勝手に公開しない');
 }finally{cleanup($dir);}

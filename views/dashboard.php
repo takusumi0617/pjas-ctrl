@@ -1,70 +1,13 @@
-<?php
-use Pjas\Http\View;
-use Pjas\Support\Labels;
+<?php use Pjas\Http\{View,Auth};use Pjas\Support\{Labels,Time};$attention=array_filter($services,static fn($s)=>!$s['presentation']['healthy']);$migrations=array_filter($services,static fn($s)=>!empty($s['presentation']['observed']['upgrade'])&&!in_array($s['presentation']['observed']['upgrade']['phase'],['active','rolled-back'],true));?>
+<div class="row"><div><h1>ホーム</h1><p class="sub">いま対応することを、サイト横断で確認します。</p></div><span class="spacer"></span><a class="btn" href="/">表示を更新</a></div>
+<?php if(!$agentOk):?><div class="note err" role="alert">特権agentへ接続できません。公開状態は不明です。管理者は「サーバーとctrl」を確認してください。</div><?php endif;?>
+<?php if(!empty($observationError)):?><div class="note err" role="alert">状態取得エラー：<?= View::e($observationError) ?></div><?php endif;?>
+<div class="status-summary"><div><strong><?= count($services) ?></strong><span>管理サイト</span></div><div><strong><?= count($attention) ?></strong><span>要対応・未確認</span></div><div><strong><?= count($migrations) ?></strong><span>移行の確認待ち</span></div></div>
+<?php if($attention||!empty($serverChecks)):?><section class="card"><div class="card-h">先に対応すること</div>
+<?php foreach($attention as $s):$p=$s['presentation'];?><div class="attention-row"><div><h3><span class="tag <?= $p['tone'] ?>"><?= View::e($p['label']) ?></span> <?= View::e($s['name']) ?></h3><p class="muted"><?= View::e($p['reason']) ?></p></div><a class="btn" href="/services/<?= View::e($s['name']) ?><?= !empty($p['observed']['upgrade'])?'?tab=environment':'' ?>">原因と次の操作</a></div><?php endforeach;?>
+<?php foreach($serverChecks??[] as $check):?><div class="attention-row"><div><h3>サーバー・ctrlの確認</h3><p><?= View::e($check['detail']) ?></p></div><a class="btn" href="/server">稼働状態を見る</a></div><?php endforeach;?></section>
+<?php else:?><div class="note ok">現在の確認結果では、対応が必要な項目はありません。</div><?php endif;?>
+<section class="card section-gap"><div class="card-h">サイトの状態<span class="spacer"></span><a class="btn sm" href="/services">サイト一覧</a></div><?php require __DIR__.'/partials/sites_table.php';?></section>
+<section class="card section-gap"><div class="card-h">最近の作業</div><div class="table-scroll"><table><thead><tr><th>作業</th><th>サイト</th><th>内容</th><th>開始（日本時間）</th><th>結果</th></tr></thead><tbody><?php foreach($jobs as $j):?><tr><td><a href="/jobs/<?= (int)$j['id'] ?>">#<?= (int)$j['id'] ?> <?= View::e(Labels::jobType($j['type'])) ?></a></td><td><?= View::e($j['service']??'') ?></td><td><?= View::e($j['detail']) ?></td><td><?= View::e(Time::display($j['started_at'])) ?></td><td><span class="tag <?= $j['state']==='failed'?'t-err':($j['state']==='succeeded'?'t-ok':'t-warn') ?>"><?= View::e(Labels::jobState($j['state'])) ?></span></td></tr><?php endforeach;?><?php if(!$jobs):?><tr><td colspan="5">作業の記録はありません。</td></tr><?php endif;?></tbody></table></div></section>
 
-$stateTag = static function (string $s): string {
-    $cls = match ($s) { 'healthy' => 't-ok', 'unhealthy' => 't-err', default => 't-mut' };
-    return '<span class="tag ' . $cls . '">' . Labels::state($s) . '</span>';
-};
-$jobTag = static function (string $s): string {
-    $cls = match ($s) { 'succeeded' => 't-ok', 'failed' => 't-err', 'running' => 't-warn', default => 't-mut' };
-    return '<span class="tag ' . $cls . '">' . Labels::jobState($s) . '</span>';
-};
-?>
-<h1>ホーム</h1>
-<div class="sub">この画面で管理しているサイトは <?= (int) $counts['total'] ?> 件です</div>
-
-<?php if (!$agentOk): ?>
-  <div class="note err flash">公開作業を行う機能に接続できないため、いまは新しいバージョンの公開や
-    公開設定の変更ができません。サーバー管理者に連絡してください。
-    <br><span class="muted">確認コマンド: <span class="mono">systemctl status pjas-agentd</span></span></div>
-<?php endif; ?>
-
-<div class="grid4">
-  <div class="card kpi"><div class="n"><?= (int) $counts['total'] ?></div><div class="l">管理しているサイト</div></div>
-  <div class="card kpi"><div class="n" style="color:var(--ok)"><?= (int) $counts['healthy'] ?></div><div class="l">正常に動いている</div></div>
-  <div class="card kpi"><div class="n" style="color:var(--err)"><?= (int) $counts['unhealthy'] ?></div><div class="l">確認が必要</div></div>
-  <div class="card kpi"><div class="n"><?= (int) $counts['week'] ?></div><div class="l">直近7日の公開回数</div></div>
-</div>
-
-<div class="card" style="margin-bottom:18px">
-  <div class="card-h">サイトの状態<span class="spacer"></span><a class="btn sm" href="/services">すべて表示</a></div>
-  <table>
-    <thead><tr><th>サイト</th><th>ブラウザで開くアドレス</th><th>サイトの種類</th><th>状態</th><th>最後に確認した日時</th></tr></thead>
-    <tbody>
-    <?php foreach (array_slice($services, 0, 8) as $s): ?>
-      <tr>
-        <td><a href="/services/<?= View::e($s['name']) ?>"><b><?= View::e($s['name']) ?></b></a></td>
-        <td class="mono"><?= View::e($s['domain']) ?></td>
-        <td><?= View::e(Labels::runtime((string) $s['runtime'])) ?></td>
-        <td><?= $stateTag((string) $s['state']) ?></td>
-        <td class="mono muted"><?= View::e((string) ($s['checked_at'] ?? '—')) ?></td>
-      </tr>
-    <?php endforeach; ?>
-    <?php if (!$services): ?>
-      <tr><td colspan="5" class="muted">まだサイトがありません。<a href="/services/new">登録する</a></td></tr>
-    <?php endif; ?>
-    </tbody>
-  </table>
-</div>
-
-<div class="card">
-  <div class="card-h">最近おこなった作業</div>
-  <table>
-    <thead><tr><th>#</th><th>作業</th><th>サイト</th><th>内容</th><th>実行した人</th><th>開始</th><th>結果</th></tr></thead>
-    <tbody>
-    <?php foreach ($jobs as $j): ?>
-      <tr>
-        <td><a href="/jobs/<?= (int) $j['id'] ?>">#<?= (int) $j['id'] ?></a></td>
-        <td><?= View::e(Labels::jobType((string) $j['type'])) ?></td>
-        <td><?= View::e((string) ($j['service'] ?? '')) ?></td>
-        <td class="muted"><?= View::e(mb_strimwidth((string) $j['detail'], 0, 48, '…')) ?></td>
-        <td><?= View::e($j['actor']) ?></td>
-        <td class="mono"><?= View::e($j['started_at']) ?></td>
-        <td><?= $jobTag((string) $j['state']) ?></td>
-      </tr>
-    <?php endforeach; ?>
-    <?php if (!$jobs): ?><tr><td colspan="7" class="muted">まだ作業の記録はありません</td></tr><?php endif; ?>
-    </tbody>
-  </table>
-</div>
+<section class="card section-gap"><div class="card-h">最近のお知らせ</div><div class="table-scroll"><table><thead><tr><th>時刻（日本時間）</th><th>内容</th><th>通知</th></tr></thead><tbody><?php foreach($alerts??[] as $a):?><tr><td><?= View::e(Time::display($a['created_at'])) ?></td><td><span class="tag <?= $a['resolved']?'t-ok':'t-warn' ?>"><?= $a['resolved']?'復旧':'確認' ?></span> <?= View::e($a['message']) ?></td><td><?= $a['notified_at']?'送信済み':(!empty($a['notification_error'])?'送信失敗':'画面で確認') ?><?php if(!empty($a['notification_error'])):?><small><?= View::e($a['notification_error']) ?></small><?php endif;?></td></tr><?php endforeach;?><?php if(empty($alerts)):?><tr><td colspan="3">まだお知らせはありません。</td></tr><?php endif;?></tbody></table></div></section>

@@ -10,6 +10,7 @@ final class ServerMonitor
     private ControlStore $store;
     public function __construct(private array $cfg,private $runner=null){$this->store=new ControlStore($cfg);}
     private function run(array $args,int $seconds=5): array { return $this->runner ? ($this->runner)($args) : Proc::run($args,null,$seconds,null,['PATH'=>'/usr/sbin:/usr/bin:/sbin:/bin','LANG'=>'C','LC_ALL'=>'C']); }
+    private function must(array $args,int $seconds): void { $result=$this->run($args,$seconds);if($result['code']!==0)throw new OpException('設定の検査・サービス操作に失敗しました。サービスの記録を確認してください'); }
     public static function memory(string $text): ?float
     {
         preg_match('/^MemTotal:\s+(\d+)/m',$text,$t);preg_match('/^MemAvailable:\s+(\d+)/m',$text,$a);
@@ -50,7 +51,7 @@ final class ServerMonitor
             $streak=$old['streak']??[];foreach(['cpu'=>$usage,'memory'=>$memory] as $key=>$value){$streak[$key]=$value!==null&&$value>=90?($streak[$key]??0)+1:0;$add($key,$value!==null&&$streak[$key]<3,($key==='cpu'?'CPUの使用率':'メモリの使用率').': '.($value===null?'測定できません':$value.'%').($streak[$key]>=3?'。高い状態が続いています。負荷の高いサイトを確認してください。':''));}
             foreach($disks as $i=>$d)$add('disk.'.$i,$d['used']!==null&&$d['used']<90&&$d['free']>=1073741824,$d['path'].' の空き容量: '.round($d['free']/1073741824,1).'GB。不要な保存データやバックアップを確認してください。');
             $units=$this->unitStates();$add('service.read',count($units)>0,'主要サービスの状態'.($units?'を取得しました':'を取得できません。systemdを確認してください。'));
-            foreach($units as $u){if(!$u['loaded']){if(in_array($u['unit'],['apache2.service','php'.\Pjas\Shared\PhpRuntime::controlVersion().'-fpm.service','pjas-agentd.service','pjas-control-web.service','pjas-monitor.timer'],true))$add('service.'.$u['unit'],false,$u['unit'].' が見つかりません。初回準備を確認してください。');continue;}if(!$u['enabled']&&$u['state']==='inactive')continue;$add('service.'.$u['unit'],in_array($u['state'],['active','activating'],true),$u['unit'].' の状態: '.$u['state'].'。停止している場合はサービスの記録を確認してください。');}
+            foreach($units as $u){if(!$u['loaded']){if(in_array($u['unit'],['apache2.service','php'.\Pjas\Shared\PhpRuntime::controlVersion().'-fpm.service','pjas-agentd.service','pjas-control-web.service','pjas-monitor.timer'],true))$add('service.'.$u['unit'],false,$u['unit'].' が見つかりません。初回準備を確認してください。');continue;}if(!$u['enabled']&&$u['state']==='inactive'&&!in_array($u['unit'],['apache2.service','php'.\Pjas\Shared\PhpRuntime::controlVersion().'-fpm.service','pjas-agentd.service','pjas-control-web.service','pjas-monitor.timer'],true))continue;$add('service.'.$u['unit'],in_array($u['state'],['active','activating'],true),$u['unit'].' の状態: '.$u['state'].'。停止している場合はサービスの記録を確認してください。');}
             // Reuse the local APT cache; never perform updates or network refreshes here.
             $cacheFiles=array_merge(glob('/var/lib/apt/lists/*_InRelease')?:[],glob('/var/lib/apt/lists/*_Release')?:[]);$cacheTime=0;foreach($cacheFiles as $f)$cacheTime=max($cacheTime,(int)@filemtime($f));
             $updates=$old['updates']??[];if(($updates['time']??0)<$now-3600){$r=$this->run(['/usr/bin/apt','list','--upgradable'],8);$updates=['time'=>$now,'ok'=>$r['code']===0,'count'=>0,'security'=>0,'cache_time'=>$cacheTime];if($updates['ok'])foreach(explode("\n",$r['out']) as $l)if(str_contains($l,'[upgradable from:')){$updates['count']++;if(str_contains($l,'-security'))$updates['security']++;}}
@@ -75,8 +76,12 @@ final class ServerMonitor
         $unit=(string)($params['unit']??'');
         if($unit!=='apache2.service'&&!preg_match('/\Aphp[0-9]+\.[0-9]+-fpm\.service\z/D',$unit))throw new OpException('再起動できるのはApacheとPHPだけです');
         if(!in_array($unit,$this->units(),true))throw new OpException('このサーバーに登録されたサービスを選んでください');
-        if($unit==='apache2.service')Proc::must(['/usr/sbin/apachectl','configtest'],null,15);
-        else{preg_match('/php([0-9]+\.[0-9]+)-fpm/',$unit,$m);Proc::must(['/usr/sbin/php-fpm'.$m[1],'-t'],null,15);}
-        Proc::must(['/bin/systemctl','restart',$unit],null,30);return ['restarted'=>$unit];
+        if($unit==='apache2.service')$this->must(['/usr/sbin/apachectl','configtest'],15);
+        else{preg_match('/php([0-9]+\.[0-9]+)-fpm/',$unit,$m);$this->must(['/usr/sbin/php-fpm'.$m[1],'-t'],15);}
+        $controlPhp='php'.\Pjas\Shared\PhpRuntime::controlVersion().'-fpm.service';
+        $restoreControl=$unit===$controlPhp && $this->run(['/bin/systemctl','is-active','pjas-control-web.service'])['code']===0;
+        $this->must(['/bin/systemctl','restart',$unit],30);
+        if($restoreControl){$this->must(['/bin/systemctl','start','pjas-control-web.service'],30);$this->must(['/bin/systemctl','is-active','pjas-control-web.service'],10);}
+        return ['restarted'=>$unit,'control_http_checked'=>$restoreControl];
     }
 }

@@ -24,7 +24,7 @@ final class ServiceController
 {
     public function index(): void
     {
-        View::render('services', ['title' => 'サイト一覧', 'services' => ServiceRepo::all()]);
+        View::render('services', ['title' => 'サイト一覧', 'services' => \Pjas\Domain\SitePresentation::collect(ServiceRepo::all())['services']]);
     }
 
     public function newForm(): void
@@ -259,7 +259,7 @@ final class ServiceController
         }
 
         if ($tab === 'vhost') {
-            $data['update_mode'] = 'auto';
+            $data['update_mode'] = (($_GET['mode']??'')==='settings')?'settings':'auto';
             $data['rendered'] = VhostRenderer::render(
                 $s,
                 $data['wwwRoot'],
@@ -301,9 +301,18 @@ final class ServiceController
 
         try {$data['runtimeCatalog']=AgentClient::call('runtime.catalog',[],Auth::actor())['runtimes'];$data['isolation']=AgentClient::call('isolation.status',['service'=>Deployer::spec($s)],Auth::actor());}
         catch(AgentException $e){$data['isolationError']=$e->getMessage();}
-        $data['componentSite']=(bool)\Pjas\Support\Db::one('SELECT service_id FROM component_sites WHERE service_id=?',[$s['id']]);
+        $data['presentation']=\Pjas\Domain\SitePresentation::collect([$s])['services'][0]['presentation'];
+        $data['componentSite']=$data['presentation']['component']||(bool)\Pjas\Support\Db::one('SELECT service_id FROM component_sites WHERE service_id=?',[$s['id']]);
         if ($tab==='environment' && $data['componentSite'] && Auth::can('owner')) {
             $data['componentPanel']=ComponentController::panel($s);
+        }
+        $data['settingsDraft']=$_SESSION['settings_draft'][$s['name']]??null;
+        $data['fieldErrors']=$_SESSION['settings_errors'][$s['name']]??[];
+        if($tab==='settings'){unset($_SESSION['settings_errors'][$s['name']],$_SESSION['settings_draft'][$s['name']]);}
+        $data['settingsPending']=\Pjas\Domain\SettingsChanges::pending((int)$s['id']);
+        if($tab==='processes' && Auth::can('owner') && !$data['componentSite']) {
+            $data['processPanel']=DaemonController::panel($s);
+            $data['siteTasks']=array_values(array_filter(ScheduledTaskRepo::all(),static fn($t)=>$t['service']===$s['name']));
         }
         View::render('service', $data);
     }
@@ -311,9 +320,13 @@ final class ServiceController
     public function updateSettings(array $a): void
     {
         $s = ServiceRepo::findOrFail($a['name']);
+        $_SESSION['settings_draft'][$s['name']]=array_intersect_key($_POST,array_flip(['domain','runtime','docroot','allow_override','tls','health_path','health_status','keep_releases','shared_paths','auto_databases','auto_databases_set','hooks','extra_conf']));
         try {
             $v = ServiceRepo::validate($_POST + ['name' => $s['name']], false);
         } catch (ValidationException $e) {
+            $map=['domain'=>'アドレス','docroot'=>'公開するフォルダ','runtime'=>'サイトの種類','extra_conf'=>'Apache','hooks'=>'公開後に自動実行'];$fieldErrors=[];
+            foreach($map as $field=>$term)foreach($e->errors as $error)if(str_contains($error,$term))$fieldErrors[$field]=$error;
+            $_SESSION['settings_errors'][$s['name']]=$fieldErrors;
             View::redirect('/services/' . $s['name'] . '?tab=settings', implode(' / ', $e->errors), 'err');
         }
         try {
@@ -321,6 +334,8 @@ final class ServiceController
             if(!empty($isolation['isolated'])&&($v['runtime']!==$s['runtime']||$v['extra_conf']!==''||$v['allow_override']!=='None'))throw new AgentException('隔離サイトのPHP変更は「実行環境」タブで行ってください。追加Apache設定と.htaccessは使用できません');
         } catch(AgentException $e){View::redirect('/services/'.$s['name'].'?tab=settings',$e->getMessage(),'err');}
         ServiceRepo::update($s['name'], $v);
+        unset($_SESSION['settings_draft'][$s['name']]);
+        \Pjas\Domain\SettingsChanges::record((int)$s['id'],$s,$v);
         Audit::log(Auth::actor(), 'service.update', $s['name'], $v);
         View::redirect('/services/' . $s['name'] . '?tab=settings',
             '設定を保存しました。公開アドレスなどを変更した場合は「公開設定」タブで反映してください。');
@@ -337,6 +352,20 @@ final class ServiceController
             Audit::log(Auth::actor(),'isolation.apply',$s['name'],$result);
             View::redirect('/services/'.$s['name'].'?tab=environment','隔離・PHP移行を適用しました。停止中のまま動作を確認し、公開を再開してください');
         } catch(AgentException|\InvalidArgumentException $e) { View::redirect('/services/'.$s['name'].'?tab=environment',$e->getMessage(),'err'); }
+    }
+
+    public function activateUpgrade(array $a): void
+    {
+        $s=ServiceRepo::findOrFail($a['name']);Auth::requireSite($s['name'],'owner');
+        try {
+            Auth::reauthenticate((string)($_POST['password']??''));
+            $result=AgentClient::call('site.upgrade.activate',['service'=>$s['name'],'id'=>(string)($_POST['id']??''),'confirm'=>($_POST['confirm']??'')==='1'],Auth::actor());
+            Audit::log(Auth::actor(),'site.upgrade.activate',$s['name'],['id'=>$result['id']]);
+            View::redirect('/services/'.$s['name'].'?tab=environment','HTTP検査と公開再開が完了しました');
+        } catch(AgentException|\InvalidArgumentException $e) {
+            Audit::log(Auth::actor(),'site.upgrade.activate',$s['name'],[],'failed');
+            View::redirect('/services/'.$s['name'].'?tab=environment',$e->getMessage(),'err');
+        }
     }
 
     public function health(array $a): void

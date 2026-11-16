@@ -52,6 +52,9 @@ try {
     rejects(fn() => $d->action(['service' => 'site-a', 'unit' => 'worker.service', 'action' => 'start']));
     $d->action(['service' => 'site-b', 'unit' => 'worker.service', 'action' => 'start']);
     check(true, '関連付け先を編集すると以前のサイトからの操作を拒否');
+    $d->action(['service'=>'site-b','unit'=>'worker.service','action'=>'detach']);
+    check(!array_filter($d->listing([])['daemons'],static fn($r)=>$r['unit']==='worker.service'),'関連付け解除は台帳からだけ除外する');
+    rejects(fn()=>$d->action(['service'=>'site-b','unit'=>'worker.service','action'=>'start']));
     // daemon-reload が失敗したら、実行内容とサービス定義を元へ戻す。
     file_put_contents($fake, "#!/bin/sh\nexit 1\n");
     rejects(fn() => $d->save(['service' => 'site-a', 'original_unit' => $unit, 'label' => '失敗', 'command' => 'exec sleep 999']));

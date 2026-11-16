@@ -55,7 +55,7 @@ final class Daemon
     private function show(string $unit): array
     {
         $out = Proc::must([$this->cfg['systemctl'], 'show', '--no-pager',
-            '--property=LoadState,ActiveState,SubState,UnitFileState', '--', $unit], null, 10);
+            '--property=LoadState,ActiveState,SubState,UnitFileState,User,Group', '--', $unit], null, 10);
         $state = [];
         foreach (explode("\n", trim($out)) as $line) {
             if (str_contains($line, '=')) { [$k, $v] = explode('=', $line, 2); $state[$k] = $v; }
@@ -191,6 +191,7 @@ final class Daemon
         foreach ($this->registry() as $row) {
             if (!empty($params['service']) && $params['service'] !== $row['service']) continue;
             $row['state'] = $this->show($row['unit']);
+            $row['execution_user']=($row['state']['User']??'')!==''?$row['state']['User']:'root';
             if (empty($row['managed'])) {
                 try { $row['execution'] = $this->existingInfo($row['unit'], $row['service']); }
                 catch (OpException $e) { $row['execution'] = ['editable' => false, 'exec_start' => '', 'working_subdir' => '']; }
@@ -287,6 +288,11 @@ final class Daemon
             $row = $this->registry()[$unit] ?? null;
             if (!$row || $row['service'] !== $service) throw new OpException('このサイトに関連付けられていない常駐プログラムは操作できません');
             $action = $params['action'] ?? null;
+            if($action==='detach') {
+                $rows=$this->registry();unset($rows[$unit]);
+                $this->write($this->dir().'/registry.json',json_encode($rows,JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE));
+                return ['unit'=>$unit,'action'=>'detach','service_preserved'=>true];
+            }
             if (!is_string($action) || !in_array($action, ['start', 'stop', 'restart'], true)) throw new OpException('この操作は許可されていません');
             Proc::must([$this->cfg['systemctl'], $action, '--', $unit], null, 30);
             return ['unit' => $unit, 'action' => $action];

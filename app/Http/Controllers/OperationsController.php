@@ -9,10 +9,7 @@ final class OperationsController
 {
     public function index(): void
     {
-        $sites=ServiceRepo::all();$ids=array_column($sites,'id');$where=Auth::can('owner')?'1=1':($ids?'service_id IN ('.implode(',',array_fill(0,count($ids),'?')).')':'1=0');
-        View::render('operations',['title'=>'運用状況','services'=>$sites,'checks'=>Db::all('SELECT * FROM monitor_state WHERE '.$where,Auth::can('owner')?[]:$ids),
-            'alerts'=>Db::all('SELECT * FROM alerts WHERE '.$where.' ORDER BY id DESC LIMIT 100',Auth::can('owner')?[]:$ids),
-            'last_tick'=>Db::one("SELECT value FROM app_state WHERE name='tick.last'")['value']??'']);
+        View::redirect('/');
     }
     public function connections(): void
     {

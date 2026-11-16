@@ -268,13 +268,18 @@ final class Vhost
     private function updateMode(array $params): string
     {
         $mode = $params['update_mode'] ?? 'template';
-        if (!in_array($mode, ['auto', 'errors', 'template'], true)) throw new OpException('更新する内容を選んでください');
+        if (!in_array($mode, ['auto', 'errors', 'template','settings'], true)) throw new OpException('更新する内容を選んでください');
         return $mode;
     }
 
     private function resolvedMode(array $params, array $spec): string
     {
         $mode = $this->updateMode($params);
+        if($mode==='settings') {
+            if(!empty($params['migration_source']))throw new OpException('標準設定の更新では継承元を指定できません');
+            if(($this->cfg['isolation_site']??null)!==$spec['name']||is_file($this->inheritedPath($spec['name'])))throw new OpException('登録内容の反映は標準の専用環境だけで利用できます。継承設定は移行CLIで確認してください');
+            return 'template';
+        }
         if ($mode !== 'auto') return $mode;
         $path = $this->confPath($spec['name']);
         return file_exists($path) || is_link($path) ? 'errors' : 'template';
@@ -293,7 +298,7 @@ final class Vhost
 
     private function creationError(array $params, array $spec): string
     {
-        if ($this->updateMode($params) !== 'auto') return '';
+        if (!in_array($this->updateMode($params),['auto','settings'],true)) return '';
         $source = (string) ($params['migration_source'] ?? '');
         foreach (self::conflictingSites($this->enabledDir(), $spec['domain'], $this->confPath($spec['name'])) as $site) {
             if ($source !== $site . '.conf') return '同じアドレスを使う既存設定があります。現在の内容を失わないよう、既存設定の継承を確認してから反映してください。複数ファイルに分かれた設定は自動で置き換えません';
@@ -391,8 +396,8 @@ final class Vhost
         try {
             $spec = Spec::service($params['service'] ?? null);
             $mode = $this->resolvedMode($params, $spec);
-            if ($this->updateMode($params) === 'auto') {
-                $current = $mode === 'errors' ? $this->currentForErrors($spec) : '';
+            if (in_array($this->updateMode($params),['auto','settings'],true)) {
+                $current = $mode === 'errors'||$this->updateMode($params)==='settings' ? $this->currentForErrors($spec) : '';
                 if (!hash_equals(hash('sha256', $current), (string) ($params['current_hash'] ?? ''))) {
                     throw new OpException('公開設定がプレビュー後に変更されています。画面を開き直して変更点を確認してください');
                 }

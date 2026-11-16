@@ -19,6 +19,8 @@ namespace Pjas\Domain {final class ReleaseRepo {public static function current(i
 namespace {
     require_once dirname(__DIR__,2).'/app/Support/Icons.php';
     require_once dirname(__DIR__,2).'/app/Support/Labels.php';
+    require_once dirname(__DIR__,2).'/app/Support/Time.php';
+    require_once dirname(__DIR__,2).'/app/Domain/SitePresentation.php';
     function uiFixture(string $role='owner',string $request='/services'):string {
         \Pjas\Http\Auth::$role=$role;$_SERVER['REQUEST_URI']=$request;
         $services=[];

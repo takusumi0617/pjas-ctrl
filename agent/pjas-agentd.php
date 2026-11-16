@@ -75,6 +75,8 @@ $components=new \Pjas\Agentd\Ops\Components($cfg);
 $certificates=new \Pjas\Agentd\Ops\Certificates($cfg);
 $registry = [
     'runtime.catalog'=>static fn(array $p):array=>['runtimes'=>\Pjas\Shared\PhpRuntime::catalog()],
+    'site.upgrade.activate'=>[(new \Pjas\Agentd\Ops\UpgradeUi($cfg)),'activate'],
+    'site.overview'=>[(new \Pjas\Agentd\Ops\SiteOverview($cfg)),'listing'],
     'isolation.status'=>[(new \Pjas\Agentd\SiteIsolation($cfg)),'status'],
     'isolation.apply'=>[(new \Pjas\Agentd\Ops\Isolation($cfg)),'apply'],
     'components.webplan'=>[$components,'webPlan'],
@@ -251,7 +253,7 @@ function handle(string $line, array $registry): array
     $started = microtime(true);$siteLock=null;
     try {
         $target=$params['service']??($params['task']['service']??null);if(is_array($target))$target=$target['name']??null;
-        if (is_string($target)) {\Pjas\Agentd\Ops\Components::guard($cfg,$target,$op);\Pjas\Agentd\SiteLifecycleGuard::upgrade($cfg,$target);}
+        if (is_string($target)) {\Pjas\Agentd\Ops\Components::guard($cfg,$target,$op);if($op!=='site.upgrade.activate')\Pjas\Agentd\SiteLifecycleGuard::upgrade($cfg,$target);}
         if (!empty($params['target_service'])) {\Pjas\Agentd\Ops\Components::guard($cfg,\Pjas\Agentd\Spec::name($params['target_service']),$op);\Pjas\Agentd\SiteLifecycleGuard::upgrade($cfg,\Pjas\Agentd\Spec::name($params['target_service']));}
         if(is_string($target)&&!str_starts_with($op,'site.')){
             if(in_array($op,['github.configure','github.connection','cron.apply','cron.delete','daemon.save','daemon.action','apache.apply','apache.pause','fs.write','service.create','service.destroy','preview.save','isolation.apply'],true)){
