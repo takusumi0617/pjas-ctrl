@@ -48,11 +48,12 @@ $v = static fn(string $k, string $d = '') => View::e((string) ($in[$k] ?? $d));
         <input name="domain" value="<?= $v('domain') ?>" placeholder="billing.example.com" required>
         <div class="hint">例: <span class="mono">billing.example.com</span>。このアドレスからサーバーへつながるように、事前にドメイン名（DNS）の設定が必要です。</div></div>
 
+      <p class="hint">新規サイトは専用ユーザーとサイト別PHP-FPMで隔離します。既定のPHPは8.5です。既存フォルダの登録は、取り込み後に設定画面から隔離へ移行してください。隔離サイトは標準の公開設定を使用します。</p>
       <div class="field"><label>サイトの種類</label>
         <select name="runtime">
-          <?php foreach (ServiceRepo::RUNTIMES as $rt): ?>
-            <option value="<?= View::e($rt) ?>" <?= ($in['runtime'] ?? 'php8.4-fpm') === $rt ? 'selected' : '' ?>>
-              <?= View::e(Labels::runtime($rt)) ?></option>
+          <?php $available=array_column($runtimeCatalog??[],'available','runtime'); foreach (ServiceRepo::RUNTIMES as $rt): ?>
+            <option <?= isset($available[$rt])&&!$available[$rt]?'disabled':'' ?> value="<?= View::e($rt) ?>" <?= ($in['runtime'] ?? \Pjas\Shared\PhpRuntime::DEFAULT_RUNTIME) === $rt ? 'selected' : '' ?>>
+              <?= View::e(Labels::runtime($rt)) ?><?= isset($available[$rt])&&!$available[$rt]?'（CLI/FPM未導入）':'' ?></option>
           <?php endforeach; ?>
         </select>
         <div class="hint">PHP で動くサイトかどうかを選びます。HTML や画像だけのサイトは「静的ファイルのみ」を選んでください。</div></div>

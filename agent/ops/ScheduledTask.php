@@ -24,6 +24,7 @@ final class ScheduledTask
         $service = Spec::name($task['service'] ?? '');
         $schedule = Spec::cronSchedule($task['schedule'] ?? '');
         $command = str_replace('{{site_root}}', $this->paths->current($service), Spec::cronCommand($task['command'] ?? ''));
+        if(isset($this->cfg['isolation_runtime']))$command=\Pjas\Shared\PhpRuntime::command($command,$this->cfg['isolation_runtime']);
         $webUser = (string) $this->cfg['web_user'];
         $webGroup = (string) $this->cfg['web_group'];
 
@@ -36,6 +37,7 @@ final class ScheduledTask
             }
         }
 
+        if(isset($this->cfg['isolation_site']))foreach([$scriptDir,$logDir] as $dir)\Pjas\Agentd\Proc::must(['/usr/bin/setfacl','-m','u:'.$webUser.':--x',$dir]);
         $script = $scriptDir . "/task-{$id}.sh";
         $log = $logDir . "/task-{$id}.log";
         $cron = $cronDir . "/pjas-task-{$id}";

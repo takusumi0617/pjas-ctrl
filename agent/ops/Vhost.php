@@ -51,6 +51,7 @@ final class Vhost
 
     private function migrationSource(array $params, array $spec): ?array
     {
+        if(isset($this->cfg['isolation_site'])&&!empty($params['migration_source']))throw new OpException('隔離サイトへ既存Apache設定を継承できません');
         $source = $params['migration_source'] ?? '';
         if ($source === '') return null;
         if (is_file($this->inheritedPath($spec['name']))) throw new OpException('このサイトはすでに設定を継承済みです');
@@ -144,6 +145,7 @@ final class Vhost
             $spec=Spec::service(['name'=>$spec['name'],'domain'=>$grant['domain'],'runtime'=>$grant['runtime'],'docroot'=>$grant['document_root'],'tls'=>$grant['https']??true]);
             if (is_file($this->inheritedPath($spec['name']))) throw new OpException('隔離サイトへ移行する前に継承Apache設定を管理者が整理してください');
         }
+        if(isset($this->cfg['isolation_site'])&&is_file($this->inheritedPath($spec['name'])))throw new OpException('隔離サイトでは継承Apache設定を使用できません');
         $saved = $this->inheritedPath($spec['name']);
         if (is_file($saved)) {
             $snapshot = json_decode((string) file_get_contents($saved), true, 512, JSON_THROW_ON_ERROR);
@@ -171,7 +173,7 @@ final class Vhost
             }
         }
         if ($spec['runtime'] !== 'static') {
-            $sock  = '/run/php/' . $spec['runtime'] . '.sock';
+            $sock  = isset($this->cfg['isolation_site']) ? \Pjas\Agentd\SiteIsolation::socket($name,$spec['runtime']) : '/run/php/' . $spec['runtime'] . '.sock';
             if ($isolated) {
                 $state=(new \Pjas\Agentd\ControlStore($this->cfg))->read('components-'.$name);
                 $php=array_values(array_filter($state['manifest']['components']??[],fn($c)=>$c['type']==='php'));
@@ -207,6 +209,7 @@ final class Vhost
 
     public function applyRepositoryConfig(string $body, array $spec): array
     {
+        if(isset($this->cfg['isolation_site']))throw new OpException('隔離サイトは標準の公開設定を使用してください');
         $lock = fopen($this->cfg['apache_sites'] . '/.pjas-vhost.lock','c');
         if (!$lock || !flock($lock,LOCK_EX)) throw new OpException('公開設定をロックできません');
         $path = $this->inheritedPath($spec['name']);
@@ -476,6 +479,7 @@ final class Vhost
 
     public function restore(array $params): array
     {
+        if(isset($this->cfg['isolation_site']))throw new OpException('隔離サイトは過去のApache設定を直接復元せず、標準の公開設定を再生成してください');
         $spec=Spec::service($params['service']??null);$name=$spec['name'];$path=$this->confPath($name);
         $old=$this->currentForErrors($spec);$history=new ApacheHistory($this->cfg);$revision=(string)($params['revision']??'');$conf=\Pjas\Shared\SensitiveFiles::decorate($history->snapshot($name,$revision));$this->assertControlHostSafe($conf);
         if(!empty((new SitePause($this->cfg))->read($name)['enabled'])||str_contains($conf,'# paused service:'))throw new OpException('停止中の設定は復元できません。公開状態の通常設定を選んでください');

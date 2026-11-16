@@ -28,7 +28,7 @@ $original=<<<'CONF'
     SSLCertificateKeyFile /etc/ssl/cloudflare/memo.takusumi.work.key
     ProxyPass /ws ws://127.0.0.1:8081
     ProxyPassReverse /ws ws://127.0.0.1:8081
-    ProxyPassMatch ^/api/(.*)$ unix:/run/php/php8.4-fpm.sock|fcgi://localhost/var/www/chat/current/api/index.php
+    ProxyPassMatch ^/api/(.*)$ unix:/run/php/php8.5-fpm.sock|fcgi://localhost/var/www/chat/current/api/index.php
     <Directory /var/www/chat/current/dist>
         FallbackResource /index.html
     </Directory>

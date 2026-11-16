@@ -6,7 +6,7 @@
 
 ## 進め方と前提条件
 
-標準構成は **Ubuntu 24.04、PHP 8.4、Apache 2.4、systemd** です。以下のコマンドはサーバー上で実行します。`sudo` を使える管理者アカウントが必要です。
+標準構成は **Ubuntu 24.04、PHP 8.5、Apache 2.4、systemd** です。以下のコマンドはサーバー上で実行します。`sudo` を使える管理者アカウントが必要です。
 
 | 先に決めるもの | この手順での例・注意点 |
 | --- | --- |
@@ -23,24 +23,24 @@ Cloudflare Origin CA証明書は、Cloudflare経由の接続を想定してい�
 
 ## 1. 必要パッケージを入れる
 
-Ubuntu 24.04の標準PHPは8.4ではないため、この例では第三者のPHPパッケージ提供元 `ppa:ondrej/php` を追加します。利用組織で認めた提供元を使ってください。Debianなど別の環境にPPAの追加コマンドをそのまま実行しないでください。
+Ubuntu 24.04の標準PHPは8.5ではないため、この例では第三者のPHPパッケージ提供元 `ppa:ondrej/php` を追加します。利用組織で認めた提供元を使ってください。Debianなど別の環境にPPAの追加コマンドをそのまま実行しないでください。
 
 ```bash
 sudo apt update
 sudo apt install -y software-properties-common ca-certificates
 sudo add-apt-repository -y ppa:ondrej/php
 sudo apt update
-sudo apt install -y apache2 php8.4-fpm php8.4-cli php8.4-sqlite3 php8.4-mbstring unzip curl util-linux cron git python3
+sudo apt install -y apache2 php8.5-fpm php8.5-cli php8.5-sqlite3 php8.5-mbstring unzip curl util-linux cron git python3 acl
 sudo a2enmod rewrite proxy_fcgi setenvif ssl headers
-sudo a2enconf php8.4-fpm
-sudo systemctl enable --now cron php8.4-fpm
+sudo a2enconf php8.5-fpm
+sudo systemctl enable --now cron php8.5-fpm
 ```
 
-PHP拡張と、Pythonの標準ライブラリを確認します。`bin/pjas-install-features` はPHP 8.4の実行ファイル・FPMを前提にしています。
+PHP拡張と、Pythonの標準ライブラリを確認します。`bin/pjas-install-features` はPHP 8.5の実行ファイル・FPMを前提にしています。
 
 ```bash
-php8.4 -v
-php8.4 -r 'foreach (["pdo_sqlite", "sqlite3", "mbstring", "openssl", "pcntl", "posix"] as $ext) { if (!extension_loaded($ext)) { fwrite(STDERR, "不足: $ext\n"); exit(1); } } echo "PHP拡張: OK\n";'
+php8.5 -v
+php8.5 -r 'foreach (["pdo_sqlite", "sqlite3", "mbstring", "openssl", "pcntl", "posix"] as $ext) { if (!extension_loaded($ext)) { fwrite(STDERR, "不足: $ext\n"); exit(1); } } echo "PHP拡張: OK\n";'
 python3 -c 'import sqlite3, tarfile, zipfile; print("Python標準ライブラリ: OK")'
 ```
 
@@ -85,7 +85,7 @@ Web側の `db` は管理用SQLite DB、`security_key` は二段階認証等の�
 
 ```bash
 cd /opt/pjas-ctrl
-sudo -u www-data php8.4 bin/pjas-init ops@example.com
+sudo -u www-data php8.5 bin/pjas-init ops@example.com
 ```
 
 12文字以上のパスワードを対話入力します。パスワードはコマンド引数へ書かないでください。手順6の分離処理後、CLIを実行するユーザーは `pjas-control` になります。
@@ -117,8 +117,8 @@ sudo editor /etc/apache2/sites-available/pjas-ctrl.conf
 
 ```bash
 cd /opt/pjas-ctrl
-sudo php8.4 bin/pjas-install-features --check
-sudo php8.4 bin/pjas-install-features --apply
+sudo php8.5 bin/pjas-install-features --check
+sudo php8.5 bin/pjas-install-features --apply
 ```
 
 `--check` は前提条件と変更予定の確認です。`--apply` は実際にユーザー・DB・サービス・設定を変更します。Apache設定の名前を変更した場合は、両方に `--site=設定名` を追加してください。`.conf` は付けません。
@@ -141,8 +141,8 @@ sudo php8.4 bin/pjas-install-features --apply
 sudo a2ensite pjas-ctrl
 sudo apachectl configtest
 sudo systemctl reload apache2
-systemctl status pjas-agentd pjas-control-web php8.4-fpm pjas-monitor.timer --no-pager
-sudo -u pjas-control php8.4 /opt/pjas-ctrl/bin/pjasctl services
+systemctl status pjas-agentd pjas-control-web php8.5-fpm pjas-monitor.timer --no-pager
+sudo -u pjas-control php8.5 /opt/pjas-ctrl/bin/pjasctl services
 ```
 
 設定検査が失敗した場合は、その原因を直すまで次のreloadへ進まないでください。新規導入直後、CLIのサイト一覧が空なのは正常です。

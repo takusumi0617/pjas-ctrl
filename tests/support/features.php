@@ -16,7 +16,7 @@ function fixture(string $name):array{
  foreach(['www','sites','enabled','jobs','uploads','cron','scripts','cronlogs','daemons','units','apachelogs'] as $p)mkdir($dir.'/'.$p,0755);
  $user=posix_getpwuid(posix_geteuid())['name'];$group=posix_getgrgid(posix_getegid())['name'];$cmd=$dir.'/command';file_put_contents($cmd,"#!/bin/sh\nexit 0\n");chmod($cmd,0700);
  $cfg=['control_dir'=>$dir.'/control','www_root'=>$dir.'/www','apache_sites'=>$dir.'/sites','apache_sites_enabled'=>$dir.'/enabled','job_dir'=>$dir.'/jobs','upload_dir'=>$dir.'/uploads','github_repo_dir'=>$dir.'/repositories',
- 'web_user'=>$user,'web_group'=>$group,'apachectl'=>$cmd,'a2ensite'=>$cmd,'a2dissite'=>$cmd,'systemctl'=>$cmd,'daemon_dir'=>$dir.'/daemons','daemon_unit_dir'=>$dir.'/units','cron_dir'=>$dir.'/cron','cron_script_dir'=>$dir.'/scripts','cron_log_dir'=>$dir.'/cronlogs','apache_log_dir'=>$dir.'/apachelogs','pause_dir'=>$dir.'/pauses','preview_root'=>$dir.'/previews','preview_user'=>$user,'php_fpm_bin'=>$cmd,'health_retries'=>0,'health_wait'=>0,'hook_timeout'=>10];
+ 'web_user'=>$user,'web_group'=>$group,'apachectl'=>$cmd,'a2ensite'=>$cmd,'a2dissite'=>$cmd,'systemctl'=>$cmd,'daemon_dir'=>$dir.'/daemons','daemon_unit_dir'=>$dir.'/units','cron_dir'=>$dir.'/cron','cron_script_dir'=>$dir.'/scripts','cron_log_dir'=>$dir.'/cronlogs','apache_log_dir'=>$dir.'/apachelogs','pause_dir'=>$dir.'/pauses','preview_root'=>$dir.'/previews','preview_user'=>$user,'php_fpm_bin'=>$cmd,'preview_fpm_bin'=>$cmd,'health_retries'=>0,'health_wait'=>0,'hook_timeout'=>10];
  return [$dir,$cfg];
 }
 function webDb(string $dir):void{

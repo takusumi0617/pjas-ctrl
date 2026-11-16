@@ -6,7 +6,7 @@
 
 ## 1. 作業時間と退避対象を確認する
 
-公開・切り戻し・削除・バックアップ・初期化が実行中でないことを、作業履歴で確認します。監視タイマーと管理画面・agentを停止する時間を確保してください。初回準備コマンドはPHP 8.4 FPMも再起動するため、同じFPMを使う本番サイトへの影響も考慮します。
+公開・切り戻し・削除・バックアップ・初期化が実行中でないことを、作業履歴で確認します。監視タイマーと管理画面・agentを停止する時間を確保してください。初回準備コマンドはApacheの実行ユーザーをpjas-apacheへ分離し、ApacheとPHP 8.5 FPMを再起動するため、同じFPMを使う本番サイトへの影響も考慮します。
 
 標準の保存先は次のとおりです。独自パスは `config.php` と `agent/config.php` で確認します。
 
@@ -16,7 +16,7 @@
 | 管理DB・二段階認証等の暗号鍵 | `/var/lib/pjas` |
 | GitHub App・通知・バックアップ等のroot管理情報 | `/var/lib/pjas-control` |
 | GitHub取得元・初回設定、デーモン、一時停止状態 | `/var/lib/pjas-repositories`、`/var/lib/pjas-daemons`、`/var/lib/pjas-pauses` |
-| Apache、FPM、サービス定義 | `/etc/apache2`、`/etc/php/8.4/fpm`、`/etc/pjas-control`、`/etc/systemd/system/pjas-*` |
+| Apache、FPM、サービス定義 | `/etc/apache2`、`/etc/php/8.5/fpm`、`/etc/pjas-control`、`/etc/systemd/system/pjas-*` |
 | v2の管理者台帳・保護領域 | `/etc/pjas/components.json` と、管理者が割り当てた領域 |
 
 退避物には秘密情報が含まれます。root専用の場所へ置き、長期保存・別ホストへの保管では暗号化してください。サイトの共有データ用バックアップだけで、ctrl自身やCAの状態を復旧できるわけではありません。
@@ -35,7 +35,7 @@ sudo install -d -o root -g root -m 0700 "$PJAS_BACKUP_DIR"
 sudo cp config.php "$PJAS_BACKUP_DIR/web-config.php"
 sudo cp agent/config.php "$PJAS_BACKUP_DIR/agent-config.php"
 sudo git rev-parse HEAD | sudo tee "$PJAS_BACKUP_DIR/commit.txt" >/dev/null
-sudo php8.4 -r '$src = new SQLite3("/var/lib/pjas/pjas.db"); $dst = new SQLite3($argv[1]); if (!$src->backup($dst)) { exit(1); } $dst->close(); $src->close();' "$PJAS_BACKUP_DIR/pjas.db"
+sudo php8.5 -r '$src = new SQLite3("/var/lib/pjas/pjas.db"); $dst = new SQLite3($argv[1]); if (!$src->backup($dst)) { exit(1); } $dst->close(); $src->close();' "$PJAS_BACKUP_DIR/pjas.db"
 ```
 
 SQLiteは単純なファイルコピーではなく、バックアップAPIを使います。上の退避は設定と管理DBだけです。表に挙げたroot管理情報やサービス設定も、利用しているバックアップ手段で退避してください。保存に失敗した場合は、その原因を直してから更新へ進みます。
@@ -64,8 +64,8 @@ sudo editor agent/config.php
 ## 4. 事前確認と適用を行う
 
 ```bash
-sudo php8.4 bin/pjas-install-features --check
-sudo php8.4 bin/pjas-install-features --apply
+sudo php8.5 bin/pjas-install-features --check
+sudo php8.5 bin/pjas-install-features --apply
 ```
 
 管理画面のApache設定が `pjas-ctrl.conf` 以外なら、両方に `--site=設定名` を付けます。コードやDB・ログの配置先を変えている場合は、systemdのパス設定も確認してください。
@@ -84,8 +84,8 @@ sudo php8.4 bin/pjas-install-features --apply
 ## 5. 更新後の確認
 
 ```bash
-systemctl status pjas-agentd pjas-control-web php8.4-fpm pjas-monitor.timer --no-pager
-sudo -u pjas-control php8.4 /opt/pjas-ctrl/bin/pjasctl services
+systemctl status pjas-agentd pjas-control-web php8.5-fpm pjas-monitor.timer --no-pager
+sudo -u pjas-control php8.5 /opt/pjas-ctrl/bin/pjasctl services
 sudo apachectl configtest
 ```
 
@@ -103,12 +103,12 @@ sudo journalctl -u pjas-control-web -n 100 --no-pager
 sudo journalctl -u pjas-monitor.service -n 100 --no-pager
 sudo tail -n 100 /var/log/pjas/control-web-error.log
 sudo apachectl configtest
-sudo php-fpm8.4 --test
+sudo php-fpm8.5 --test
 ```
 
 | 症状 | 確認するもの |
 | --- | --- |
-| `--check` で停止する | PHP 8.4/FPM・拡張・Python等の有無、Apache設定名、コードの配置先 |
+| `--check` で停止する | PHP 8.5/FPM・拡張・Python等の有無、Apache設定名、コードの配置先 |
 | 管理画面へ接続できない | ApacheのServerName・証明書・アクセス元制限、専用HTTPサービス、FPM |
 | agentへ接続できない | `agent_socket` と `socket` の一致、agentのログ、`pjas-control` の `pjas` グループ所属 |
 | DB・ログを書き込めない | ファイル所有者、親ディレクトリの権限、systemdの `ReadWritePaths` |
@@ -116,4 +116,6 @@ sudo php-fpm8.4 --test
 
 初回準備の退避先は、コマンドの出力に表示されます。復旧が必要な場合は、その退避内容と手順2のバックアップを確認し、コード・設定・DB・権限のどこを戻すかを決めます。旧DBを稼働中の環境へ上書きしたり、旧コードへ戻せばDBも戻ったと判断したりしないでください。
 
-コードの更新を伴わず追加テーブルだけを反映する場合は、対象版のコードを確認したうえで `sudo -u pjas-control php8.4 /opt/pjas-ctrl/bin/pjas-migrate` を使います。これはデータ復元やサービス更新の代わりにはなりません。
+コードの更新を伴わず追加テーブルだけを反映する場合は、対象版のコードを確認したうえで `sudo -u pjas-control php8.5 /opt/pjas-ctrl/bin/pjas-migrate` を使います。これはデータ復元やサービス更新の代わりにはなりません。
+
+全サイトのPHP移行は管理画面の保存だけでは完了しません。[サイト隔離とPHPアップグレード](site-isolation.md)に沿ってサイト別に切り替え、旧プール・常駐処理・cronまで確認してください。

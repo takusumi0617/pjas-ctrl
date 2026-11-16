@@ -55,6 +55,7 @@ $r->post('/services/github-preview', [$svc, 'githubPreview'], 'owner');
 $r->post('/services', [$svc, 'create'], 'owner');
 $r->get('/services/{name}', [$svc, 'show']);
 $r->post('/services/{name}/settings', [$svc, 'updateSettings'], 'owner');
+$r->post('/services/{name}/isolation', [$svc, 'isolation'], 'owner');
 $r->post('/services/{name}/health', [$svc, 'health'], 'viewer');
 
 $dep = new DeployController();

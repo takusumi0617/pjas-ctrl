@@ -59,7 +59,7 @@ final class SitePause
     {
         if (empty($this->read($spec['name'])['enabled'])) return $normal;
         $dir = $this->dir($spec['name']);
-        $sock = $this->cfg['pause_fpm_socket'] ?? '/run/php/php8.4-fpm.sock';
+        $sock = $this->cfg['pause_fpm_socket'] ?? '/run/php/php'.\Pjas\Shared\PhpRuntime::controlVersion().'-fpm.sock';
         // 独自ProxyPassやリダイレクトを通さず、すべてのURLに停止ページを返す。
         preg_match_all('~<VirtualHost\s+([^>]+)>\s*\R(.*?)</VirtualHost>~is', $normal, $blocks, PREG_SET_ORDER);
         if (!$blocks) throw new OpException('停止用の公開設定を生成できません');

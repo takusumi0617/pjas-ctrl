@@ -22,7 +22,7 @@ rejects(fn()=>PjasManifest::parse(json_encode(array_replace($manifest,['version'
 rejects(fn()=>PjasManifest::parse(json_encode($manifest+['typo'=>true])));
 rejects(fn()=>PjasManifest::parse(json_encode(array_replace($manifest,['apache'=>['file'=>'../outside']]))));
 $spec=['name'=>'new-project','domain'=>'new.example.com','runtime'=>'static','docroot'=>'dist','tls'=>1,'allow_override'=>'None','extra_conf'=>'','shared'=>[],'hooks'=>[]];
-$conf="<VirtualHost *:443>\nServerName old.example.com\nDocumentRoot /var/www/old-project/dist\n<Directory /var/www/old-project/dist>\nRequire all granted\nUnknownDirective preserve\n</Directory>\nProxyPassMatch ^/api unix:/run/php/php8.4-fpm.sock|fcgi://localhost/var/www/old-project/api/index.php\nSSLCertificateFile /old/ssl.pem\n</VirtualHost>\n";
+$conf="<VirtualHost *:443>\nServerName old.example.com\nDocumentRoot /var/www/old-project/dist\n<Directory /var/www/old-project/dist>\nRequire all granted\nUnknownDirective preserve\n</Directory>\nProxyPassMatch ^/api unix:/run/php/php8.5-fpm.sock|fcgi://localhost/var/www/old-project/api/index.php\nSSLCertificateFile /old/ssl.pem\n</VirtualHost>\n";
 $dir=sys_get_temp_dir().'/pjas-manifest-'.bin2hex(random_bytes(6)); mkdir($dir); mkdir($dir.'/sites'); mkdir($dir.'/enabled'); mkdir($dir.'/www/new-project/current/dist',0755,true);
 $cfg=['www_root'=>$dir.'/www','github_repo_dir'=>$dir.'/repos','apache_sites'=>$dir.'/sites','apache_sites_enabled'=>$dir.'/enabled',
  'daemon_dir'=>$dir.'/daemons','daemon_unit_dir'=>$dir.'/units','cron_dir'=>$dir.'/cron','cron_script_dir'=>$dir.'/scripts','cron_log_dir'=>$dir.'/cronlogs',

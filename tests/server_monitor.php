@@ -13,7 +13,7 @@ try{
  rejects(fn()=>$ops->saveSettings(['channel'=>'discord','webhook_url'=>'https://localhost/secret']));
  $body=Notifier::payload('discord',str_repeat('😀',2000).'@everyone');check(mb_strlen($body['content'],'UTF-8')===950&&$body['allowed_mentions']['parse']===[],'Discordの文字数上限と全体メンションを制限する');
  check(Notifier::payload('webhook','hello')['text']==='hello','従来のWebhook形式を維持する');
- $monitor=new ServerMonitor($cfg);foreach(['ssh.service','pjas-agentd.service','apache2.service;id','../../evil','php8.4-fpm.service --all'] as $unit)rejects(fn()=>$monitor->restart(['unit'=>$unit]));
+ $monitor=new ServerMonitor($cfg);foreach(['ssh.service','pjas-agentd.service','apache2.service;id','../../evil','php8.5-fpm.service --all'] as $unit)rejects(fn()=>$monitor->restart(['unit'=>$unit]));
  $store=new ControlStore($cfg);$state=['time'=>time(),'checks'=>[],'cpu_ticks'=>[1,2],'fingerprints'=>['/secret'=>'hash'],'streak'=>['cpu'=>2],'history'=>[]];$store->write('server-monitor',$state);$out=$monitor->snapshot();check(!isset($out['fingerprints'],$out['cpu_ticks'],$out['streak'])&&$out['time']===$state['time'],'短時間の測定を再利用し内部データを公開しない');
  $state['time']=time()-120;$state['fingerprints']=['/etc/removed-fixture.conf'=>'abc'];$store->write('server-monitor',$state);
  $monitor=new ServerMonitor($cfg,static function($args){$out=match($args[0]){'/bin/systemctl'=>"Id=apache2.service\nLoadState=loaded\nActiveState=failed\nUnitFileState=enabled\n",'/usr/bin/journalctl'=>str_repeat("Failed password for fixture\n",21),'/usr/bin/apt'=>"demo/noble-security 2 amd64 [upgradable from: 1]\n",default=>''};return ['code'=>0,'out'=>$out,'err'=>''];});

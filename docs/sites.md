@@ -29,12 +29,12 @@ GitHub・圧縮ファイルを指定した登録では、通常サイトの初�
 
 ```bash
 cd /opt/pjas-ctrl
-sudo -u pjas-control php8.4 bin/pjasctl services
-sudo -u pjas-control php8.4 bin/pjasctl deploy billing ./billing-1.8.2.zip --label v1.8.2
-sudo -u pjas-control php8.4 bin/pjasctl adopt billing
-sudo -u pjas-control php8.4 bin/pjasctl rollback billing 20260814-183012
-sudo -u pjas-control php8.4 bin/pjasctl vhost billing
-sudo -u pjas-control php8.4 bin/pjasctl vhost billing --apply
+sudo -u pjas-control php8.5 bin/pjasctl services
+sudo -u pjas-control php8.5 bin/pjasctl deploy billing ./billing-1.8.2.zip --label v1.8.2
+sudo -u pjas-control php8.5 bin/pjasctl adopt billing
+sudo -u pjas-control php8.5 bin/pjasctl rollback billing 20260814-183012
+sudo -u pjas-control php8.5 bin/pjasctl vhost billing
+sudo -u pjas-control php8.5 bin/pjasctl vhost billing --apply
 ```
 
 `vhost` は差分表示、`--apply` 付きは設定の反映です。圧縮ファイルは `pjas-control` が読み取れる場所へ置きます。CLIからの操作でもagent側で検証します。
@@ -82,7 +82,7 @@ sudo -u pjas-control php8.4 bin/pjasctl vhost billing --apply
 
 ## デーモンの実行内容の編集とサイト移行
 
-「常駐プログラム」の「設定を編集する」で、作成済みのデーモンに加えて既存デーモンの起動コマンドと作業フォルダも編集できます。既存デーモンは「起動設定もctrlで管理し、公開先の変更に追従する」を選びます。作業フォルダはサイト内の相対パスです。既存デーモンの起動コマンドは `/usr/bin/php8.4 websocket/server.php start` のように実行ファイルの絶対パスから始める1行で指定します。systemd の ExecStart として実行し、シェルを経由しません。
+「常駐プログラム」の「設定を編集する」で、作成済みのデーモンに加えて既存デーモンの起動コマンドと作業フォルダも編集できます。既存デーモンは「起動設定もctrlで管理し、公開先の変更に追従する」を選びます。作業フォルダはサイト内の相対パスです。既存デーモンの起動コマンドは `/usr/bin/php8.5 websocket/server.php start` のように実行ファイルの絶対パスから始める1行で指定します。systemd の ExecStart として実行し、シェルを経由しません。
 
 `{{site_root}}` は `/var/www/サイト名/current` に置き換わります。サイトの直置きパスや日時付き releases のパスはこの記法へ正規化します。shared の固定パスは維持します。保存だけでは再起動せず、再起動ボタンで変更を反映します。以降の公開・ロールバック時には、追従対象の稼働中プログラムを再起動して同じバージョンにそろえます。以前のバージョンで作成したデーモンも一度設定を保存してください。
 
@@ -112,7 +112,7 @@ HTTPとHTTPS、別名ドメイン、APIやWebSocketの新規接続も停止ペ�
 
 停止状態はリリースから独立して保存し、公開・ロールバックや公開設定の再反映でも維持します。停止中の公開では通常ページのヘルスチェックをスキップします。「サイトを再開する」で、独自設定の継承を含む通常の公開設定へ戻します。反映に失敗した場合は公開設定と停止状態を復元します。
 
-停止ページの応答にはPHP 8.4 FPMを使用します（静的サイトも同様）。`agent/config.php` の `pause_fpm_socket` でソケットを指定できます。PHP-FPMを停止しないでください。保存先 `/var/lib/pjas-pauses` はroot所有とし、バックアップに含めます。DB更新は不要です。
+停止ページの応答にはPHP 8.5 FPMを使用します（静的サイトも同様）。`agent/config.php` の `pause_fpm_socket` でソケットを指定できます。PHP-FPMを停止しないでください。保存先 `/var/lib/pjas-pauses` はroot所有とし、バックアップに含めます。DB更新は不要です。
 
 導入済みのサーバーへ反映する場合は、先に [更新手順](upgrade.md) を実施してください。
 
@@ -184,3 +184,7 @@ GitHub・圧縮ファイルからの公開、既存ファイルの取り込み�
 検出は`node_modules`・`vendor`・`.git`やシンボリックリンク先を除外し、1回の走査は50,000項目までです。パスには従来の共有パスと同じ英数字等の制約があります。SQLダンプやJSONは自動検出対象外で、必要なら引き継ぐパスに明示します。MySQL・PostgreSQLなど外部DBのコピーや構造の巻き戻しは行いません。
 
 保存上は既存の`shared_paths`に`@databases`という内部フラグを保持します。通常のパスとしては扱わず、画面ではチェックボックスに置き換えて表示します。共有フォルダや設定ファイルの初期値は、初回公開時に同梱された実データから引き継ぎ、登録時に空のファイルで置き換えません。
+
+## 隔離とPHPの更新
+
+新規サイトは隔離が既定です。既存サイトの移行とPHPの切り替えは、設定タブの「隔離とPHPアップグレード」を使います。[移行の準備と検証](site-isolation.md)を確認してください。

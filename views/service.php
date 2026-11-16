@@ -18,6 +18,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
         'unhealthy' => '<span class="tag t-err">異常</span>',
         default     => '<span class="tag t-mut">未確認</span>',
     } ?>
+  <?php if(isset($isolation)): ?><span class="tag <?= !empty($isolation['isolated'])?'t-ok':'t-warn' ?>"><?= !empty($isolation['isolated'])?'サイト専用ユーザーで隔離':'共通ユーザー・隔離への移行が必要' ?></span><?php endif; ?>
   <span class="spacer"></span>
   <?php if (Auth::can('owner')): ?><a class="btn" href="/components?service=<?= $name ?>">隔離コンポーネント</a><?php endif; ?>
   <form method="post" action="/services/<?= $name ?>/health"><?= Csrf::field() ?>
@@ -253,6 +254,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
   </table></div>
 
 <?php elseif ($tab === 'settings'): ?>
+<?php require __DIR__.'/isolation.php'; ?>
 <?php if(Auth::can('owner')):?><details class="card"><summary class="card-h">サイトの管理を終了する・削除する</summary><div class="card-b"><p>残すものを確認してから、管理解除または30日間復元できる削除を選べます。</p><a class="btn d" href="/services/<?= $name ?>/delete">削除方法と影響を確認する</a></div></details><?php endif;?>
   <div class="sub">このサイトの設定です。公開アドレスや公開フォルダを変えたときは、保存したあと
     「公開設定」タブで反映してください。</div>
@@ -266,11 +268,12 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
         <input name="domain" value="<?= View::e($s['domain']) ?>">
         <div class="hint">利用者がブラウザで開くアドレスです。変更後は「公開設定」タブで反映が必要です。</div></div>
 
-      <div class="field"><label>サイトの種類</label><select name="runtime">
+      <div class="field"><label>サイトの種類</label><select name="runtime" <?= !empty($isolation['isolated'])?'disabled':'' ?>>
         <?php foreach (ServiceRepo::RUNTIMES as $rt): ?>
           <option value="<?= View::e($rt) ?>" <?= $s['runtime'] === $rt ? 'selected' : '' ?>>
             <?= View::e(Labels::runtime($rt)) ?></option>
         <?php endforeach; ?></select>
+        <?php if(!empty($isolation['isolated'])): ?><input type="hidden" name="runtime" value="<?= View::e($s['runtime']) ?>"><div class="hint">PHPの変更は上の「隔離とPHPアップグレード」で適用してください。</div><?php endif; ?>
         <div class="hint">PHP で動くサイトかどうかを選びます。HTML や画像だけのサイトは「静的ファイルのみ」です。</div></div>
 
       <div class="field"><label>公開するフォルダ</label>
@@ -333,7 +336,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
           <span class="mono"><?= View::e(implode(', ', VhostRenderer::ALLOWED_DIRECTIVES)) ?></span></div></div>
         <?php if ($s['name'] === 'pjas-chat'): ?>
         <details><summary>pjas-chat 用の設定例（コピーして上の欄へ貼り付け）</summary>
-        <p>公開するフォルダを dist、PHP を php8.4-fpm に設定してください。追加欄に既存の指定がある場合は内容を確認して統合します。</p>
+        <p>公開するフォルダを dist、PHP を php8.5-fpm に設定してください。追加欄に既存の指定がある場合は内容を確認して統合します。</p>
         <textarea readonly rows="15" class="mono">&lt;Directory {{document_root}}&gt;
     Require all granted
     FallbackResource /index.html
@@ -343,7 +346,7 @@ $tabs = ['overview' => '概要', 'releases' => 'バージョン履歴', 'vhost' 
 &lt;/Directory&gt;
 ProxyPass /ws ws://127.0.0.1:8081
 ProxyPassReverse /ws ws://127.0.0.1:8081
-ProxyPassMatch ^/api(?:/.*)?$ unix:/run/php/php8.4-fpm.sock|fcgi://localhost{{site_root}}/api/index.php</textarea>
+ProxyPassMatch ^/api(?:/.*)?$ unix:/run/php/php8.5-fpm.sock|fcgi://localhost{{site_root}}/api/index.php</textarea>
         <p>Apache の proxy・proxy_fcgi・proxy_wstunnel・rewrite・headers・ssl モジュールが必要です。WebSocket の常駐プログラムは別途起動してください。</p>
         </details>
         <?php endif; ?>

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 namespace Pjas\Agentd;
+require_once dirname(__DIR__,2).'/shared/PhpRuntime.php';
 
 /**
  * web から届いたサービス仕様の検証。
@@ -11,7 +12,7 @@ namespace Pjas\Agentd;
  */
 final class Spec
 {
-    public const RUNTIMES = ['php8.4-fpm', 'php8.3-fpm', 'php8.2-fpm', 'php8.1-fpm', 'static'];
+    public const RUNTIMES = \Pjas\Shared\PhpRuntime::RUNTIMES;
 
     public const ALLOWED_DIRECTIVES = [
         'Header', 'RequestHeader', 'Redirect', 'RedirectMatch',
@@ -22,18 +23,7 @@ final class Spec
     ];
 
     /** after_deploy フックの許可リスト (web 側 app/Domain/Hooks.php と同一) */
-    public const ALLOWED_HOOKS = [
-        '/^\/usr\/bin\/php8\.[1-4] \/usr\/bin\/composer install( --no-dev)?( -o| --optimize-autoloader)?( --no-interaction)?$/',
-        '/^\/usr\/bin\/php8\.[1-4] \/usr\/bin\/composer dump-autoload( -o| --optimize)?$/',
-        '/^\/usr\/bin\/php8\.[1-4] artisan (migrate --force|config:cache|route:cache|view:cache|storage:link|optimize|optimize:clear)$/',
-        '/^composer install( --no-dev)?( -o| --optimize-autoloader)?( --no-interaction)?$/',
-        '/^composer dump-autoload( -o| --optimize)?$/',
-        '/^php artisan (migrate --force|config:cache|route:cache|view:cache|storage:link|optimize|optimize:clear)$/',
-        '/^php bin\/console (cache:clear|doctrine:migrations:migrate --no-interaction)$/',
-        '/^npm ci( --omit=dev)?$/',
-        '/^npm run build$/',
-    ];
-
+    public const ALLOWED_HOOKS = \Pjas\Shared\PhpRuntime::HOOKS;
     public static function name(mixed $v): string
     {
         $v = is_string($v) ? $v : '';
@@ -116,6 +106,7 @@ final class Spec
         if (preg_match('/[;&|`$><\n\r\\\\]/', $cmd)) {
             throw new OpException("フックにシェルメタ文字は使えません: {$cmd}");
         }
+        if(preg_match('~^/usr/bin/php([0-9]+\.[0-9]+) ~',$cmd,$m)&&!in_array('php'.$m[1].'-fpm',self::RUNTIMES,true))throw new OpException('未登録のPHPフックです');
         foreach (self::ALLOWED_HOOKS as $re) {
             if (preg_match($re, $cmd)) {
                 return explode(' ', $cmd);      // argv 配列で実行する
@@ -185,7 +176,7 @@ final class Spec
         if (!is_array($s)) {
             throw new OpException('service パラメータがありません');
         }
-        $runtime = (string) ($s['runtime'] ?? 'php8.4-fpm');
+        $runtime = (string) ($s['runtime'] ?? \Pjas\Shared\PhpRuntime::DEFAULT_RUNTIME);
         if (!in_array($runtime, self::RUNTIMES, true)) {
             throw new OpException("ランタイムが不正です: {$runtime}");
         }

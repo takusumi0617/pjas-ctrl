@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 namespace Pjas\Domain;
+require_once dirname(__DIR__,2).'/shared/PhpRuntime.php';
 
 /** .pjas version 1 / 2。未知のキーは黙って無視せず、入力ミスとして返す。 */
 final class PjasManifest
@@ -68,7 +69,7 @@ final class PjasManifest
     public static function defaults(array $m): array
     {
         $s = $m['site'];
-        return ['name'=>$s['name'], 'domain'=>$s['domain'] ?? '', 'runtime'=>$s['runtime'] ?? 'php8.4-fpm',
+        return ['name'=>$s['name'], 'domain'=>$s['domain'] ?? '', 'runtime'=>$s['runtime'] ?? \Pjas\Shared\PhpRuntime::DEFAULT_RUNTIME,
             'docroot'=>$s['document_root'] ?? 'public', 'tls'=>($s['https'] ?? true) ? 1 : 0,
             'health_path'=>$s['health_path'] ?? '/', 'health_status'=>$s['health_status'] ?? 200,
             'shared_paths'=>implode(',', $m['shared'] ?? []), 'hooks'=>implode("\n", $m['prepare'] ?? [])];

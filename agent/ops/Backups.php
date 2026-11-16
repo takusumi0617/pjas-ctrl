@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 namespace Pjas\Agentd\Ops;
+require_once dirname(__DIR__).'/lib/SiteIsolation.php';
 use Pjas\Agentd\{ControlStore,EncryptedFile,Paths,Spec,Proc,OpException,SharedDatabases,JobLog,SitePause};
 require_once dirname(__DIR__).'/lib/ControlStore.php';
 require_once dirname(__DIR__).'/lib/SiteLifecycleGuard.php';
@@ -126,6 +127,7 @@ final class Backups
             if(!rename($incoming,$shared)){rename($old,$shared);throw new OpException('共有データを復元できません');}$swapped=true;
             $current=$this->paths->currentTag($name)===null?null:$this->paths->assertInside($name,$this->paths->current($name));
             if($current!==null)(new SharedDatabases($this->cfg,$this->paths))->link($name,$current,$meta['databases']??[],null,new JobLog((int)($params['job_id']??0),$this->cfg['job_dir']));
+            \Pjas\Agentd\SiteIsolation::protect($this->cfg,$name,$spec['docroot']);
             if($spec['runtime']!=='static')Proc::must([$this->cfg['systemctl'],'reload',$spec['runtime']],null,60);
             Proc::must([$this->cfg['apachectl'],'graceful'],null,60);
             Proc::run(['/bin/rm','-rf','--',$old],null,300);$swapped=false;

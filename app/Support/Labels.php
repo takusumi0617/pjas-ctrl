@@ -6,7 +6,7 @@ namespace Pjas\Support;
 /**
  * 画面表示用の日本語ラベル。
  *
- * DB に入る値 (healthy / deploy / php8.4-fpm など) はそのままに、
+ * DB に入る値 (healthy / deploy / php8.5-fpm など) はそのままに、
  * 画面では初めて使う人にも意味が分かる語を出すための対応表。
  */
 final class Labels

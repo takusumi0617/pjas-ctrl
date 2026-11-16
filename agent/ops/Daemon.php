@@ -219,6 +219,7 @@ final class Daemon
             $service = $this->site($params['service'] ?? '');
             $label = trim((string) ($params['label'] ?? ''));
             if ($label === '' || strlen($label) > 240 || preg_match('/[\x00-\x1f]/', $label)) throw new OpException('表示名を1〜80文字程度で入力してください');
+            if(isset($this->cfg['isolation_site'])&&!empty($params['target_service'])&&$params['target_service']!==$service)throw new OpException('隔離サイト間の常駐処理の移動はできません。移動先で新規登録してください');
             $editing = !empty($params['original_unit']);
             $old = null;
             if ($editing) {
@@ -233,6 +234,7 @@ final class Daemon
                 if (isset($rows[$unit])) throw new OpException('すでにサイトに関連付けられています');
                 if (!$managed && !in_array($unit, $this->candidates([])['units'], true)) throw new OpException('関連付けできる既存サービスではありません');
             }
+            if(isset($this->cfg['isolation_site'])&&!$managed)throw new OpException('隔離サイトの常駐処理は専用ユーザーで新規登録してください');
             $row = array_replace($old ?? [], ['unit' => $unit, 'label' => $label, 'service' => $service, 'managed' => $managed, 'command' => '']);
             if (!$managed && (!empty($params['edit_execution']) || (!empty($old['follow_paths']) && $service !== $old['service']))) {
                 return $this->saveExisting($row, $params, $old);
@@ -246,6 +248,7 @@ final class Daemon
                 if ($command === '' || strlen($command) > 4000 || str_contains($command, "\0")) throw new OpException('実行内容を1〜4000バイトで入力してください');
                 $base = rtrim($this->cfg['www_root'], '/') . '/' . ($old['service'] ?? $service);
                 $command = DaemonDefinition::template($command, $base);
+                if(isset($this->cfg['isolation_runtime']))$command=\Pjas\Shared\PhpRuntime::command($command,$this->cfg['isolation_runtime']);
                 $row['command'] = $command;
                 $row['follow_paths'] = true;
                 $row['working_subdir'] = Spec::relPath($params['working_subdir'] ?? ($old['working_subdir'] ?? ''), '作業フォルダ');

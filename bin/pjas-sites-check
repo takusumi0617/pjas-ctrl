@@ -1,0 +1,39 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+require dirname(__DIR__).'/app/bootstrap.php';
+spl_autoload_register(static function(string $class):void {
+    $prefix='Pjas\\Agentd\\';if(!str_starts_with($class,$prefix))return;
+    $rel=substr($class,strlen($prefix));$path=PJAS_ROOT.'/agent/'.(str_starts_with($rel,'Ops\\')?'ops/'.substr($rel,4):'lib/'.$rel).'.php';
+    if(is_file($path))require_once $path;
+});
+use Pjas\Agentd\{SiteIsolation,Proc,Paths};
+use Pjas\Shared\PhpRuntime;
+use Pjas\Support\{Config,Db};
+if(posix_geteuid()!==0){fwrite(STDERR,"rootで実行してください。検証は未実施です。\n");exit(77);}
+$cfg=require PJAS_ROOT.'/agent/config.php';$iso=new SiteIsolation($cfg);$paths=new Paths($cfg['www_root']);$failed=false;$identities=[];
+$apache=posix_getpwnam($cfg['apache_user']??'');$legacy=posix_getpwnam($cfg['web_user']);
+if(!$apache||$apache['uid']===0||$apache['uid']===$legacy['uid']){fwrite(STDERR,"ApacheとアプリのUIDが分離されていません\n");exit(1);}
+$sites=Db::all("SELECT name,runtime,docroot FROM services WHERE id NOT IN(SELECT service_id FROM service_lifecycle WHERE state<>'active')");
+foreach($sites as $site){
+    $name=$site['name'];
+    if(\Pjas\Agentd\Ops\Components::protectedSite($cfg,$name)){echo $name.": v2（pjas-components-checkで検証）\n";continue;}
+    try{
+        $state=$iso->state($name);if(($state['status']??'')!=='ready')throw new RuntimeException('隔離へ移行してください');
+        $scoped=$iso->scope($name);$user=$scoped['web_user'];$uid=posix_getpwnam($user)['uid'];
+        if(isset($identities[$uid]))throw new RuntimeException('別サイトとUIDが共有されています');$identities[$uid]=$name;
+        if($state['runtime']!==$site['runtime'])throw new RuntimeException('DBと実行中PHPの設定が一致しません');
+        PhpRuntime::requireInstalled($site['runtime']);
+        if(Proc::run(['/usr/bin/test','-w',$paths->shared($name)],null,10,$user)['code']!==0)throw new RuntimeException('自サイトの共有データを書き込めません');
+        foreach([$paths->base($name),$paths->releases($name),$paths->current($name)] as $path)if(Proc::run(['/usr/bin/test','-w',$path],null,10,$user)['code']===0)throw new RuntimeException('管理領域・公開コードが書き換え可能です');
+        foreach($sites as $other){if($other['name']===$name)continue;foreach(['-r','-w','-x'] as $flag)if(Proc::run(['/usr/bin/test',$flag,$paths->shared($other['name'])],null,10,$user)['code']===0)throw new RuntimeException('他サイトの共有領域にアクセスできます');}
+        if($site['runtime']!=='static'){
+            $socket=SiteIsolation::socket($name,$site['runtime']);$st=@stat($socket);$apache=posix_getpwnam($scoped['apache_user']);
+            if(!$st||($st['mode']&0170000)!==0140000||($st['mode']&0777)!==0600||$st['uid']!==$apache['uid'])throw new RuntimeException('サイト別FPMソケットの状態・権限が不正です');
+            if(Proc::run(['/usr/bin/test','-w',$socket],null,10,$cfg['web_user'])['code']===0)throw new RuntimeException('旧共通ユーザーがFPMソケットへ接続できます');
+            foreach(PhpRuntime::RUNTIMES as $runtime){if($runtime==='static'||$runtime===$site['runtime'])continue;if(is_file('/etc/php/'.PhpRuntime::version($runtime).'/fpm/pool.d/pjas-'.$name.'.conf'))throw new RuntimeException('旧バージョンのサイト別FPM設定が残っています');}
+        }
+        echo $name.": OK / ".$site['runtime']."\n";
+    }catch(Throwable $e){$failed=true;fwrite(STDERR,$name.': '.$e->getMessage()."\n");}
+}
+exit($failed?1:0);

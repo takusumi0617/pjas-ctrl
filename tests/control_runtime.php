@@ -6,4 +6,4 @@ check(str_contains($new,'Require ip 10.0.0.0/8')&&str_contains($new,'ServerName 
 check(!str_contains($new,'SetHandler "proxy:unix:')&&str_contains($new,'ProxyPass / http://127.0.0.1:8184/'),'管理画面だけを専用HTTP・PHPサービスへ転送する');
 check(str_contains($new,'<LocationMatch "^/hooks/github$">')&&substr_count($new,'Require all granted')===2,'GitHubの受信URLだけを追加のアクセス制限の例外にする');
 check(ControlRuntime::frontend($new)===$new,'初回準備を繰り返しても転送設定・Webhook例外を重複しない');rejects(fn()=>ControlRuntime::frontend('<Directory /opt/pjas-ctrl/public>Require all granted</Directory>'));
-rejects(fn()=>ControlRuntime::frontend(str_replace('SetHandler "proxy:unix:/run/php/php8.4-fpm.sock|fcgi://localhost"','SetHandler "proxy:unix:/custom/php.sock|fcgi://localhost"',$old)));check(true,'標準外のPHPハンドラーは自動的に消さず、適用を止める');
+rejects(fn()=>ControlRuntime::frontend(str_replace('SetHandler "proxy:unix:/run/php/php8.5-fpm.sock|fcgi://localhost"','SetHandler "proxy:unix:/custom/php.sock|fcgi://localhost"',$old)));check(true,'標準外のPHPハンドラーは自動的に消さず、適用を止める');

@@ -48,8 +48,9 @@ try {
         foreach ([200, 302, 404, 410, 503, 599] as $code) {
             $pause->write('chat', ['enabled' => true, 'code' => $code, 'html' => $html]);
             $ctx = stream_context_create(['http' => ['ignore_errors' => true, 'follow_location' => 0]]);
-            $body = file_get_contents('http://' . $address . '/response.php', false, $ctx);
-            $headers = implode("\n", $http_response_header);
+            $response = fopen('http://' . $address . '/response.php', 'r', false, $ctx);
+            $headers = implode("\n", stream_get_meta_data($response)['wrapper_data']);
+            $body = stream_get_contents($response);fclose($response);
             check(str_contains($headers, ' ' . $code . ' ') && $body === $html && str_contains($headers, 'no-store'), "HTTP {$code} とHTMLをそのまま返しPHPを実行しない");
         }
         foreach ([204, 205, 304] as $code) {

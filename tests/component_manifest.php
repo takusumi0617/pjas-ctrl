@@ -2,9 +2,9 @@
 declare(strict_types=1);
 require __DIR__.'/support/features.php';
 use Pjas\Domain\PjasManifest;
-$m=['version'=>2,'site'=>['name'=>'pjas-cert','domain'=>'cert.example.com','runtime'=>'php8.4-fpm','document_root'=>'public'],'components'=>[
+$m=['version'=>2,'site'=>['name'=>'pjas-cert','domain'=>'cert.example.com','runtime'=>'php8.5-fpm','document_root'=>'public'],'components'=>[
  ['id'=>'web','type'=>'php','execution_profile'=>'cert-web','depends_on'=>['ca']],
- ['id'=>'ca','type'=>'worker','execution_profile'=>'cert-ca','command'=>['/usr/bin/php8.4','ca.php'],'storage'=>['ca-state'],'health_checks'=>['ca-ready'],'setup'=>['ca-init']],
+ ['id'=>'ca','type'=>'worker','execution_profile'=>'cert-ca','command'=>['/usr/bin/php8.5','ca.php'],'storage'=>['ca-state'],'health_checks'=>['ca-ready'],'setup'=>['ca-init']],
 ]];
 $r=PjasManifest::parse(json_encode($m));
 check(array_column($r['components'],'id')===['ca','web'],'依存を起動順に整列する');

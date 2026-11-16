@@ -36,7 +36,7 @@ try {
     rejects(fn() => $d->save(['service' => 'site-a', 'unit' => 'pjas-agentd.service', 'mode' => 'existing', 'label' => '自身']));
     rejects(fn() => $d->save(['service' => 'missing', 'mode' => 'new', 'label' => '存在しないサイト', 'command' => 'sleep 60']));
     check(!in_array('worker.service', $d->candidates([])['units'], true), '関連付け済みは候補から除外');
-    $row = $d->save(['service' => 'site-a', 'mode' => 'new', 'label' => '新規作業', 'command' => 'exec /usr/bin/php8.4 worker.php']);
+    $row = $d->save(['service' => 'site-a', 'mode' => 'new', 'label' => '新規作業', 'command' => 'exec /usr/bin/php8.5 worker.php']);
     $unit = $row['unit'];
     $body = file_get_contents($dir . '/units/' . $unit);
     check(str_contains($body, 'User=www-data') && str_contains($body, '/site-a/current') && str_contains($body, 'Restart=on-failure'), '新規サービスはサイト内で非特権ユーザー実行');

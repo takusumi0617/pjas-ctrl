@@ -7,36 +7,63 @@ require_once PJAS_ROOT.'/agent/lib/SiteLayout.php';require_once PJAS_ROOT.'/agen
 use Pjas\Agentd\Proc;
 use Pjas\Support\Config;
 if(PHP_SAPI!=='cli')exit(1);
-$apply=in_array('--apply',$argv,true);$check=in_array('--check',$argv,true);if(!$apply&&!$check){fwrite(STDERR,"使い方: sudo php8.4 bin/pjas-install-features --check または --apply [--site=pjas-ctrl]\n");exit(1);}
+$apply=in_array('--apply',$argv,true);$check=in_array('--check',$argv,true);if(!$apply&&!$check){fwrite(STDERR,"使い方: sudo php8.5 bin/pjas-install-features --check または --apply [--site=pjas-ctrl] [--php=8.5]\n");exit(1);}
+$phpVersion=\Pjas\Shared\PhpRuntime::controlVersion();foreach($argv as $arg)if(str_starts_with($arg,'--php='))$phpVersion=substr($arg,6);\Pjas\Shared\PhpRuntime::version('php'.$phpVersion.'-fpm');
 $site='pjas-ctrl';foreach($argv as $arg)if(str_starts_with($arg,'--site='))$site=substr($arg,7);
 if(!preg_match('/\A[a-zA-Z0-9][a-zA-Z0-9_-]*\z/D',$site))throw new RuntimeException('管理画面の設定名が不正です');
 $agent=require PJAS_ROOT.'/agent/config.php';$sites=$agent['apache_sites'];$conf=$sites.'/'.$site.'.conf';$db=(string)Config::get('db');$upload=(string)Config::get('upload_dir');$jobs=(string)Config::get('job_dir');$control=$agent['control_dir']??'/var/lib/pjas-control';
 $savedFiles=[];$savedAttrs=[];$backup=null;$webGroupRemoved=false;$changesStarted=false;$previousWebActive=false;$previousTimerActive=false;$sensitiveEnabled=is_file('/etc/apache2/conf-enabled/pjas-sensitive-files.conf');
 $remember=static function(string $path)use(&$savedAttrs):void{if(is_link($path))throw new RuntimeException('シンボリックリンクの設定先は変更できません: '.$path);if(file_exists($path)&&!isset($savedAttrs[$path])){$st=stat($path);$savedAttrs[$path]=[$st['uid'],$st['gid'],$st['mode']&0777];}};
 try{
- foreach(['/usr/bin/php8.4','/usr/sbin/php-fpm8.4','/usr/sbin/apache2','/usr/bin/python3','/usr/bin/git','/usr/bin/curl','/bin/tar'] as $file)if(!is_executable($file))throw new RuntimeException($file.' がありません。PHP 8.4 FPM・SQLite・OpenSSL・git・curl・Apacheを用意してください');
+ foreach(['/usr/bin/php'.$phpVersion,'/usr/sbin/php-fpm'.$phpVersion,'/usr/sbin/apache2','/usr/bin/python3','/usr/bin/git','/usr/bin/curl','/bin/tar','/usr/bin/setfacl','/usr/bin/getfacl'] as $file)if(!is_executable($file))throw new RuntimeException($file.' がありません。PHP 8.5 FPM・SQLite・OpenSSL・git・curl・Apacheを用意してください');
+ $targetExtensions=Proc::run(['/usr/bin/php'.$phpVersion,'-r','foreach (["pdo_sqlite","sqlite3","mbstring","openssl","pcntl","posix"] as $ext) if (!extension_loaded($ext)) { fwrite(STDERR,$ext." missing\n");exit(1); }'],null,15);if($targetExtensions['code']!==0)throw new RuntimeException('対象PHPの拡張を確認してください: '.$targetExtensions['err']);
  if(Proc::run(['/usr/bin/python3','-c','import sqlite3,tarfile,zipfile'],null,10)['code']!==0)throw new RuntimeException('python3の標準ライブラリが必要です。sudo apt install python3 を実行してください');
  if(!class_exists('SQLite3')||!extension_loaded('openssl'))throw new RuntimeException('PHP SQLite3・OpenSSL拡張が必要です');
  if(!is_file($conf)||is_link($conf)||!str_contains(file_get_contents($conf),PJAS_ROOT.'/public'))throw new RuntimeException('管理画面のApache設定が見つかりません。--site=設定名 を指定してください');
  $body=file_get_contents($conf);
- if(!$apply){echo "確認できました。変更予定: DBの追加テーブル、専用ユーザー、管理画面用PHP/HTTPサービス、自動確認タイマー。\n管理画面の設定: {$conf}\nDB: {$db}\nバックアップ先: {$control}\n--apply で適用できます。\n";exit(0);}
+ if(!$apply){echo "確認できました。管理用PHP: {$phpVersion}。変更予定: DBの追加テーブル、専用ユーザー、管理画面用PHP/HTTPサービス、自動確認タイマー。\n管理画面の設定: {$conf}\nDB: {$db}\nバックアップ先: {$control}\n--apply で適用できます。\n";exit(0);}
  if(posix_geteuid()!==0)throw new RuntimeException('--apply はsudoで実行してください');
  $run=static fn(array $args)=>Proc::must($args,null,120);
  $previousWebActive=Proc::run(['/bin/systemctl','is-active','--quiet','pjas-control-web.service'],null,10)['code']===0;
  $previousTimerActive=Proc::run(['/bin/systemctl','is-active','--quiet','pjas-monitor.timer'],null,10)['code']===0;
  if(!posix_getgrnam('pjas'))$run(['/usr/sbin/groupadd','--system','pjas']);
- foreach(['pjas-control'=>dirname($db),'pjas-preview'=>$agent['preview_root']??'/var/www/pjas-previews'] as $user=>$home)if(!posix_getpwnam($user))$run(['/usr/sbin/useradd','--system','--user-group','--home-dir',$home,'--shell','/usr/sbin/nologin',$user]);
+ foreach(['pjas-control'=>dirname($db),'pjas-preview'=>$agent['preview_root']??'/var/www/pjas-previews','pjas-apache'=>'/nonexistent'] as $user=>$home)if(!posix_getpwnam($user))$run(['/usr/sbin/useradd','--system','--user-group','--home-dir',$home,'--shell','/usr/sbin/nologin',$user]);
  $run(['/usr/sbin/usermod','-aG','pjas','pjas-control']);
  if(!is_dir($control))mkdir($control,0700,true);chown($control,'root');chgrp($control,'root');chmod($control,0700);
  $backup=$control.'/setup-'.gmdate('Ymd-His').'-'.bin2hex(random_bytes(3));mkdir($backup,0700);
  foreach(['apache.conf'=>$conf,'web-config.php'=>PJAS_ROOT.'/config.php','agent-config.php'=>PJAS_ROOT.'/agent/config.php'] as $name=>$file){copy($file,$backup.'/'.$name);chmod($backup.'/'.$name,0600);}
  if(is_file($db)){$src=new SQLite3($db);$dst=new SQLite3($backup.'/pjas.db');if(!$src->backup($dst))throw new RuntimeException('DBの退避に失敗しました');$dst->close();$src->close();chmod($backup.'/pjas.db',0600);}
- $install=static function(string $source,string $dest,int $mode=0644)use($backup,&$savedFiles,$remember):void{$remember($dest);$savedFiles[$dest]=is_file($dest)?file_get_contents($dest):null;if(is_file($dest)){copy($dest,$backup.'/'.str_replace('/','_',ltrim($dest,'/')));chmod($backup.'/'.str_replace('/','_',ltrim($dest,'/')),0600);}if(!is_dir(dirname($dest)))mkdir(dirname($dest),0755,true);if(file_put_contents($dest,str_replace('/opt/pjas-ctrl',PJAS_ROOT,file_get_contents($source)))===false)throw new RuntimeException('設定を配置できません: '.$dest);chmod($dest,$mode);};
+ $install=static function(string $source,string $dest,int $mode=0644)use($backup,&$savedFiles,$remember,$phpVersion):void{$remember($dest);$savedFiles[$dest]=is_file($dest)?file_get_contents($dest):null;if(is_file($dest)){copy($dest,$backup.'/'.str_replace('/','_',ltrim($dest,'/')));chmod($backup.'/'.str_replace('/','_',ltrim($dest,'/')),0600);}if(!is_dir(dirname($dest)))mkdir(dirname($dest),0755,true);if(file_put_contents($dest,\Pjas\Shared\PhpRuntime::renderTemplate(str_replace('/opt/pjas-ctrl',PJAS_ROOT,file_get_contents($source)),$phpVersion))===false)throw new RuntimeException('設定を配置できません: '.$dest);chmod($dest,$mode);};
  $changesStarted=true;
+ // Apache is trusted to access site FastCGI sockets; legacy www-data PHP must not be.
+ $apacheUser=$agent['apache_user']??'pjas-apache';
+ if($apacheUser!=='pjas-apache')throw new RuntimeException('apache_user は専用のpjas-apacheに設定してください');
+ $modules=$run([$agent['apachectl'],'-M']);
+ if(preg_match('/\b(?:php\d*|cgi|cgid|wsgi|passenger)_module\b/i',$modules))throw new RuntimeException('Apache内で動くアプリ実行モジュールを無効化し、FPMまたは専用ワーカーへ移行してください');
+ $envvars='/etc/apache2/envvars';$remember($envvars);$savedFiles[$envvars]=file_get_contents($envvars);copy($envvars,$backup.'/apache-envvars');
+ $env=$savedFiles[$envvars];
+ foreach(['APACHE_RUN_USER','APACHE_RUN_GROUP'] as $key){
+  if(!preg_match('/^export[ \t]+'. $key .'=(?:www-data|pjas-apache)[ \t]*$/m',$env))throw new RuntimeException('Apacheの独自実行ユーザー設定を確認してください');
+  $env=preg_replace('/^export[ \t]+'.$key.'=[^\r\n]+/m','export '.$key.'=pjas-apache',$env);
+ }
+ if(file_put_contents($envvars,$env)===false)throw new RuntimeException('Apache専用ユーザーを設定できません');
+ if($agent['web_group']==='pjas'||posix_getpwnam('pjas-apache')['uid']===0)throw new RuntimeException('Apacheユーザーに特権を付与できません');
+ $apacheGroups=explode(' ',trim($run(['/usr/bin/id','-Gn','pjas-apache'])));if(in_array('pjas',$apacheGroups,true))throw new RuntimeException('ApacheユーザーをRPCグループから外してください');
+ $run(['/usr/sbin/usermod','-aG',$agent['web_group'],'pjas-apache']);
+
  $install(PJAS_ROOT.'/systemd/pjas-sensitive-files.conf','/etc/apache2/conf-available/pjas-sensitive-files.conf');
  $run(['/usr/sbin/a2enconf','pjas-sensitive-files']);
- $install(PJAS_ROOT.'/systemd/pjas-control.pool.conf','/etc/php/8.4/fpm/pool.d/pjas-control.conf');
+ // Retire only ctrl's old pool, preserving application pools and rollback copies.
+ $retiredPhp=[];
+ foreach(\Pjas\Shared\PhpRuntime::RUNTIMES as $runtime){
+  if($runtime==='static')continue;$version=\Pjas\Shared\PhpRuntime::version($runtime);if($version===$phpVersion)continue;
+  $oldPool='/etc/php/'.$version.'/fpm/pool.d/pjas-control.conf';if(!file_exists($oldPool))continue;
+  $remember($oldPool);$savedFiles[$oldPool]=file_get_contents($oldPool);copy($oldPool,$backup.'/control-pool-'.$version.'.conf');
+  if(!unlink($oldPool))throw new RuntimeException('旧管理用FPMプールを無効化できません');$retiredPhp[]=$runtime;
+ }
+ $install(PJAS_ROOT.'/systemd/pjas-control.pool.conf','/etc/php/'.$phpVersion.'/fpm/pool.d/pjas-control.conf');
  if(!is_dir('/etc/pjas-control'))mkdir('/etc/pjas-control',0755);
+ $versionPath='/etc/pjas-control/php-version';$remember($versionPath);$savedFiles[$versionPath]=is_file($versionPath)?file_get_contents($versionPath):null;if(file_put_contents($versionPath,$phpVersion."\n")===false)throw new RuntimeException('管理用PHPバージョンを保存できません');chmod($versionPath,0644);
  $backendPath='/etc/pjas-control/apache.conf';$remember($backendPath);$savedFiles[$backendPath]=is_file($backendPath)?file_get_contents($backendPath):null;
  $backend=file_get_contents(PJAS_ROOT.'/systemd/pjas-control-web.conf');$backend=str_replace('/opt/pjas-ctrl',PJAS_ROOT,$backend);if(file_put_contents('/etc/pjas-control/apache.conf',$backend)===false)throw new RuntimeException('管理画面用Apache設定を保存できません');chmod('/etc/pjas-control/apache.conf',0644);
  foreach(['pjas-agentd.service','pjas-control-web.service','pjas-monitor.service','pjas-monitor.timer'] as $unit)$install(PJAS_ROOT.'/systemd/'.$unit,'/etc/systemd/system/'.$unit);
@@ -50,7 +77,7 @@ try{
   if(file_put_contents($siteFile,$protected)===false)throw new RuntimeException('機密ファイルの公開防止設定を保存できません');
  }
  $run(['/usr/sbin/a2enmod','proxy','proxy_http','proxy_fcgi','rewrite','headers','auth_basic','authn_file','authz_user']);
- try{if(!is_dir('/run/pjas-control-web'))mkdir('/run/pjas-control-web',0755,true);$run(['/usr/sbin/apache2','-t','-f','/etc/pjas-control/apache.conf']);$run(['/usr/sbin/apachectl','configtest']);$run(['/usr/sbin/php-fpm8.4','--test']);}
+ try{if(!is_dir('/run/pjas-control-web'))mkdir('/run/pjas-control-web',0755,true);$run(['/usr/sbin/apache2','-t','-f','/etc/pjas-control/apache.conf']);$run(['/usr/sbin/apachectl','configtest']);$run(['/usr/sbin/php-fpm'.$phpVersion,'--test']);}
  catch(Throwable $e){copy($backup.'/apache.conf',$conf);throw new RuntimeException('設定検査に失敗しました。管理画面のApache設定は戻しました。退避先: '.$backup.' / '.$e->getMessage());}
  // Production site workers must not be members of the privileged RPC group.
  $webUser=$agent['web_user'];$pjas=posix_getgrnam('pjas');$web=posix_getpwnam($webUser);
@@ -63,12 +90,13 @@ try{
  chown(PJAS_ROOT.'/config.php','root');chgrp(PJAS_ROOT.'/config.php','pjas-control');chmod(PJAS_ROOT.'/config.php',0640);chown(PJAS_ROOT.'/agent/config.php','root');chgrp(PJAS_ROOT.'/agent/config.php','root');chmod(PJAS_ROOT.'/agent/config.php',0600);
  if(is_file($db)){
   $layoutDb=new SQLite3($db,SQLITE3_OPEN_READONLY);$sitesRows=$layoutDb->query('SELECT name FROM services');
-  while($row=$sitesRows->fetchArray(SQLITE3_ASSOC)){$base=rtrim($agent['www_root'],'/').'/'.$row['name'];if(!is_link($base.'/current')||!is_dir($base.'/releases')||!is_dir($base.'/shared'))continue;$remember($base);$remember($base.'/releases');\Pjas\Agentd\SiteLayout::protect($agent,$row['name']);}
+  while($row=$sitesRows->fetchArray(SQLITE3_ASSOC)){$base=rtrim($agent['www_root'],'/').'/'.$row['name'];if(!is_link($base.'/current')||!is_dir($base.'/releases')||!is_dir($base.'/shared'))continue;$remember($base);$remember($base.'/releases');require_once PJAS_ROOT.'/agent/lib/ControlStore.php';require_once PJAS_ROOT.'/agent/lib/SiteIsolation.php';$siteAgent=(new \Pjas\Agentd\SiteIsolation($agent))->scope($row['name']);\Pjas\Agentd\SiteLayout::protect($siteAgent,$row['name']);}
   $layoutDb->close();
  }
- $run(['/usr/sbin/runuser','-u','pjas-control','--','/usr/bin/php8.4',PJAS_ROOT.'/bin/pjas-migrate']);
+ $run(['/usr/sbin/runuser','-u','pjas-control','--','/usr/bin/php'.$phpVersion,PJAS_ROOT.'/bin/pjas-migrate']);
 
- $run(['/bin/systemctl','daemon-reload']);$run(['/bin/systemctl','restart','pjas-agentd']);$run(['/bin/systemctl','restart','php8.4-fpm']);$run(['/bin/systemctl','enable','--now','pjas-control-web.service']);$run(['/usr/sbin/apachectl','graceful']);$run(['/bin/systemctl','enable','--now','pjas-monitor.timer']);
+ foreach($retiredPhp as $runtime){$run([\Pjas\Shared\PhpRuntime::fpm($runtime),'--test']);$run(['/bin/systemctl','restart',$runtime]);}
+ $run(['/bin/systemctl','daemon-reload']);$run(['/bin/systemctl','restart','pjas-agentd']);$run(['/bin/systemctl','restart','php'.$phpVersion.'-fpm']);$run(['/bin/systemctl','enable','--now','pjas-control-web.service']);$run(['/bin/systemctl','restart','apache2']);$run(['/bin/systemctl','enable','--now','pjas-monitor.timer']);
  echo "追加機能を有効にしました。退避先: {$backup}\n管理画面へログインし直して「接続設定」からGitHub Appなどを設定してください。\n";
 }catch(Throwable $e){
  if($apply&&$changesStarted){
@@ -78,9 +106,10 @@ try{
   foreach(array_reverse($savedFiles,true) as $path=>$content){if($content===null)@unlink($path);else @file_put_contents($path,$content);}
   foreach($savedAttrs as $path=>[$uid,$gid,$mode])if(file_exists($path)&&!is_link($path)){@chown($path,$uid);@chgrp($path,$gid);@chmod($path,$mode);}
   if($webGroupRemoved)Proc::run(['/usr/sbin/usermod','-aG','pjas',$agent['web_user']],null,30);
-  Proc::run(['/bin/systemctl','daemon-reload'],null,30);Proc::run(['/bin/systemctl','restart','php8.4-fpm'],null,60);Proc::run(['/bin/systemctl','restart','pjas-agentd'],null,30);
+  Proc::run(['/bin/systemctl','daemon-reload'],null,30);Proc::run(['/bin/systemctl','restart','php'.$phpVersion.'-fpm'],null,60);Proc::run(['/bin/systemctl','restart','pjas-agentd'],null,30);
+  foreach($retiredPhp??[] as $runtime)Proc::run(['/bin/systemctl','restart',$runtime],null,60);
   if($previousWebActive)Proc::run(['/bin/systemctl','start','pjas-control-web.service'],null,30);
-  Proc::run(['/usr/sbin/apachectl','graceful'],null,60);
+  Proc::run(['/bin/systemctl','restart','apache2'],null,60);
  }
  fwrite(STDERR,'設定できませんでした: '.$e->getMessage()."\n".($backup?'設定・権限を可能な範囲で戻しました。退避先: '.$backup."\n":''));exit(1);
 }

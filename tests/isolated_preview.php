@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);require __DIR__.'/support/features.php';
 use Pjas\Agentd\{ControlStore,ReleaseReview,Paths,Spec,JobLog};use Pjas\Agentd\Ops\{Preview,Service,Deploy,Vhost,Health};
-[$dir,$cfg]=fixture('preview');$paths=new Paths($cfg['www_root']);$spec=Spec::service(['name'=>'demo','domain'=>'demo.example.com','runtime'=>'php8.4-fpm','docroot'=>'public','shared'=>['@databases']]);
+[$dir,$cfg]=fixture('preview');$paths=new Paths($cfg['www_root']);$spec=Spec::service(['name'=>'demo','domain'=>'demo.example.com','runtime'=>'php8.5-fpm','docroot'=>'public','shared'=>['@databases']]);
 try{
  $key=openssl_pkey_new(['private_key_bits'=>2048]);$csr=openssl_csr_new(['commonName'=>'*.example.com'],$key);$cert=openssl_csr_sign($csr,null,$key,365);openssl_x509_export($cert,$pem);$cfg['tls_cert_file']=$dir.'/cert.pem';$cfg['tls_key_file']=$dir.'/cert.key';file_put_contents($cfg['tls_cert_file'],$pem);
  (new Service($cfg,$paths))->create(['service'=>$spec]);$old=$paths->release('demo','20261102-000001');mkdir($old,0755,true);symlink($old,$paths->current('demo'));file_put_contents($paths->shared('demo').'/.env','PRODUCTION_SECRET');mkdir($paths->shared('demo').'/storage',0755);file_put_contents($paths->shared('demo').'/storage/image.txt','public media');chmod($paths->shared('demo').'/storage/image.txt',0644);$db=new SQLite3($paths->shared('demo').'/app.sqlite');$db->exec('create table notes(body text)');$db->exec("insert into notes values ('production')");$db->close();symlink($paths->shared('demo').'/app.sqlite',$old.'/app.sqlite');

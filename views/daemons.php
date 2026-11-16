@@ -28,7 +28,7 @@ $states = ['active' => '稼働中', 'inactive' => '停止中', 'failed' => '異�
 <?php if ($d['managed']): ?><div class="field"><label>実行内容</label><textarea name="command" required rows="3"><?= View::e($d['command']) ?></textarea><div class="hint">サイトの公開中フォルダを作業場所として www-data 権限で実行します。変更後は再起動してください。{{site_root}} はこのサイトの公開中フォルダに置き換わります。</div></div>
 <?php elseif (!empty($d['execution']['editable'])): ?>
 <div class="field"><?php if (!empty($d['follow_paths'])): ?><input type="hidden" name="edit_execution" value="1"><p>起動設定をctrlで管理し、公開先の変更に追従しています。</p><?php else: ?><label class="inline"><input type="checkbox" name="edit_execution" value="1">起動設定もctrlで管理し、公開先の変更に追従する</label><?php endif; ?></div>
-<div class="field"><label>起動コマンド</label><textarea name="exec_start" rows="3"><?= View::e($d['execution']['exec_start']) ?></textarea><div class="hint">例: /usr/bin/php8.4 websocket/server.php start。シェルコマンドではなく、実行ファイルの絶対パスから書きます。{{site_root}} は公開中フォルダに置き換わります。環境変数ファイルなどの元設定は維持します。</div></div>
+<div class="field"><label>起動コマンド</label><textarea name="exec_start" rows="3"><?= View::e($d['execution']['exec_start']) ?></textarea><div class="hint">例: /usr/bin/php8.5 websocket/server.php start。シェルコマンドではなく、実行ファイルの絶対パスから書きます。{{site_root}} は公開中フォルダに置き換わります。環境変数ファイルなどの元設定は維持します。</div></div>
 <?php else: ?><p>この既存プログラムは表示名と関連付けのみ編集できます。起動設定を編集できるのは、サイト内で www-data として動く simple/exec 型のプログラムです。</p><?php endif; ?>
 <?php if ($d['managed'] || !empty($d['execution']['editable'])): ?>
 <div class="field"><label>作業フォルダ（サイト内の相対パス）</label><input name="working_subdir" value="<?= View::e($d['working_subdir'] ?? $d['execution']['working_subdir'] ?? '') ?>" placeholder="空欄なら公開中フォルダの直下"><div class="hint">公開先の切替時は稼働中の追従対象を再起動します。設定を保存した直後は、再起動ボタンで変更を反映してください。</div></div>
@@ -41,7 +41,7 @@ $states = ['active' => '稼働中', 'inactive' => '停止中', 'failed' => '異�
 <input type="hidden" name="service" value="<?= View::e($site['name']) ?>"><input type="hidden" name="mode" value="new">
 <div class="field"><label>表示名</label><input name="label" required placeholder="例: メール送信の作業"></div>
 <div class="field"><label>作業フォルダ（サイト内の相対パス）</label><input name="working_subdir" placeholder="空欄なら公開中フォルダの直下"></div>
-<div class="field"><label>実行内容</label><textarea name="command" required rows="3" placeholder="exec /usr/bin/php8.4 worker.php"></textarea><div class="hint">動き続けるプログラムを指定します。サイトの公開中フォルダで www-data として実行し、異常終了時は自動で再起動します。保存時には起動しません。</div></div>
+<div class="field"><label>実行内容</label><textarea name="command" required rows="3" placeholder="exec /usr/bin/php8.5 worker.php"></textarea><div class="hint">動き続けるプログラムを指定します。サイトの公開中フォルダで www-data として実行し、異常終了時は自動で再起動します。保存時には起動しません。</div></div>
 <button class="btn">新しく作成する</button></form>
 </details>
 <details><summary>サーバーにある既存プログラムを関連付ける</summary>

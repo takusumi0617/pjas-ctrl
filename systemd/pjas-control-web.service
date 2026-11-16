@@ -1,7 +1,7 @@
 [Unit]
 Description=Isolated HTTP frontend for pjas-ctrl
-After=php8.4-fpm.service pjas-agentd.service
-Requires=php8.4-fpm.service
+After=php8.5-fpm.service pjas-agentd.service
+Requires=php8.5-fpm.service
 [Service]
 Type=simple
 ExecStart=/usr/sbin/apache2 -f /etc/pjas-control/apache.conf -DFOREGROUND

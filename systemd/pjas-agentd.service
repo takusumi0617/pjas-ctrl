@@ -5,7 +5,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/php8.4 /opt/pjas-ctrl/agent/pjas-agentd.php
+ExecStart=/usr/bin/php8.5 /opt/pjas-ctrl/agent/pjas-agentd.php
 Restart=always
 RestartSec=2
 

@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 namespace Pjas\Domain;
+require_once dirname(__DIR__,2).'/shared/PhpRuntime.php';
 
 /** v2 declarations contain references, never operating-system identities or secret values. */
 final class ComponentManifest
@@ -29,7 +30,7 @@ final class ComponentManifest
         $m['site'] = $v1['site'];
         foreach (['domain','runtime','document_root'] as $key) if (!is_string($m['site'][$key]??null)) throw new \InvalidArgumentException('v2のsite.'.$key.'が必要です');
         if (!preg_match('/\A[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+\z/D',$m['site']['domain']) || strlen($m['site']['domain'])>253) throw new \InvalidArgumentException('site.domainが不正です');
-        if (!in_array($m['site']['runtime'],['static','php8.1-fpm','php8.2-fpm','php8.3-fpm','php8.4-fpm'],true)) throw new \InvalidArgumentException('site.runtimeが不正です');
+        if (!in_array($m['site']['runtime'],\Pjas\Shared\PhpRuntime::RUNTIMES,true)) throw new \InvalidArgumentException('site.runtimeが不正です');
         if ($m['site']['document_root']!=='') PjasManifest::path($m['site']['document_root']);
         if (isset($m['site']['health_status']) && ($m['site']['health_status']<100 || $m['site']['health_status']>599)) throw new \InvalidArgumentException('site.health_statusが不正です');
 

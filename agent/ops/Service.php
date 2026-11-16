@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 namespace Pjas\Agentd\Ops;
+require_once dirname(__DIR__).'/lib/SiteIsolation.php';
 
 use Pjas\Agentd\OpException;
 use Pjas\Agentd\Paths;
@@ -47,6 +48,7 @@ final class Service
 
         // 共有データは初回公開時に実ファイルから初期化する（空ファイルで上書きしない）。
 
+        \Pjas\Agentd\SiteIsolation::protect($this->cfg,$name,(string)($s['docroot']??'public'));
         return ['base' => $base, 'created' => true];
     }
 
@@ -111,7 +113,7 @@ final class Service
         $dir = $plan['flatten'] !== null ? $base . '/' . $plan['flatten'] : $base;
         $r = Proc::run(['/usr/bin/find', $dir, '-maxdepth', '3', '-name', '*.php', '-type', 'f',
                         '-not', '-path', '*/vendor/*', '-print', '-quit'], null, 20);
-        return trim($r['out']) !== '' ? 'php8.4-fpm' : 'static';
+        return trim($r['out']) !== '' ? \Pjas\Shared\PhpRuntime::DEFAULT_RUNTIME : 'static';
     }
 
     /** 既存の Apache 設定から、このディレクトリを公開しているドメインを拾う。 */
