@@ -97,3 +97,12 @@ sudo python3 agent/lib/isolate_tree.py --check /var/www/対象サイト名
 読み取り専用で、ファイルの内容は表示せず、対象パス・種類・リンク数を表示します。シンボリックリンクは追跡しません。問題があれば終了コード1です。新しいapplyはサイトを停止する前にも同じ検査を行います。
 
 既に `isolating` で失敗した移行は、まず同じIDの `rollback` で設定を復旧します。対象が分かるまでファイルを削除したり、一括でハードリンクを解除したりしないでください。外部パスと同じinodeの可能性があるため、保護判定を無効化して通すことも避けます。
+
+同じリリース内のesbuild等で、全リンクが検査対象内に存在すると確認できた場合は、次の明示的な操作で独立した通常ファイルへ分離できます。npm install・ビルド・公開等の書き込み処理を停止して実行してください。
+
+```bash
+sudo python3 agent/lib/isolate_tree.py --split-internal-hardlinks /var/www/対象サイト名 --writers-stopped
+sudo python3 agent/lib/isolate_tree.py --check /var/www/対象サイト名
+```
+
+内容・実行ビット・所有者・時刻・拡張属性をコピーし、一時ファイルから原子的に置き換えます。外部リンク、sharedとのリンク、別リリース間のリンク、特殊ファイルは拒否します。失敗した隔離処理は先にrollbackし、分離後は新しい移行計画を作成してください。

@@ -59,6 +59,97 @@ def check_tree(base):
     return findings
 
 
+def split_internal_links(base):
+    """Explicit repair of fully inventoried, same-release regular-file aliases only."""
+    import secrets
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
+    root = os.open(base, flags | os.O_DIRECTORY)
+    groups = {}
+
+    def parent(path):
+        fd = os.dup(root)
+        try:
+            for part in path.split('/')[:-1]:
+                child = os.open(part, flags | os.O_DIRECTORY, dir_fd=fd)
+                os.close(fd)
+                fd = child
+            return fd
+        except BaseException:
+            os.close(fd)
+            raise
+
+    try:
+        issues = check_tree(base)
+        for item in issues:
+            path = item['path']
+            if item['kind'] != 'hardlink' or not re.fullmatch(r'releases/\d{8}-\d{6}/.+', path):
+                raise ValueError('repair is restricted to regular files inside releases: ' + repr(path))
+            fd = parent(path)
+            try:
+                info = os.stat(path.split('/')[-1], dir_fd=fd, follow_symlinks=False)
+                if not stat.S_ISREG(info.st_mode):
+                    raise ValueError('tree changed')
+                groups.setdefault((info.st_dev, info.st_ino), []).append((path, info))
+            finally:
+                os.close(fd)
+        # Validate EVERY group before changing any file.
+        for entries in groups.values():
+            if any(info.st_nlink != len(entries) for _, info in entries):
+                raise ValueError('link outside the inventoried release tree; nothing changed')
+            if len({path.split('/')[1] for path, _ in entries}) != 1:
+                raise ValueError('cross-release links require separate review; nothing changed')
+            if any(info.st_mode & 0o6000 for _, info in entries):
+                raise ValueError('privileged file mode; nothing changed')
+        changed = []
+        for identity, entries in groups.items():
+            for index, (path, original) in enumerate(entries):
+                fd = parent(path)
+                name = path.split('/')[-1]
+                temp = '.pjas-unlink-' + secrets.token_hex(12)
+                source = dest = None
+                try:
+                    source = os.open(name, flags | os.O_NONBLOCK, dir_fd=fd)
+                    before = os.fstat(source)
+                    if (before.st_dev, before.st_ino) != identity or before.st_nlink != len(entries) - index:
+                        raise ValueError('links changed during repair')
+                    attrs = {key: os.getxattr(source, key) for key in os.listxattr(source)}
+                    if attrs.get('security.capability'):
+                        raise ValueError('file capability requires separate review')
+                    dest = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=fd)
+                    while data := os.read(source, 1024 * 1024):
+                        offset = 0
+                        while offset < len(data):
+                            offset += os.write(dest, data[offset:])
+                    after = os.fstat(source)
+                    if (before.st_size, before.st_mtime_ns, before.st_ctime_ns, before.st_nlink) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns, after.st_nlink):
+                        raise ValueError('source changed during copy')
+                    os.fchown(dest, original.st_uid, original.st_gid)
+                    os.fchmod(dest, stat.S_IMODE(original.st_mode))
+                    for key, value in attrs.items():
+                        os.setxattr(dest, key, value)
+                    os.utime(dest, ns=(original.st_atime_ns, original.st_mtime_ns))
+                    os.fsync(dest)
+                    current = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                    if (current.st_dev, current.st_ino) != identity:
+                        raise ValueError('destination changed during copy')
+                    os.replace(temp, name, src_dir_fd=fd, dst_dir_fd=fd)
+                    os.fsync(fd)
+                    changed.append(path)
+                finally:
+                    if source is not None:
+                        os.close(source)
+                    if dest is not None:
+                        os.close(dest)
+                    try:
+                        os.unlink(temp, dir_fd=fd)
+                    except FileNotFoundError:
+                        pass
+                    os.close(fd)
+        return changed
+    finally:
+        os.close(root)
+
+
 def protect(base, uid, gid, apache, docroot):
     if docroot.startswith('/') or '..' in docroot.split('/'):
         raise ValueError('invalid document root')
@@ -76,12 +167,12 @@ def protect(base, uid, gid, apache, docroot):
         if not directory and (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1):
             raise ValueError(f'special or hard-linked file: {relative!r} (links={st.st_nlink})')
         os.fchown(fd, uid if shared else root_uid, gid)
-        os.fchmod(fd, (0o700 if directory else 0o600) if shared else (0o750 if directory else 0o640))
+        os.fchmod(fd, (0o700 if directory else 0o600) if shared else (0o750 if directory or st.st_mode & 0o111 else 0o640))
         access = (5 if directory else 4) if public else 0
         if relative in ('', 'releases') or (relative.startswith('releases/') and directory and not shared):
             # Apache can traverse release ancestors, but only read the public subtree.
             access = access or 1
-        acl(fd, 7 if directory else 6, 0 if shared else (5 if directory else 4), apache, access)
+        acl(fd, 7 if directory or (not shared and st.st_mode & 0o111) else 6, 0 if shared else (5 if directory or st.st_mode & 0o111 else 4), apache, access)
         if not directory:
             return
         for name in os.listdir(fd):
@@ -135,6 +226,10 @@ def protect(base, uid, gid, apache, docroot):
 
 
 if __name__ == '__main__':
+    if len(sys.argv) == 4 and sys.argv[1] == '--split-internal-hardlinks' and sys.argv[3] == '--writers-stopped':
+        import json
+        print(json.dumps({'separated': split_internal_links(sys.argv[2])}, ensure_ascii=False))
+        sys.exit(0)
     if len(sys.argv) == 3 and sys.argv[1] == '--check':
         import json
         findings = check_tree(sys.argv[2])
