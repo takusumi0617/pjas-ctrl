@@ -38,7 +38,7 @@ final class Backups
         $fp=fopen($dest,'x');if(!$fp)throw new OpException('バックアップ先を作成できません');chmod($dest,0600);fclose($fp);
         try{
             $r=Proc::run(['/usr/bin/python3',dirname(__DIR__).'/lib/copy_data.py',$source],null,600,$this->cfg['web_user'],['PATH'=>'/usr/bin:/bin','LANG'=>'C.UTF-8'],null,$dest);
-            if($r['code']!==0)throw new OpException('共有データを安全に読み取れません。実行ユーザーの読み取り権限を確認してください');
+            if($r['code']!==0){$kind=preg_match('/PJAS_DATA_ERROR:(permission|sqlite|io)/',$r['err'],$m)?$m[1]:'unknown';throw new OpException('共有データを安全に読み取れません。対象: '.json_encode($source,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).' / 実行ユーザー: '.$this->cfg['web_user'].' / 種別: '.$kind);}
         }catch(\Throwable $e){@unlink($dest);throw $e;}
     }
 

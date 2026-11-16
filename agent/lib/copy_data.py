@@ -16,5 +16,8 @@ try:
             try:src.backup(dst)
             finally:dst.close();src.close()
             with open(snapshot,'rb') as source:shutil.copyfileobj(source,sys.stdout.buffer,1024*1024)
-except Exception:
-    print('共有データを実行ユーザーの権限で読み取れません。保存先と権限を確認してください。',file=sys.stderr);sys.exit(1)
+except Exception as error:
+    # Never echo SQLite exception text: it can contain SQL or data values.
+    category = 'permission' if isinstance(error, PermissionError) else ('sqlite' if isinstance(error, sqlite3.Error) else 'io')
+    print('PJAS_DATA_ERROR:' + category, file=sys.stderr)
+    sys.exit(1)

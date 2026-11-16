@@ -5,7 +5,9 @@ use Pjas\Agentd\{EncryptedFile,Paths,Spec,SitePause};use Pjas\Agentd\Ops\{Backup
 try{
  (new Service($cfg,$paths))->create(['service'=>$spec]);$rel=$paths->release('demo','20261102-000001');mkdir($rel,0755,true);symlink($rel,$paths->current('demo'));
  $db=new SQLite3($paths->shared('demo').'/app.sqlite');$db->exec('create table notes(body text)');$db->exec('pragma journal_mode=wal');$db->exec("insert into notes values ('snapshot')");file_put_contents($paths->shared('demo').'/.env','SECRET=value');
- $backups=new Backups($cfg,$paths);$b=$backups->create(['service'=>$spec]);
+ $backups=new Backups($cfg,$paths);
+ $missing=$paths->shared('demo').'/missing.sqlite';try{$backups->copyDataFile($missing,$dir.'/missing-copy');throw new Exception('missing input accepted');}catch(Pjas\Agentd\OpException $e){check(str_contains($e->getMessage(),'missing.sqlite')&&str_contains($e->getMessage(),'実行ユーザー: '.$cfg['web_user'])&&!is_file($dir.'/missing-copy'),'読取失敗は内容を表示せず対象・実行ユーザーを報告し一時出力を消去');}
+ $b=$backups->create(['service'=>$spec]);
  check($b['files']===2&&$b['bytes']>0,'SQLiteの整合性あるコピーと共有ファイルを暗号化して保存');
  $db->exec("insert into notes values ('later')");$db->close();
  $payload=$dir.'/control/backups/demo/'.$b['id'].'.pjas';check(!str_contains(file_get_contents($payload),'SECRET=value'),'暗号化ファイルに秘密情報の平文を含めない');
