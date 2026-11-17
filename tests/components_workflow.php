@@ -45,6 +45,24 @@ try {
  unlink($dir.'/active');cleanup($dir.'/run');mkdir($dir.'/run',0755);
  $recovered=$ops->recoverReadySites();
  check(($recovered['cert']['phase']??'')==='ready' && file_get_contents($dir.'/run/cert-ca/secrets/api')==='private-test-value','起動時にreadyのサイトだけを検証し秘密情報と実行領域を復帰する');
+ // Reapply the same manifest against a newly approved policy after a deliberate stop.
+ // No CA init command must run again, and a stopped site must never auto-resume.
+ $ops->action(['service'=>'cert','action'=>'stop']);
+ $taskCount=count(file($dir.'/tasks'));
+ $catalog['health']['ready']['timeout']=11;
+ file_put_contents($cfg['component_catalog'],json_encode($catalog));
+ $updatedPlan=$ops->plan($p);
+ $updated=$ops->apply(['service'=>'cert','review'=>$updatedPlan['review']]);
+ $updatedState=$ops->status(['service'=>'cert']);
+ check(($updated['phase']??'')==='initialized' && ($updatedState['configured']??false)===true,
+  '同じマニフェストのポリシー再適用は初期化状態と承認検証を維持する');
+ check(!file_exists($dir.'/active') && count(file($dir.'/tasks'))===$taskCount,
+  'ポリシー再適用ではCAを再初期化せずサービスを自動起動しない');
+ check(!empty($ops->recoverReadySites()['cert']['skipped']) && !file_exists($dir.'/active'),
+  '再適用後は明示起動までOS再起動でも停止を維持する');
+ $ops->action(['service'=>'cert','action'=>'start']);
+ check($ops->status(['service'=>'cert'])['phase']==='ready',
+  '再適用後は初期セットアップなしに正規の起動操作で復旧できる');
  if ($componentType==='php') check(is_file($dir.'/run/cert-ca/php-fpm.conf'),'OS再起動で消失したFPM設定を承認済みハッシュと照合して再生成する');
  $store=new ControlStore($cfg);$saved=$store->read('components-cert');
  $saved['policy']=str_repeat('0',64);$store->write('components-cert',$saved);unlink($dir.'/active');
