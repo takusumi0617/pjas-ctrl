@@ -256,6 +256,11 @@ final class Components
                 throw $e;
             }
             if ($s && $this->anyRunning($site,$s['manifest'])) throw new OpException('設定更新前に全コンポーネントを停止してください');
+            // A policy-only reapply must not lose a verified, already-initialized CA.
+            // Never preserve initialization across a manifest change or an incomplete/held state.
+            $preserveInitialized=$s && !empty($s['initialized'])
+                && in_array($s['phase']??'', ['initialized','ready','stopped'], true)
+                && ($s['manifest']??null)===$plan['source']['manifest'];
             $files=$this->render($site,$rows); $old=[];
             foreach ($s['files']??[] as $path=>$hash) if (!is_file($path) || hash_file('sha256',$path)!==$hash) throw new OpException('管理外の設定変更と競合しています');
             $next=$s+['setup'=>[],'releases'=>[]];
@@ -281,7 +286,9 @@ final class Components
                         foreach (glob($secretDir.'/*')?:[] as $copy) if (is_file($copy)||is_link($copy)) unlink($copy);
                     }
                 }
-                $next['phase']='dependencies_checked'; $this->save($site,$next); $this->audit($site,'apply',$p,'ok');
+                // Keep the service stopped after reapply; an explicit start must verify health.
+                $next['phase']=$preserveInitialized?'initialized':'dependencies_checked';
+                $this->save($site,$next); $this->audit($site,'apply',$p,'ok');
             } catch (\Throwable $e) {
                 foreach ($old as $path=>$body) { if ($body===null) @unlink($path); else $this->write($path,$body,0644); }
                 Proc::run([$this->cfg['systemctl'],'daemon-reload'],null,20);
