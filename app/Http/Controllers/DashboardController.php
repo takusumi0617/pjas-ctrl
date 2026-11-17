@@ -35,7 +35,10 @@ final class DashboardController
         $ids=array_column($services,'id');
         $alertWhere=\Pjas\Http\Auth::can('owner')?'1=1':($ids?'service_id IN ('.implode(',',array_fill(0,count($ids),'?')).')':'1=0');
         $alerts=Db::all('SELECT * FROM alerts WHERE '.$alertWhere.' ORDER BY id DESC LIMIT 30',\Pjas\Http\Auth::can('owner')?[]:$ids);
+        $controlUpdate=[];$controlUpdateError='';
+        if(\Pjas\Http\Auth::can('owner'))try{$controlUpdate=AgentClient::call('control.status',[],\Pjas\Http\Auth::actor());}catch(\Pjas\Agent\AgentException $e){$controlUpdateError=$e->getMessage();}
         View::render('dashboard', [
+            'controlUpdate'=>$controlUpdate,'controlUpdateError'=>$controlUpdateError,'controlReview'=>$_SESSION['control_update_review']??null,
             'title'    => 'ホーム','alerts'=>$alerts,
             'services' => $services,
             'jobs'     => $jobs,

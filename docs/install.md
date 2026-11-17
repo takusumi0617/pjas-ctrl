@@ -1,6 +1,6 @@
 # 新規導入
 
-[ドキュメント一覧](README.md) / [既存環境の更新](upgrade.md)
+[目的別ガイド](../README.md) / [既存環境の更新](maintenance.md)
 
 まだpjas-ctrlを導入していないサーバー向けの手順です。完了すると、専用ユーザーで動く管理画面、特権agent、自動監視タイマーが利用できるようになります。管理対象サイトの登録は、その後に行います。
 
@@ -77,7 +77,7 @@ sudo editor /opt/pjas-ctrl/agent/config.php
 | RPCソケット | `agent_socket` | `socket` |
 | 共通TLS証明書・鍵 | `tls_cert_file` / `tls_key_file` | `tls_cert_file` / `tls_key_file` |
 
-Web側の `db` は管理用SQLite DB、`security_key` は二段階認証等の暗号鍵です。`force_https` は本番では `true` にします。agent側の `web_user` / `web_group` は通常サイトの実行ユーザーであり、管理画面用の `pjas-control` へ変更する項目ではありません。
+Web側の `db` は管理用SQLite DB、`security_key` は二段階認証等の暗号鍵です。`force_https` は本番では `true` にします。agent側の `web_user` / `web_group` は未隔離の既存サイト用の実行ユーザーであり、管理画面用の `pjas-control` へ変更する項目ではありません。
 
 標準外の保存先を使う場合は、systemdサービスの `ReadWritePaths` も合わせてください。コード・設定はroot所有とし、アプリの実行ユーザーから書き換えられない状態を維持します。
 
@@ -131,9 +131,9 @@ sudo php8.5 bin/pjas-install-features --apply
 | 管理画面専用HTTP | `pjas-control-web.service`、待受 `127.0.0.1:8184` |
 | 特権操作 | `pjas-agentd.service`（root） |
 | 定期監視・予約処理 | `pjas-monitor.timer` |
-| 通常の本番サイト | agentの `web_user`（通常 `www-data`） |
+| 新規の本番サイト | サイトごとの専用ユーザー・専用FPM |
 
-設定と既存DBの退避先は `/var/lib/pjas-control/setup-*` です。処理は管理画面の転送設定に加え、既存サイトのApache設定にも機密ファイルの公開防止設定を追加することがあります。既存サイトがある場合は、先に [更新時の影響と退避](upgrade.md) を確認してください。
+設定と既存DBの退避先は `/var/lib/pjas-control/setup-*` です。処理は管理画面の転送設定に加え、既存サイトのApache設定にも機密ファイルの公開防止設定を追加することがあります。既存サイトがある場合は、先に [更新時の影響と退避](maintenance.md) を確認してください。
 
 ## 7. 管理画面を有効にし、動作を確認する
 
@@ -150,16 +150,26 @@ sudo -u pjas-control php8.5 /opt/pjas-ctrl/bin/pjasctl services
 1. 許可した接続元から管理画面のHTTPS URLを開きます。
 2. 手順4で作成した管理者でログインします。
 3. agentが稼働中であることを確認します。
-4. 「運用状況」に最終確認時刻が表示されることを確認します。
-5. [サイトの登録と日常運用](sites.md) に沿ってテスト用サイトを1つ公開し、実際のHTTP応答と作業履歴を確認します。
+4. 「ホーム」に各サイトの状態と確認時刻が表示されることを確認します。
+5. [サイトの登録と日常運用](usage.md) に沿ってテスト用サイトを1つ公開し、実際のHTTP応答と作業履歴を確認します。
 
-起動しない場合のログ確認は [更新・障害時の確認](upgrade.md#問題が起きた場合) を参照してください。
+起動しない場合のログ確認は [更新・障害時の確認](recovery.md) を参照してください。
 
 ## 次に設定するもの
 
-- [GitHub App・通知・バックアップ・試験公開](operations.md)
-- [サーバー画面とDiscord通知](server-monitoring.md)
-- [.pjas v1による通常サイトの一括登録](pjas-manifest.md)
-- [専用ユーザーとCA保護領域を使うv2サイト](pjas-cert.md)
+- [GitHub App・通知・バックアップ・試験公開](usage.md)
+- [サーバー画面とDiscord通知](usage.md)
+- [.pjas v1による通常サイトの一括登録](reference.md)
+- [専用ユーザーとCA保護領域を使うv2サイト](reference.md)
 
 通常サイトの登録と、pjas-certのCA初期化は別の作業です。v2のエンジン・保護領域・秘密情報・復元検査は、管理者による追加準備が必要です。
+
+## 8. ホームからのctrl更新を登録する
+
+```bash
+cd /opt/pjas-ctrl
+sudo php8.5 bin/pjas-control-update install --branch=main
+sudo systemctl restart pjas-agentd
+```
+
+このチェックアウトのoriginを更新元としてroot設定へ保存し、管理画面が停止しても継続する更新サービスを配置します。privateリポジトリの場合は「接続設定と初回準備」でGitHub Appを設定し、そのリポジトリのContents読み取りを許可してください。以降の操作・停止範囲は[更新・保守](maintenance.md)を参照します。

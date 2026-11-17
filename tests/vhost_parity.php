@@ -34,9 +34,7 @@ $cases = [
      'extra_conf' => "RewriteEngine On\nErrorDocument 404 /404.html", 'tls' => 1],
 ];
 
-$chatGuide = file_get_contents(PJAS_ROOT . '/docs/pjas-chat-apache.md');
-preg_match('/```apache\n(.*?)\n```/s', $chatGuide, $match);
-$chatExtra = $match[1];
+$chatExtra = file_get_contents(__DIR__.'/support/legacy_chat.conf');
 $cases[] = ['name' => 'pjas-chat', 'domain' => 'chat.example.com', 'runtime' => 'php8.5-fpm',
     'docroot' => 'dist', 'allow_override' => 'None', 'extra_conf' => $chatExtra, 'tls' => 1];
 

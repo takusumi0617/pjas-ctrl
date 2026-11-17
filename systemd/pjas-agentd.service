@@ -1,6 +1,6 @@
 [Unit]
 Description=pjas-ctrl privileged agent
-Documentation=file:/opt/pjas-ctrl/docs/architecture.md
+Documentation=file:/opt/pjas-ctrl/docs/security.md
 After=network.target
 
 [Service]

@@ -15,6 +15,9 @@ use Pjas\Http\Router;
 use Pjas\Http\View;
 
 $r = new Router();
+$controlUpdate=new \Pjas\Http\Controllers\ControlUpdateController();
+$r->post('/control-update',[$controlUpdate,'action'],'owner');
+$r->get('/control-update/status',[$controlUpdate,'status'],'owner');
 $components=new \Pjas\Http\Controllers\ComponentController();
 $r->get('/components',[$components,'index'],'owner');
 $r->post('/components',[$components,'action'],'owner');

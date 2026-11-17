@@ -1,0 +1,20 @@
+<?php use Pjas\Http\{View,Csrf};$control=$controlUpdate??[];$state=$control['state']??[];$review=$controlReview??null;$running=in_array($state['phase']??'', ['queued','running','recovering'],true); ?>
+<section class="card section-gap" id="control-update" data-update-phase="<?= View::e($state['phase']??'') ?>"><div class="card-h">ctrl自身の更新<span class="spacer"></span><span class="tag <?= ($state['phase']??'')==='failed'?'t-err':($running?'t-warn':'t-mut') ?>"><?= View::e(['queued'=>'実行待ち','running'=>'更新中','recovering'=>'復旧中','succeeded'=>'更新完了','failed'=>'確認が必要'][$state['phase']??'']??'手動で更新を確認') ?></span></div><div class="card-b">
+<?php if(!empty($controlUpdateError)):?><p role="alert"><?= View::e($controlUpdateError) ?></p><?php endif;?>
+<?php if(empty($control['configured'])):?><p>最初の1回だけ、サーバーで更新元と更新サービスを登録します。更新元はこのチェックアウトのoriginです。</p><pre><code>cd /opt/pjas-ctrl
+sudo php8.5 bin/pjas-control-update install --branch=main
+sudo systemctl restart pjas-agentd</code></pre>
+<?php else:?><p>更新元：<?= View::e($control['repository']) ?> / <?= View::e($control['branch']) ?></p><p class="hint">GitHub Appが設定済みなら、許可されたprivateリポジトリも一時トークンで取得します。</p>
+<?php if($state):?><div class="note <?= ($state['phase']??'')==='failed'?'err':'' ?>" id="control-update-result" role="status"><?= View::e($state['detail']) ?><?php if(!empty($state['commit'])):?><br>適用コミット：<code><?= View::e($state['commit']) ?></code><?php endif;?></div><?php endif;?>
+<?php if($running&&!empty($state['interrupted'])):?><div class="note err">更新サービスが停止しています。サーバーで状態を確認し、このIDの復旧を実行してください。</div><pre><code>sudo php8.5 /var/lib/pjas-control/updater/bin/pjas-control-update recover <?= View::e($state['id']) ?></code></pre><?php elseif($running):?><p id="control-update-connection" role="status">更新中の接続待ちを含め、結果を自動で確認します。</p><a class="btn" href="/#control-update">結果を再表示</a>
+<?php elseif(($state['phase']??'')==='failed' && empty($state['rollback_complete'])):?><div class="note err">自動復旧が完了していません。サーバーで退避とサービス状態を確認してください。</div><pre><code>sudo php8.5 /var/lib/pjas-control/updater/bin/pjas-control-update status
+sudo php8.5 /var/lib/pjas-control/updater/bin/pjas-control-update recover <?= View::e($state['id']) ?></code></pre>
+<?php else:?><form method="post" action="/control-update"><?= Csrf::field() ?><input type="hidden" name="action" value="review"><button class="btn">GitHubから更新内容を確認</button></form><?php endif;?>
+<?php if($review&&!$running):?><hr><h3>適用前の確認</h3><p><code><?= View::e(substr($review['base'],0,12)) ?></code> → <code><?= View::e(substr($review['target'],0,12)) ?></code> / <?= $review['auth']==='github_app'?'GitHub App認証':'公開リポジトリ' ?></p>
+<?php if($review['up_to_date']):?><div class="note ok">確認時点で最新です。</div><?php else:?><details><summary>変更ファイル（<?= count($review['changes']) ?> 件）</summary><ul><?php foreach($review['changes'] as $file):?><li class="mono"><?= View::e($file) ?></li><?php endforeach;?></ul></details>
+<?php foreach($review['blockers'] as $blocker):?><p class="note err" role="alert"><?= View::e($blocker) ?></p><?php endforeach;?>
+<?php if(!$review['blockers']):?><p>PHP停止に連動する稼働中サービス：<?= View::e(implode('、',$review['dependent_services']??[])?:'追加なし') ?>。更新後に元の稼働状態へ戻します。</p><p>設定・管理DB・変更前コードを退避し、固定したコミットへ更新します。管理画面・監視・agentと管理用PHP-FPMを停止するため、同じPHP-FPMを使うサイトも一時的に応答できません。検査に失敗した場合は退避したコード・管理DBを復旧します。</p><form method="post" action="/control-update"><?= Csrf::field() ?><input type="hidden" name="action" value="start"><input type="hidden" name="review" value="<?= View::e($review['id']) ?>"><label class="inline"><input type="checkbox" name="confirm" value="1" required>変更内容・対象コミット・サイトへの停止の影響を確認しました</label><div class="field"><label for="control-update-password">現在のパスワード</label><input id="control-update-password" name="password" type="password" autocomplete="current-password" required></div><button class="btn p">確認したコミットへ更新</button></form><?php endif;?>
+<?php endif;endif;?>
+<?php endif;?><p class="hint">更新元・サービス定義・更新基盤そのものの変更は、サーバー管理者が保守手順で照合します。</p>
+</div></section>
+<?php if($running):?><script src="/assets/control-update.js?v=1" defer></script><?php endif;?>

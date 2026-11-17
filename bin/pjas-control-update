@@ -1,0 +1,55 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+require dirname(__DIR__).'/app/bootstrap.php';
+spl_autoload_register(static function(string $class):void{
+ if(str_starts_with($class,'Pjas\\Agentd\\Ops\\'))$file=PJAS_ROOT.'/agent/ops/'.substr($class,16).'.php';
+ elseif(str_starts_with($class,'Pjas\\Agentd\\'))$file=PJAS_ROOT.'/agent/lib/'.substr($class,12).'.php';
+ elseif(str_starts_with($class,'Pjas\\Shared\\'))$file=PJAS_ROOT.'/shared/'.substr($class,12).'.php';else return;
+ if(is_file($file))require_once $file;
+});
+use Pjas\Agentd\{ControlUpdate,ControlStore,Proc,GitRepositories,OpException};
+use Pjas\Domain\GitHubRepository;
+use Pjas\Shared\PhpRuntime;
+use Pjas\Support\Config;
+try {
+ if(PHP_SAPI!=='cli'||posix_geteuid()!==0)throw new OpException('rootで実行してください');
+ umask(0077);
+ $cfg=require PJAS_ROOT.'/agent/config.php';$update=new ControlUpdate($cfg);$command=$argv[1]??'help';
+ if($command==='install'){
+  $root=realpath(PJAS_ROOT);$branch='main';$auth='auto';
+  foreach(array_slice($argv,2) as $arg){if(str_starts_with($arg,'--branch='))$branch=substr($arg,9);elseif(str_starts_with($arg,'--auth='))$auth=substr($arg,7);else throw new OpException('未対応のオプションです');}
+  if(!preg_match('~\A[A-Za-z0-9][A-Za-z0-9_./-]{0,100}\z~D',$branch)||str_contains($branch,'..')||!in_array($auth,['auto','public','github_app'],true))throw new OpException('ブランチと認証方式を確認してください');
+  $repo=ControlUpdate::origin(Proc::must(['/usr/bin/git','-c','safe.directory='.$root,'-C',$root,'remote','get-url','origin']));
+  $path=$cfg['control_update_config']??'/etc/pjas-control/update.json';if(is_link($path)||is_link(dirname($path)))throw new OpException('更新設定の保存先がリンクです');
+  if(!is_dir(dirname($path)))mkdir(dirname($path),0755,true);
+  $old=is_file($path)?file_get_contents($path):null;
+  $settings=['version'=>1,'root'=>$root,'repository'=>$repo,'branch'=>$branch,'auth'=>$auth];
+  file_put_contents($path,json_encode($settings,JSON_THROW_ON_ERROR));chmod($path,0600);
+  try {
+   // Reuse exactly the same ownership and cleanliness checks as a later review, without fetching.
+   $update->validateInstallation();
+   $store=new ControlStore($cfg);$lock=$store->lock('control-update');
+   try{
+    $current=$store->read('control-update');if(in_array($current['phase']??'', ['queued','running','recovering'],true)||(($current['phase']??'')==='failed'&&empty($current['rollback_complete'])))throw new OpException('更新中は登録し直せません');
+    $stage=$store->directory('updater-install-'.bin2hex(random_bytes(8)));
+    $r=Proc::run(['/usr/bin/git','-c','safe.directory='.$root,'-C',$root,'archive','--format=tar','HEAD'],null,120,null,GitRepositories::publicEnv(),null,$stage.'/source.tar');if($r['code']!==0)throw new OpException('更新プログラムを退避できません');
+    mkdir($stage.'/source',0700);Proc::must(['/usr/bin/tar','-xf',$stage.'/source.tar','-C',$stage.'/source','--no-same-owner']);
+    if(!is_file($stage.'/source/bin/pjas-control-update'))throw new OpException('更新プログラムを含むコミットを取得してください');
+    foreach(['config.php','agent/config.php'] as $file){copy($root.'/'.$file,$stage.'/source/'.$file);chmod($stage.'/source/'.$file,0600);}
+    $runner=$store->root().'/updater';if(is_link($runner))throw new OpException('更新プログラムの保存先がリンクです');if(is_dir($runner))rename($runner,$store->root().'/updater-previous-'.bin2hex(random_bytes(6)));
+    if(!rename($stage.'/source',$runner))throw new OpException('更新プログラムを配置できません');
+    foreach([$root,$store->root(),dirname((string)Config::get('db')),$runner] as $value)if(!preg_match('~\A/[A-Za-z0-9_./-]+\z~D',$value))throw new OpException('更新用サービスのパスに使えない文字があります');
+    $unit=strtr(file_get_contents(PJAS_ROOT.'/systemd/pjas-control-update@.service'),['{{php}}'=>PhpRuntime::cli('php'.PhpRuntime::controlVersion().'-fpm'),'{{runner}}'=>$runner.'/bin/pjas-control-update','{{root}}'=>$root,'{{state}}'=>$store->root(),'{{dbdir}}'=>dirname((string)Config::get('db'))]);
+    if(file_put_contents('/etc/systemd/system/pjas-control-update@.service',$unit)===false)throw new OpException('サービスを配置できません');chmod('/etc/systemd/system/pjas-control-update@.service',0644);
+    Proc::must([$cfg['systemctl'],'daemon-reload']);
+   }finally{flock($lock,LOCK_UN);fclose($lock);}
+  }catch(Throwable $e){if($old===null)@unlink($path);else file_put_contents($path,$old);throw $e;}
+  echo "更新元・更新サービスを登録しました。pjas-agentdを再起動し、ホームから更新内容を確認してください。\n";exit;
+ }
+ if($command==='status')$result=$update->status();
+ elseif(in_array($command,['run','recover'],true))$result=$update->execute($argv[2]??'',$command==='recover');
+ else {echo "sudo php8.5 bin/pjas-control-update install [--branch=main] [--auth=auto|public|github_app]\nsudo php8.5 bin/pjas-control-update status\nsudo php8.5 /var/lib/pjas-control/updater/bin/pjas-control-update recover ID\n";exit;}
+ echo json_encode($result,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+ if(in_array($result['state']['phase']??'', ['failed'],true))exit(1);
+} catch(Throwable $e){fwrite(STDERR,'更新操作を完了できませんでした: '.$e->getMessage()."\n");exit(1);}

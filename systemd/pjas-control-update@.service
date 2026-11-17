@@ -1,0 +1,20 @@
+[Unit]
+Description=pjas-ctrl update transaction %i
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 3
+ExecStart={{php}} {{runner}} run %i
+TimeoutStartSec=1800
+UMask=0077
+RuntimeDirectory=pjas-control-update
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=no
+ReadWritePaths={{root}} {{state}} {{dbdir}} /var/log/pjas /run
+StandardOutput=null
+StandardError=journal

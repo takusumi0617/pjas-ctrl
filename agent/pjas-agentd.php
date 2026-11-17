@@ -76,6 +76,9 @@ $certificates=new \Pjas\Agentd\Ops\Certificates($cfg);
 $registry = [
     'runtime.catalog'=>static fn(array $p):array=>['runtimes'=>\Pjas\Shared\PhpRuntime::catalog()],
     'site.upgrade.activate'=>[(new \Pjas\Agentd\Ops\UpgradeUi($cfg)),'activate'],
+    'control.status'=>[(new \Pjas\Agentd\ControlUpdate($cfg)),'status'],
+    'control.review'=>[(new \Pjas\Agentd\ControlUpdate($cfg)),'review'],
+    'control.start'=>[(new \Pjas\Agentd\ControlUpdate($cfg)),'start'],
     'site.overview'=>[(new \Pjas\Agentd\Ops\SiteOverview($cfg)),'listing'],
     'isolation.status'=>[(new \Pjas\Agentd\SiteIsolation($cfg)),'status'],
     'isolation.apply'=>[(new \Pjas\Agentd\Ops\Isolation($cfg)),'apply'],
@@ -252,6 +255,8 @@ function handle(string $line, array $registry): array
 
     $started = microtime(true);$siteLock=null;
     try {
+        $controlState=(new \Pjas\Agentd\ControlStore($cfg))->read('control-update');
+        if(!in_array($op,['ping','control.status'],true)&&(in_array($controlState['phase']??'', ['queued','running','recovering'],true)||(($controlState['phase']??'')==='failed'&&empty($controlState['rollback_complete']))))throw new OpException('ctrlの更新中です。更新結果を確認してください');
         $target=$params['service']??($params['task']['service']??null);if(is_array($target))$target=$target['name']??null;
         if (is_string($target)) {\Pjas\Agentd\Ops\Components::guard($cfg,$target,$op);if($op!=='site.upgrade.activate')\Pjas\Agentd\SiteLifecycleGuard::upgrade($cfg,$target);}
         if (!empty($params['target_service'])) {\Pjas\Agentd\Ops\Components::guard($cfg,\Pjas\Agentd\Spec::name($params['target_service']),$op);\Pjas\Agentd\SiteLifecycleGuard::upgrade($cfg,\Pjas\Agentd\Spec::name($params['target_service']));}

@@ -1,7 +1,7 @@
 <?php
 // pjas-ctrl 設定。config.php にコピーして環境に合わせる。
 return [
-    // 状態 DB (www-data が読み書きできること)
+    // 状態 DB (導入後は専用の pjas-control ユーザーが読み書きする)
     'db'            => '/var/lib/pjas/pjas.db',
 
     // アップロード一時置き場。web が書き、agent がここからのみ読む。
