@@ -10,7 +10,9 @@ spl_autoload_register(static function (string $class): void {
         return;
     }
     $rel  = str_replace('\\', '/', substr($class, 5));
-    $file = PJAS_ROOT . '/app/' . $rel . '.php';
+    $file = str_starts_with($rel, 'Shared/')
+        ? PJAS_ROOT . '/shared/' . substr($rel, 7) . '.php'
+        : PJAS_ROOT . '/app/' . $rel . '.php';
     if (is_file($file)) {
         require $file;
     }

@@ -20,15 +20,25 @@ final class View
         if (!is_file($file)) {
             throw new \RuntimeException("view がありません: {$view}");
         }
+        $viewBufferLevel = ob_get_level();
         extract($data, EXTR_SKIP);
-        if ($bare) {
-            require $file;
-            return;
-        }
         ob_start();
-        require $file;
-        $content = ob_get_clean();
-        require dirname(__DIR__, 2) . '/views/layout.php';
+        try {
+            if ($bare) {
+                require $file;
+            } else {
+                ob_start();
+                require $file;
+                $content = ob_get_clean();
+                require dirname(__DIR__, 2) . '/views/layout.php';
+            }
+            $viewOutput = ob_get_clean();
+        } catch (\Throwable $error) {
+            // Discard this render's partial document, preserving any caller-owned buffer.
+            while (ob_get_level() > $viewBufferLevel) ob_end_clean();
+            throw $error;
+        }
+        echo $viewOutput;
     }
 
     public static function e(?string $s): string

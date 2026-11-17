@@ -1,6 +1,6 @@
 <?php
 use Pjas\Http\{Csrf,View};use Pjas\Support\Time;
-$e=static fn($s)=>View::e((string)$s);$bad=array_filter($checks,static fn($c)=>!$c['ok']);$stale=!$last_tick||strtotime($last_tick)<time()-180;
+$e=static fn($s)=>View::e((string)$s);$bad=array_filter($checks,static fn($c)=>!$c['ok']);$stale=!\Pjas\Domain\SitePresentation::fresh($last_tick,time());
 $critical=array_filter($bad,static fn($c)=>str_contains($c['check_key'],'disk.')||str_contains($c['check_key'],'service.')||str_contains($c['check_key'],'collector'));
 ?>
 <h1>サーバーとctrl <span class="tag <?= $error?'t-warn':($critical?'t-err':($bad||$stale?'t-warn':'t-ok')) ?>"><?= $error?'状態不明':($critical?'すぐ対応':($bad||$stale?'確認が必要':'正常')) ?></span></h1>
