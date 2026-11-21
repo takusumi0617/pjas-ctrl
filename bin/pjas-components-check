@@ -16,7 +16,7 @@ try {
  if (!is_dir($store->root())) throw new RuntimeException('構成状態の保存先がありません');
  $s=$store->read('components-'.$site);
  if (!$s) throw new RuntimeException('隔離サイトの設定を先に適用してください');
- if (in_array($s['phase']??'', ['initialized', 'stopped', 'restore_hold'], true)) {
+ if (($argv[2]??'')==='--running-only' && in_array($s['phase']??'', ['initialized', 'stopped', 'restore_hold'], true)) {
   echo "SKIP 稼働時の検査は起動後に実施してください (状態: ".$s['phase'].")\n";
   exit(77);
  }
