@@ -766,7 +766,7 @@ final class Components
                     $checks[$ref]=$active['code']===0 && $this->command($site,$id,$r,'health',$h['command'],min(30,max(1,(int)($h['timeout']??10))))===0;
                 }
                 $versions=[]; foreach ($r['secrets'] as $ref=>$secret) $versions[$ref]=hash_file('sha256',$secret['path']);
-                $result['components'][$id]=['restart_required'=>($s['secret_versions'][$id]??[])!==$versions,'active'=>$active['code']===0,'ready'=>$active['code']===0 && !in_array(false,$checks,true),'checks'=>$checks,'profile'=>$r['declaration']['execution_profile'],'user'=>$r['profile']['user'],'type'=>$r['declaration']['type'],'fpm_binary'=>$r['profile']['fpm_binary']??null,'storage'=>array_keys($r['storage'])];
+                $result['components'][$id]=['restart_required'=>($s['secret_versions'][$id]??[])!==$versions,'active'=>$active['code']===0,'ready'=>$active['code']===0 && !in_array(false,$checks,true),'checks'=>$checks,'profile'=>$r['declaration']['execution_profile'],'depends_on'=>$r['declaration']['depends_on'],'user'=>$r['profile']['user'],'type'=>$r['declaration']['type'],'fpm_binary'=>$r['profile']['fpm_binary']??null,'storage'=>array_keys($r['storage'])];
             }
             $result['configured']=true;
         } catch (\Throwable $e) { $result['configured']=false; $result['reason']='依存環境・権限・秘密情報・設定の再確認が必要です'; }
