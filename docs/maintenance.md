@@ -59,6 +59,20 @@ sudo systemctl status pjas-agentd pjas-control-web php8.5-fpm pjas-monitor.timer
 sudo php8.5 bin/pjas-sites-check
 ```
 
+## 更新前後の診断
+
+更新前に配備コミットと主要ユニットの稼働状態を控えます。診断CLIが導入済みなら、更新前後で同じコマンドを使えます。
+
+```bash
+cd /opt/pjas-ctrl
+sudo php8.5 bin/pjas-host-check
+sudo php8.5 bin/pjas-host-check --component=pjas-cert
+```
+
+管理用PHPが8.5以外なら実行時のPHPを合わせます。診断はループバックのログイン画面とサイトの隔離状態を検査します。公開URLからの接続はブラウザーで確認してください。サービスの起動や設定の書き換えは行いません。隔離サイトの指定は任意です。停止中または起動待ちのv2サイトの稼働検査は `SKIP` とし、起動後に再実行します。
+
+終了コードは、失敗がなければ `0`、失敗があれば `1`、引数の誤りは `2`、ctrlの更新中は `75`、root権限なしは `77` です。個々の検査の `WARN` と `SKIP` は終了コード `0` でも表示されます。
+
 ## v2コンポーネントの承認台帳を修正する
 
 管理者所有の `/etc/pjas/components.json` を修正した場合、既存のコンポーネント状態に記録された許可台帳のハッシュが変わります。安全性検証を回避して状態JSONを書き換えず、必ず「実行環境」の構成レビューと適用を経由してください。
