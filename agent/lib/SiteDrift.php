@@ -39,6 +39,6 @@ final class SiteDrift
             $body = SiteIsolation::pool($name, $runtime, $cfg['apache_user'], rtrim($cfg['www_root'], '/').'/'.$name);
             $rows = array_merge($rows, ComponentDrift::inspect(['files'=>[$pool=>hash('sha256', $body)]]));
         }
-        return $rows;
+        return array_merge($rows, (new \Pjas\Agentd\Ops\Daemon($cfg))->configurationDrift($name));
     }
 }
