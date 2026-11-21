@@ -1,6 +1,7 @@
 <?php
 // pjas-ctrl 設定。config.php にコピーして環境に合わせる。
 return [
+    'pjas_cert_console_origin' => '', // 例: https://cert.example.com
     'pjas_security_origin' => '', // 例: https://security.example.com
     // 状態 DB (導入後は専用の pjas-control ユーザーが読み書きする)
     'db'            => '/var/lib/pjas/pjas.db',

@@ -358,6 +358,12 @@ final class Vhost
             'enabled_target'=>$target,
             'conflicts'=>$conflicts,
         ];
+        $unexpectedLink = $target !== null && (!is_link($link) || realpath($link) !== realpath($path) || !is_file($path));
+        $risk = match (true) {
+            $conflicts !== [] || !empty($view['migration_source']) || $unexpectedLink => 'high',
+            $view['resolved_mode'] === 'errors' => 'limited',
+            default => 'moderate',
+        };
         return $view + [
             'change_review'=>hash('sha256',json_encode($review,JSON_THROW_ON_ERROR)),
             'impact'=>[
@@ -365,6 +371,7 @@ final class Vhost
                 'enabled_path'=>$link,
                 'conflicts'=>$conflicts,
                 'runtime'=>$spec['runtime'],
+                'risk'=>$risk,
                 'changed'=>$review['candidate']!==$review['current'],
             ],
         ];

@@ -53,6 +53,27 @@ if (Auth::can('owner')) $tabs = array_slice($tabs,0,1,true)+(!empty($componentSi
 <?php if (!empty($pause['enabled'])): ?><div class="note">このサイトは一時停止中です。HTTP <?= (int) $pause['code'] ?> と指定したHTMLを返しています。</div><?php endif; ?>
 
 <?php if ($tab === 'overview'): ?>
+  <?php if (isset($configurationDrift)):
+    $observedAt = $configurationDrift['checked_at'] ?? null;
+    $fresh = $observedAt !== null && $observedAt >= time()-7200 && empty($configurationDrift['skip']);
+    $apacheDrift = false;
+  ?>
+  <section class="card section-gap"><div class="card-h">目標構成とサーバーの照合</div><div class="card-b">
+    <p>登録した目標構成：<?= View::e($s['domain']) ?> ／ <?= View::e($s['runtime']) ?> ／ <code><?= View::e($s['docroot']) ?></code></p>
+    <p><?= !$observedAt?'照合待ち':($fresh?'最新の照合':'過去の照合') ?><?= $observedAt?' ／ '.View::e(\Pjas\Support\Time::display(gmdate('c',(int)$observedAt))):'' ?>
+      <?= !empty($configurationDrift['skip'])?' ／ '.View::e($configurationDrift['skip']):'' ?></p>
+    <?php if (!empty($configurationDrift['rows'])): ?><ul>
+    <?php foreach ($configurationDrift['rows'] as $row):
+      if (in_array($row['status'], ['changed','missing'], true) && basename($row['path'])==='pjas-'.$s['name'].'.conf' && !str_contains($row['path'],'/pool.d/')) $apacheDrift = true;
+    ?>
+      <li><code><?= View::e($row['path']) ?></code> ／ <?= View::e($row['detail']) ?></li>
+    <?php endforeach; ?>
+    </ul><?php endif; ?>
+    <?php if ($fresh && $apacheDrift && !$componentSite && !empty($isolation['isolated'])): ?>
+      <a class="btn" href="/services/<?= $name ?>?tab=vhost&amp;mode=settings">公開設定の差分と修復の影響を確認</a>
+    <?php endif; ?>
+  </div></section>
+  <?php endif; ?>
   <?php if ($current === null && empty($componentSite) && Auth::canSite($s['name'],'operator')): ?>
     <div class="note" style="margin-bottom:14px">
       このサイトはまだ管理下のバージョンを持っていません。
@@ -141,6 +162,7 @@ if (Auth::can('owner')) $tabs = array_slice($tabs,0,1,true)+(!empty($componentSi
     <div class="card-h">公開設定の変更影響</div>
     <div class="card-b">
       <dl>
+        <?php if (isset($impact['risk'])): ?><dt>変更リスク</dt><dd><?= View::e(['high'=>'高い・競合または継承元や有効化リンクを確認','moderate'=>'中・公開設定を生成して再読み込み','limited'=>'限定・共通エラーページの更新'][$impact['risk']] ?? '未評価') ?></dd><?php endif; ?>
         <dt>設定ファイル</dt><dd><code><?= View::e($impact['path']) ?></code>（<?= $impact['changed']?'差分あり':'内容は一致' ?>）</dd>
         <dt>Apacheの有効化リンク</dt><dd><code><?= View::e($impact['enabled_path']) ?></code></dd>
         <dt>サービスへの反映</dt><dd>Apacheの構文確認と段階的な再読み込み。PHP-FPMプールの再起動はありません。</dd>

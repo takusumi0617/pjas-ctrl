@@ -18,6 +18,7 @@ $url = '/server/security-events';
 <button class="btn" name="action" value="login">接続</button>
 </form></div></section>
 <?php else: ?>
+<p><a href="<?= $url ?>/observations">アラート・プロセス・ポート・レポート</a></p>
 <form method="post" action="<?= $url ?>"><?= Csrf::field() ?><button class="btn" name="action" value="logout">接続を解除</button></form>
 <section class="card section-gap"><div class="card-h">検知イベント</div><div class="card-b">
 <form method="get" action="<?= $url ?>">

@@ -66,6 +66,57 @@ final class SecurityIntegrationController
         View::render('security_integration', $data);
     }
 
+    public function observations(): void
+    {
+        Auth::require('owner');
+        $origin = (string)Config::get('pjas_security_origin', '');
+        $session = $_SESSION['pjas_security'][$origin] ?? [];
+        $data = ['title'=>'pjas-security の監視', 'sections'=>[], 'errors'=>[]];
+        if (!$session) View::redirect(self::URL, '先に pjas-security に接続してください', 'err');
+        try {
+            $api = new SecurityGateway($origin);
+        } catch (\InvalidArgumentException $error) {
+            View::redirect(self::URL, $error->getMessage(), 'err');
+        }
+        foreach (['alerts'=>'alerts?limit=50','detection'=>'system/detection','inventory'=>'system/inventory',
+            'host'=>'system/host','operations'=>'operations','reports'=>'reports?limit=30'] as $section=>$endpoint) {
+            try {
+                $data['sections'][$section] = $api->request($endpoint, null, $session);
+            } catch (\RuntimeException $error) {
+                if ($error->getCode()===401) {
+                    unset($_SESSION['pjas_security'][$origin]);
+                    View::redirect(self::URL, 'pjas-security に再接続してください', 'err');
+                }
+                $data['errors'][$section] = $error->getMessage();
+            }
+        }
+        View::render('security_observations', $data);
+    }
+
+    public function report(array $args): void
+    {
+        Auth::require('owner');
+        $id = $args['id'] ?? '';
+        if (!preg_match('/\A(?:daily|weekly)-[0-9]{4}-[0-9]{2}-[0-9]{2}\z/D', $id)) {
+            View::error(404);
+            return;
+        }
+        $origin = (string)Config::get('pjas_security_origin', '');
+        $session = $_SESSION['pjas_security'][$origin] ?? [];
+        if (!$session) View::redirect(self::URL, '先に pjas-security に接続してください', 'err');
+        try {
+            $result = (new SecurityGateway($origin))->request('reports/'.$id.'/download', null, $session);
+        } catch (\InvalidArgumentException|\RuntimeException $error) {
+            if ($error->getCode()===401) unset($_SESSION['pjas_security'][$origin]);
+            View::redirect(self::URL.'/observations', $error->getMessage(), 'err');
+        }
+        header('Content-Type: application/json; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="pjas-report-'.$id.'.json"');
+        header('Cache-Control: no-store');
+        header('X-Content-Type-Options: nosniff');
+        echo json_encode($result, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    }
+
     public function action(): void
     {
         Auth::require('owner');
@@ -95,7 +146,12 @@ final class SecurityIntegrationController
                 $message = 'pjas-security との接続を解除しました';
             } else {
                 if (!$session) throw new \InvalidArgumentException('先に pjas-security に接続してください');
-                if ($action === 'propose') {
+                if ($action === 'acknowledge') {
+                    $target = self::field($_POST,'alert');
+                    if (!preg_match('/\A[A-Za-z0-9_-]{1,80}\z/D',$target)) throw new \InvalidArgumentException('アラートを選び直してください');
+                    $api->request('alerts/'.$target.'/acknowledge', [], $session);
+                    $message = 'アラートを確認済みにしました';
+                } elseif ($action === 'propose') {
                     $operation = self::field($_POST,'operation');
                     $ip = self::field($_POST,'ip');
                     $duration = filter_var(self::field($_POST,'duration'), FILTER_VALIDATE_INT);
@@ -146,10 +202,10 @@ final class SecurityIntegrationController
             if ($error->getCode()===401) unset($_SESSION['pjas_security'][$origin]);
             $message = $error->getMessage();
         }
-        if (in_array($action,['approve','reject','propose','login','logout'],true)) {
+        if (in_array($action,['approve','reject','propose','login','logout','acknowledge'],true)) {
             Audit::log(Auth::actor(),'pjas-security.'.$action,$target,$audit,$outcome);
         }
-        View::redirect(self::URL, $message, $kind);
+        View::redirect(self::URL.($action==='acknowledge'?'/observations':''), $message, $kind);
     }
 
     private static function field(array $input, string $key): string

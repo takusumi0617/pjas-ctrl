@@ -306,6 +306,9 @@ final class ServiceController
         if ($tab==='environment' && $data['componentSite'] && Auth::can('owner')) {
             $data['componentPanel']=ComponentController::panel($s);
         }
+        if ($tab==='overview' && Auth::can('owner')) {
+            $data['configurationDrift'] = \Pjas\Domain\DriftMonitoring::status((int)$s['id']);
+        }
         $data['settingsDraft']=$_SESSION['settings_draft'][$s['name']]??null;
         $data['fieldErrors']=$_SESSION['settings_errors'][$s['name']]??[];
         if($tab==='settings'){unset($_SESSION['settings_errors'][$s['name']],$_SESSION['settings_draft'][$s['name']]);}

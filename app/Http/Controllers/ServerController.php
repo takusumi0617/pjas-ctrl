@@ -3,7 +3,7 @@ declare(strict_types=1);
 namespace Pjas\Http\Controllers;
 use Pjas\Agent\{AgentClient,AgentException};
 use Pjas\Http\{Auth,View};
-use Pjas\Support\{Db,Audit};
+use Pjas\Support\{Db,Audit,Config};
 final class ServerController
 {
     public function index(): void
@@ -27,7 +27,9 @@ final class ServerController
             $affectedByUnit[$unit['unit']] = array_keys($names);
             sort($affectedByUnit[$unit['unit']], SORT_STRING);
         }
-        View::render('server',['title'=>'サーバー','snapshot'=>$snapshot,'error'=>$error,'affected_sites'=>$affectedByUnit,
+        $certConsole = (string)Config::get('pjas_cert_console_origin', '');
+        if (!preg_match('~\Ahttps://[a-z0-9.-]+(?::[0-9]{1,5})?\z~D', $certConsole)) $certConsole = '';
+        View::render('server',['title'=>'サーバー','snapshot'=>$snapshot,'error'=>$error,'affected_sites'=>$affectedByUnit,'cert_console'=>$certConsole,
             'checks'=>Db::all("SELECT * FROM monitor_state WHERE service_id IS NULL ORDER BY ok,check_key"),
             'alerts'=>Db::all("SELECT a.*,k.alert_id AS acknowledged FROM alerts a LEFT JOIN server_alert_ack k ON k.alert_id=a.id WHERE a.service_id IS NULL ORDER BY a.id DESC LIMIT 50"),
             'last_tick'=>Db::one("SELECT value FROM app_state WHERE name='tick.last'")['value']??'']);

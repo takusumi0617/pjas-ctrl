@@ -41,6 +41,8 @@ $r->post('/server',[$server,'action'],'owner');
 $securityIntegration = new \Pjas\Http\Controllers\SecurityIntegrationController();
 $r->get('/server/security-events', [$securityIntegration,'index'], 'owner');
 $r->post('/server/security-events', [$securityIntegration,'action'], 'owner');
+$r->get('/server/security-events/observations', [$securityIntegration,'observations'], 'owner');
+$r->get('/server/security-events/reports/{id}', [$securityIntegration,'report'], 'owner');
 $r->get('/connections',[$ops,'connections'],'owner');$r->post('/connections',[$ops,'saveConnection'],'owner');
 $r->post('/connections/github/start',[$ops,'githubStart'],'owner');$r->get('/connections/github/callback',[$ops,'githubCallback'],'owner');
 $r->get('/services/{name}/operations',[$ops,'site'],'operator');$r->post('/services/{name}/operations',[$ops,'action'],'operator');

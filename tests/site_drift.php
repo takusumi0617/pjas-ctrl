@@ -32,7 +32,7 @@ try {
 
     $params=['service'=>$spec,'require_change_review'=>true];
     $review=$vhost->preview($params);
-    check($review['impact']['path']===$path && $review['impact']['changed'],'変更対象と生成差分をプレビューに含める');
+    check($review['impact']['path']===$path && $review['impact']['changed'] && $review['impact']['risk']==='moderate','変更対象と生成差分をプレビューに含める');
     symlink($path,$link);
     rejects(fn()=>$vhost->apply($params+['change_review'=>$review['change_review']]));
     check(is_link($link) && file_get_contents($path)===$body."\n# changed\n",'確認後に有効化リンクが変わったら適用前に停止する');

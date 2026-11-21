@@ -17,6 +17,14 @@ curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8184/</code></pre><p 
 <div class="card"><div class="card-h">対応が必要な項目</div><div class="card-b"><?php if(!$bad):?><p><?= $stale?'自動監視を開始して状態を確認してください。':'現在検知されている異常はありません。' ?></p><?php endif;?><?php foreach($bad as $c):?><p><?= \Pjas\Support\Icons::render('error') ?> <?= $e($c['detail']) ?></p><?php endforeach;?><p><a class="btn" href="/operations">各サイト・証明書・バックアップの状態</a> <a class="btn" href="/connections">Discordの通知先を設定・テスト</a></p><p class="hint">異常発生・復旧時に通知します。同じ異常は毎分通知しません。サーバー全体の停止は内部から通知できないため、外部からの死活監視も併用してください。</p></div></div>
 <div class="card"><div class="card-h">保存領域</div><table><thead><tr><th>場所</th><th>使用率</th><th>空き容量</th></tr></thead><tbody><?php foreach($snapshot['disks']??[] as $d):?><tr><td><?= $e($d['path']) ?></td><td><?= $d['used']===null?'未測定':$e($d['used']).'%' ?></td><td><?= round($d['free']/1073741824,1) ?> GB</td></tr><?php endforeach;?></tbody></table><div class="card-b hint">空き10%未満、または1GB未満になると通知します。同じ保存装置が複数の場所に表示される場合があります。</div></div>
 <div class="card"><div class="card-h">主要サービス</div><table><thead><tr><th>名前</th><th>状態</th><th>操作</th></tr></thead><tbody><?php foreach($snapshot['units']??[] as $u):if(!$u['loaded'])continue;?><tr><td><?= $e($u['unit']) ?></td><td><?= $e(['active'=>'稼働中','activating'=>'起動中','inactive'=>'停止','failed'=>'失敗'][$u['state']]??$u['state']) ?></td><td><?php if($u['unit']==='apache2.service'||preg_match('/\Aphp[0-9]+\.[0-9]+-fpm\.service\z/D',$u['unit'])):?><details><summary>再起動する</summary><form method="post" action="/server"><?= Csrf::field() ?><input type="hidden" name="action" value="restart"><input type="hidden" name="unit" value="<?= $e($u['unit']) ?>"><p>このサービスを使う全サイトに一時的な影響があります。管理用PHPの再起動では、稼働していた管理用HTTPも起動して確認します。設定の検査が通った場合だけ再起動します。</p><label><input type="checkbox" name="confirmed" required> サイトへの影響を確認しました</label><div class="field"><label>現在のパスワード</label><input type="password" name="password" autocomplete="current-password" required></div><button class="btn">確認して再起動</button></form></details><?php else:?>状態確認のみ<?php endif;?></td></tr><?php endforeach;?></tbody></table></div>
+<?php if (!empty($cert_console)): ?>
+<section class="card section-gap"><div class="card-h">pjas-cert の証明書管理</div><div class="card-b">
+<ul><?php foreach (['/cas'=>'CA・信頼チェーン','/requests'=>'発行・更新・失効','/certificates'=>'証明書台帳','/profiles'=>'発行プロファイル','/keys'=>'ファイル署名','/vault'=>'鍵保管庫','/delivery'=>'サービスへの配布','/audit'=>'監査履歴'] as $path=>$label): ?>
+<li><a href="<?= $e($cert_console.$path) ?>"><?= $e($label) ?></a></li>
+<?php endforeach; ?></ul>
+<p>pjas-cert に移動して操作します。ログインと承認は pjas-cert で行います。</p>
+</div></section>
+<?php endif; ?>
 <?php $securityUnits = array_column($snapshot['units'] ?? [], null, 'unit'); ?>
 <section class="card section-gap">
 <div class="card-h">pjas-security <span class="spacer"></span><a href="/server/security-events">検知・防御の管理</a></div>
