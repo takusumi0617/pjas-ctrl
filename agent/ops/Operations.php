@@ -39,6 +39,49 @@ final class Operations
         }
         $this->store->write('settings',array_replace($old,['public_url'=>$url,'preview_domain'=>$domain,'notifications'=>$n]));return $this->settings();
     }
+    public function drift(array $params): array
+    {
+        $site = Spec::name($params['site'] ?? null);
+        $spec = Spec::service(array_replace(is_array($params['spec']??null) ? $params['spec'] : [], ['name'=>$site]));
+        try {
+            \Pjas\Agentd\SiteLifecycleGuard::active($this->cfg,$site);
+            \Pjas\Agentd\SiteLifecycleGuard::upgrade($this->cfg,$site);
+        } catch (OpException $e) {
+            return ['skip'=>'サイト移行・管理終了の処理中'];
+        }
+
+        $locks = [];
+        try {
+            foreach (['.pjas-deploy-'.$site.'.lock','.pjas-vhost.lock'] as $lock) {
+                $path = $this->cfg['apache_sites'].'/'.$lock;
+                if (is_link($path)) throw new OpException('作業ロックが不正です');
+                $handle = fopen($path,'c');
+                if (!$handle) throw new OpException('作業ロックを開けません');
+                $locks[] = $handle;
+                if (!flock($handle,LOCK_SH|LOCK_NB)) return ['skip'=>'設定変更または公開作業中'];
+            }
+            $isolated = Components::protectedSite($this->cfg,$site);
+            if ($isolated && ($this->store->read('component-tx-'.$site)['phase']??'') === 'pending') {
+                return ['skip'=>'コンポーネント設定の復旧待ち'];
+            }
+
+            $cfg = $this->cfg;
+            $state = [];
+            if (!$isolated) {
+                $isolation = new \Pjas\Agentd\SiteIsolation($cfg);
+                $state = $isolation->state($site);
+                if (($state['status']??'') === 'ready') $cfg = $isolation->scope($site);
+            }
+            $rows = \Pjas\Agentd\SiteDrift::inspect($cfg,$spec,$state);
+            if ($isolated) {
+                $rows = array_merge($rows,\Pjas\Agentd\ComponentDrift::inspect($this->store->read('components-'.$site)));
+            }
+            return $rows ? ['rows'=>$rows] : ['skip'=>'照合対象の生成済み設定がありません'];
+        } finally {
+            foreach (array_reverse($locks) as $handle) fclose($handle);
+        }
+    }
+
     public function notify(array $params): array
     {
         $text=(string)($params['message']??'pjas-ctrlの通知テストです。');if(strlen($text)>10000)throw new OpException('通知内容が長すぎます');return (new Notifier($this->cfg))->send($text);
