@@ -9,18 +9,20 @@ if (PHP_SAPI !== 'cli') {
     exit(2);
 }
 
-$usage = "使い方: sudo php8.5 bin/pjas-host-check [--component=pjas-cert]\n";
+$usage = "使い方: sudo php8.5 bin/pjas-host-check [--component=pjas-cert | --drift | --drift=pjas-cert]\n";
 if ($argv === [$argv[0], '--help']) {
     echo $usage;
     exit(0);
 }
 $component = null;
+$drift = false;
 if ($argc > 1) {
-    if ($argc !== 2 || !preg_match('/\A--component=([a-z0-9][a-z0-9-]{0,31})\z/D', $argv[1], $match)) {
+    if ($argc !== 2 || !preg_match('/\A(?:--drift|--(drift|component)=([a-z0-9][a-z0-9-]{0,31}))\z/D', $argv[1], $match)) {
         fwrite(STDERR, $usage);
         exit(2);
     }
-    $component = $match[1];
+    $component = $match[2] ?? null;
+    $drift = ($match[1] ?? 'drift') === 'drift';
 }
 if (!function_exists('posix_geteuid') || posix_geteuid() !== 0) {
     fwrite(STDERR, "SKIP 実ホストの検査はrootで実行してください\n");
@@ -37,6 +39,61 @@ require $root.'/shared/HostDiagnostics.php';
 require $root.'/agent/lib/Proc.php';
 
 try {
+    if ($drift) {
+        require $root.'/app/bootstrap.php';
+        spl_autoload_register(static function (string $class) use ($root): void {
+            $prefix = 'Pjas\\Agentd\\';
+            if (!str_starts_with($class, $prefix)) return;
+            $relative = substr($class, strlen($prefix));
+            $path = $root.'/agent/'.(str_starts_with($relative, 'Ops\\') ? 'ops/'.substr($relative, 4) : 'lib/'.$relative).'.php';
+            if (is_file($path)) require_once $path;
+        });
+
+        $cfg = require $root.'/agent/config.php';
+        $store = new \Pjas\Agentd\ControlStore($cfg);
+        $db = new PDO('sqlite:'.(string) \Pjas\Support\Config::get('db'), null, null, [
+            PDO::SQLITE_ATTR_OPEN_FLAGS => PDO::SQLITE_OPEN_READONLY,
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        ]);
+        $db->exec('PRAGMA busy_timeout = 5000');
+        $query = $db->prepare("SELECT services.* FROM services WHERE id NOT IN (SELECT service_id FROM service_lifecycle WHERE state <> 'active') AND (? IS NULL OR name = ?) ORDER BY name");
+        $query->execute([$component, $component]);
+        $sites = $query->fetchAll(PDO::FETCH_ASSOC);
+        if (!$sites) echo "SKIP 照合対象の有効なサイトがありません\n";
+
+        $failed = false;
+        $isolation = new \Pjas\Agentd\SiteIsolation($cfg);
+        foreach ($sites as $site) {
+            $name = $site['name'];
+            try {
+                $spec = \Pjas\Agentd\Spec::service($site);
+                $v2 = \Pjas\Agentd\Ops\Components::protectedSite($cfg, $name);
+                $state = is_dir($store->root()) ? $store->read(($v2 ? 'components-' : 'isolation-').$name) : [];
+                $scoped = !$v2 && ($state['status'] ?? '') === 'ready' ? $isolation->scope($name) : $cfg;
+                $rows = \Pjas\Agentd\SiteDrift::inspect($scoped, $spec, $v2 ? [] : $state);
+                if ($v2) {
+                    $rows = array_merge($rows, \Pjas\Agentd\ComponentDrift::inspect($state));
+                }
+                if (!$rows) echo "SKIP $name — 照合対象の生成済み設定がありません\n";
+                foreach ($rows as $row) {
+                    $ok = $row['status'] === 'match';
+                    $label = $ok ? 'PASS' : ($row['status'] === 'skip' ? 'SKIP' : 'FAIL');
+                    $failed = $failed || $label === 'FAIL';
+                    printf("%s %s %s — %s\n", $label, $name, $row['path'], $row['detail']);
+                    if ($ok && str_ends_with($row['path'], '.service')) {
+                        $loaded = Proc::run([$cfg['systemctl'], 'show', '--property=NeedDaemonReload', '--value', '--', basename($row['path'])], null, 5);
+                        if ($loaded['code'] !== 0 || trim($loaded['out']) === 'yes') {
+                            printf("WARN %s %s — %s\n", $name, basename($row['path']), $loaded['code'] === 0 ? 'systemdの再読み込み待ち' : 'systemdの読み込み状態を確認できません');
+                        }
+                    }
+                }
+            } catch (Throwable $e) {
+                echo "FAIL $name — 照合に必要な設定を確認できません\n";
+                $failed = true;
+            }
+        }
+        exit($failed ? 1 : 0);
+    }
     $diagnostics = new HostDiagnostics(
         Proc::run(...),
         static function (string $line): void { echo $line, PHP_EOL; },

@@ -213,6 +213,22 @@ final class Daemon
         }
         return ['units' => $units];
     }
+    public function configurationDrift(string $site): array
+    {
+        $rows = [];
+        foreach ($this->registry() as $unit=>$row) {
+            if (($row['service']??null) !== $site || empty($row['managed'])) continue;
+            if (!preg_match('/\Apjas-daemon-[a-f0-9]{16}\.service\z/D', $unit)) continue;
+            $path = $this->unitDir().'/'.$unit;
+            if (!isset($row['unit_hash'])) {
+                $rows[] = ['path'=>$path,'status'=>'skip','detail'=>'承認時のハッシュが未登録'];
+                continue;
+            }
+            $rows = array_merge($rows, \Pjas\Agentd\ComponentDrift::inspect(['files'=>[$path=>$row['unit_hash']]]));
+        }
+        return $rows;
+    }
+
     public function save(array $params): array
     {
         return $this->locked(function () use ($params): array {
@@ -265,6 +281,7 @@ final class Daemon
                     $this->write($scriptPath, "#!/bin/bash\n" . DaemonDefinition::expand($command, $current) . "\n", 0644);
                     $this->write($unitPath, $body);
                     Proc::must([$this->cfg['systemctl'], 'daemon-reload'], null, 15);
+                    $row['unit_hash'] = hash('sha256',$body);
                     $rows[$unit] = $row;
                     $this->write($this->dir() . '/registry.json', json_encode($rows, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
                 } catch (\Throwable $e) {

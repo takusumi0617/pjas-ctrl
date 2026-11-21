@@ -1,0 +1,37 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+use Pjas\Agentd\ControlStore;
+use Pjas\Agentd\Ops\Components;
+use Pjas\Agentd\Spec;
+
+if (PHP_SAPI !== 'cli' || !function_exists('posix_geteuid') || posix_geteuid() !== 0) exit(77);
+if ($argc < 2 || $argc > 3 || ($argc === 3 && !preg_match('/\A[a-f0-9]{32}\z/D', $argv[2]))) {
+    fwrite(STDERR, "使い方: sudo php8.5 bin/pjas-component-recover サイト名 [操作ID]\n");
+    exit(2);
+}
+
+$root = dirname(__DIR__);
+require $root.'/app/bootstrap.php';
+spl_autoload_register(static function (string $class) use ($root): void {
+    $prefix = 'Pjas\\Agentd\\';
+    if (!str_starts_with($class, $prefix)) return;
+    $relative = substr($class, strlen($prefix));
+    $path = $root.'/agent/'.(str_starts_with($relative, 'Ops\\') ? 'ops/'.substr($relative, 4) : 'lib/'.$relative).'.php';
+    if (is_file($path)) require_once $path;
+});
+
+try {
+    $site = Spec::name($argv[1]);
+    $cfg = require $root.'/agent/config.php';
+    $store = new ControlStore($cfg);
+    if (!is_dir($store->root())) throw new RuntimeException('復旧記録がありません');
+    $result = $argc === 3
+        ? (new Components($cfg))->recoverConfiguration($site, $argv[2])
+        : array_intersect_key($store->read('component-tx-'.$site), ['id'=>true,'phase'=>true]);
+    echo json_encode($result, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), PHP_EOL;
+} catch (Throwable $e) {
+    fwrite(STDERR, $e->getMessage().PHP_EOL);
+    exit(1);
+}

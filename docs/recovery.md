@@ -78,6 +78,24 @@ sudo php8.5 /var/lib/pjas-control/updater/bin/pjas-control-update recover "$PJAS
 
 退避は`/var/lib/pjas-control/control-updates/ID`、更新基盤は同領域の`updater`にあります。更新用の停止情報を先に削除して公開しないでください。退避が存在しない段階で中断した場合はコード・DB変更の有無を確認し、サービスを手動復帰してから管理者が状態を整理します。
 
+## v2の構成適用が中断した
+
+再適用やサービス起動の前に、SSHから適用の状態を確認します。画面に表示された操作IDと同じIDを使います。
+
+```bash
+cd /opt/pjas-ctrl
+sudo php8.5 bin/pjas-component-recover pjas-cert
+```
+
+状態が `pending` の場合は、表示されたIDを控えてから次を実行します。
+
+```bash
+sudo php8.5 bin/pjas-component-recover pjas-cert 操作IDをここに入力
+sudo php8.5 bin/pjas-host-check --drift=pjas-cert
+```
+
+`rolled_back` になれば、生成済み設定と承認状態の復旧が完了しています。CAの永続データは保持されます。稼働が必要な場合は構成を確認してから実行環境で明示的に起動します。設定ファイルに別の変更があれば復旧は停止します。失敗時は対象の変更を確認し、処理済みのファイルも含めて同じIDで再試行できます。
+
 ## サイト移行が失敗した
 
 新しい計画で上書きせず、失敗した単独移行IDを確認します。

@@ -6,6 +6,14 @@
 <dl class="runtime-kv"><dt>実行ユーザー</dt><dd class="mono"><?= View::e($isolation['user']??'未確認') ?></dd><dt>APIの振り分け</dt><dd><?= View::e($presentation['observed']['isolation']['routing']??'サイト標準設定') ?></dd><dt>コードとデータ</dt><dd>隔離済みサイトはコードを読み取り専用、sharedを専用ユーザーの書き込み領域として使用します。</dd></dl>
 <p>常駐処理・cronを含むサイトはサーバーの <code>bin/pjas-site-upgrade</code> でまとめて移行できます。関連付けを手動で解除する必要はありません。</p>
 <p>サイトを一時停止してから適用します。ファイル権限とApache設定を退避し、専用ユーザー・サイト別FPMへ切り替えます。完了後も停止を維持します。対象アプリのPHP互換性と応答を確認してから再開してください。</p>
+<h3>構成の照合</h3>
+<?php if (empty($isolation['drift'])): ?>
+  <p>照合対象の公開設定がありません。</p>
+<?php else: ?>
+  <ul><?php foreach ($isolation['drift'] as $row): ?>
+    <li><code><?= View::e($row['path']) ?></code> — <?= View::e($row['detail']) ?></li>
+  <?php endforeach; ?></ul>
+<?php endif; ?>
 <?php foreach($isolation['warnings']??[] as $warning): ?><p class="hint"><?= View::e($warning) ?></p><?php endforeach; ?>
 <?php foreach($isolation['blockers'] as $blocker): ?><p class="hint"><?= View::e($blocker) ?></p><?php endforeach; ?>
 <?php $pendingPhase=$presentation['observed']['upgrade']['phase']??null;$migrationBusy=$pendingPhase!==null&&!in_array($pendingPhase,['active','rolled-back'],true);if(Auth::can('owner')&&!$migrationBusy): ?><details class="runtime-details"><summary>PHP・実行環境を変更する</summary><form method="post" action="/services/<?= $name ?>/isolation">

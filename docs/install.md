@@ -121,7 +121,7 @@ sudo php8.5 bin/pjas-install-features --check
 sudo php8.5 bin/pjas-install-features --apply
 ```
 
-`--check` は前提条件と変更予定の確認です。`--apply` は実際にユーザー・DB・サービス・設定を変更します。Apache設定の名前を変更した場合は、両方に `--site=設定名` を追加してください。`.conf` は付けません。
+`--check` は前提条件と変更予定の確認です。`--apply` は実際にユーザー・DB・サービス・設定を変更します。適用時はサービスの起動後に管理用ログイン画面のHTTP 200を確認します。PHP-FPMやApacheの準備に失敗した場合は表示された退避先を確認してください。Apache設定の名前を変更した場合は、両方に `--site=設定名` を追加してください。`.conf` は付けません。
 
 処理後は次の構成になります。
 
