@@ -199,3 +199,23 @@ sudo php8.5 bin/pjas-apache-recover rollback --confirm-rollback
 復旧の記録はサーバーの管理領域に保存されます。コマンドは管理画面や
 agentへの接続を必要としません。継承元の入れ替えや公開済みリリースの
 切り戻しには、それぞれの復旧手順を使ってください。
+
+### サイト移行と独立したApache設定をまとめて変更する
+
+`apache-plan SITE` は、公開済みの標準VirtualHostについて、管理DBに保存された
+サイト設定を反映する差分と計画IDを返します。継承設定、競合するVirtualHost、
+v2コンポーネントは対象外です。移行対象とは別のサイトを指定し、Apacheの計画は
+一件だけ最後に追加します。
+
+```bash
+sudo php8.5 bin/pjas-site-upgrade apache-plan OTHER_SITE
+sudo php8.5 bin/pjas-site-upgrade change-plan "site:$SITE_UPGRADE_ID,apache:$APACHE_PLAN_ID"
+sudo php8.5 bin/pjas-site-upgrade change-prepare "$CHANGE_ID" \
+  --accept-standard-apache --external-processes-stopped
+```
+
+`APACHE_PLAN_ID` と `CHANGE_ID` にはそれぞれの計画コマンドが返したIDを設定します。
+準備中に、移行サイトは停止状態になり、独立したApache設定は再読み込みされます。
+確定前に戻す場合は `change-rollback "$CHANGE_ID" --confirm-rollback` を使います。
+変更を維持する場合は `change-commit "$CHANGE_ID" --confirm-commit` で確定してから、
+移行サイトを `activate` または `batch-apply` で公開します。

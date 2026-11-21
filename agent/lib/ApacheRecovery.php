@@ -28,21 +28,21 @@ final class ApacheRecovery
     }
 
     /** Each entry supplies the only intermediate states this operation may create. */
-    public function begin(string $site, array $changes): void
+    public function begin(string $site, array $changes, ?string $owner = null): void
     {
         $this->assertIdle();
         $entries = [];
         foreach ($changes as $path => $expected) {
             $entries[$path] = ['before'=>self::capture($path), 'expected'=>$expected];
         }
-        $this->store->write(self::KEY, ['site'=>$site, 'time'=>gmdate('c'), 'entries'=>$entries]);
+        $this->store->write(self::KEY, ['site'=>$site, 'time'=>gmdate('c'), 'entries'=>$entries, 'owner'=>$owner]);
     }
 
     public function status(): array
     {
         $state = $this->store->read(self::KEY);
         if (!$state) return ['phase'=>'idle'];
-        return ['phase'=>'pending', 'site'=>$state['site'], 'time'=>$state['time'], 'paths'=>array_keys($state['entries'])];
+        return ['phase'=>'pending', 'site'=>$state['site'], 'time'=>$state['time'], 'paths'=>array_keys($state['entries']), 'owner'=>$state['owner']??null];
     }
 
     public function complete(): void
@@ -50,21 +50,34 @@ final class ApacheRecovery
         $this->store->write(self::KEY, []);
     }
 
+    public function markPrepared(string $owner): void
+    {
+        $state = $this->store->read(self::KEY);
+        if (($state['owner'] ?? null) !== $owner) throw new OpException('Apache復旧記録の所有者が一致しません');
+        $state['prepared'] = true;
+        $this->store->write(self::KEY, $state);
+    }
+
+    public function checkPrepared(string $owner): void
+    {
+        $state = $this->store->read(self::KEY);
+        if (($state['owner'] ?? null) !== $owner || empty($state['prepared'])) {
+            throw new OpException('Apache設定の準備完了を確認できません');
+        }
+        $this->checkCurrent($state, true);
+    }
+
+    public function checkRollback(): void
+    {
+        $state = $this->store->read(self::KEY);
+        if ($state) $this->checkCurrent($state);
+    }
+
     public function rollback(callable $reload): void
     {
         $state = $this->store->read(self::KEY);
         if (!$state) return;
-        foreach ($state['entries'] as $path => $entry) {
-            $current = self::capture($path);
-            if ($current === $entry['before']) continue;
-            $candidate = $entry['expected'];
-            if ($candidate['kind'] === 'link') {
-                $matches = $current['kind'] === 'link' && realpath($path) === $candidate['resolved'];
-            } else {
-                $matches = array_intersect_key($current, $candidate) === $candidate;
-            }
-            if (!$matches) throw new OpException('別の変更を検出しました。復旧前に確認してください: '.$path);
-        }
+        $this->checkCurrent($state);
         foreach (array_reverse($state['entries'], true) as $path => $entry) {
             $before = $entry['before'];
             if (self::capture($path) === $before) continue;
@@ -87,5 +100,19 @@ final class ApacheRecovery
         }
         $reload();
         $this->complete();
+    }
+    private function checkCurrent(array $state, bool $requireApplied = false): void
+    {
+        foreach ($state['entries'] as $path => $entry) {
+            $current = self::capture($path);
+            if (!$requireApplied && $current === $entry['before']) continue;
+            $candidate = $entry['expected'];
+            if ($candidate['kind'] === 'link') {
+                $matches = $current['kind'] === 'link' && realpath($path) === $candidate['resolved'];
+            } else {
+                $matches = array_intersect_key($current, $candidate) === $candidate;
+            }
+            if (!$matches) throw new OpException('別の変更を検出しました。復旧前に確認してください: '.$path);
+        }
     }
 }

@@ -8,7 +8,7 @@ spl_autoload_register(static function(string $class):void{
     elseif(str_starts_with($class,'Pjas\\Shared\\'))$path=PJAS_ROOT.'/shared/'.substr($class,12).'.php';else return;
     if(is_file($path))require_once $path;
 });
-use Pjas\Agentd\{ChangeTransaction,SiteUpgrade,SiteUpgradeBatch,SiteUpgradeDb,Proc,ControlStore,OpException};
+use Pjas\Agentd\{ApacheChange,ChangeTransaction,SiteUpgrade,SiteUpgradeBatch,SiteUpgradeDb,Proc,ControlStore,OpException};
 use Pjas\Support\Config;
 if(PHP_SAPI!=='cli')exit(77);
 try{
@@ -26,7 +26,9 @@ try{
 使い方（rootで実行）:
   php8.5 bin/pjas-site-upgrade routing ID --api-front-controller=server/index.php
   php8.5 bin/pjas-site-upgrade jobs SITE
-  php8.5 bin/pjas-site-upgrade change-plan site:ID,batch:ID
+  php8.5 bin/pjas-site-upgrade apache-plan SITE
+  php8.5 bin/pjas-site-upgrade change-plan site:ID,batch:ID[,apache:ID]
+  php8.5 bin/pjas-site-upgrade change-commit ID --confirm-commit
   php8.5 bin/pjas-site-upgrade change-status ID
   php8.5 bin/pjas-site-upgrade change-prepare ID --accept-standard-apache --external-processes-stopped
   php8.5 bin/pjas-site-upgrade change-rollback ID --confirm-rollback
@@ -65,7 +67,8 @@ HELP;
     };
     $upgrade=new SiteUpgrade($cfg,$database);$target=$argv[2]??'';$flags=array_slice($argv,3);
     $allowed=match($command){
-        'change-plan','change-status'=>[],
+        'apache-plan','change-plan','change-status'=>[],
+        'change-commit'=>['--confirm-commit'],
         'change-prepare'=>['--accept-standard-apache','--external-processes-stopped'],
         'change-rollback'=>['--confirm-rollback'],'routing'=>[],'jobs'=>[],'batch-plan'=>['--id-only'],'batch-status'=>[],'batch-prepare'=>['--accept-standard-apache','--external-processes-stopped'],'batch-rollback'=>['--confirm-rollback'],'batch-apply'=>['--accept-standard-apache','--external-processes-stopped','--confirm-activation','--skip-manual'],'plan'=>['--id-only'],'apply'=>['--accept-standard-apache','--external-processes-stopped'],'activate'=>['--confirm-activation'],'rollback'=>['--confirm-rollback'],'status'=>[],default=>throw new OpException('helpで操作を確認してください')};
     $routing=[];
@@ -84,6 +87,7 @@ HELP;
     }
     $apiScript='';$runtime='php8.5-fpm';foreach($flags as $flag){if($command==='routing'&&str_starts_with($flag,'--api-front-controller=')){$apiScript=substr($flag,strlen('--api-front-controller='));continue;}if(in_array($command,['plan','batch-plan'],true)&&preg_match('/\A--php=(8\.[0-9]+|static)\z/D',$flag,$m)){$runtime=$m[1]==='static'?'static':'php'.$m[1].'-fpm';continue;}if(!in_array($flag,$allowed,true))throw new OpException('未知のオプションです: '.$flag);}
     $batch=new SiteUpgradeBatch($cfg,$database,static fn(string $op,array $args)=>$upgrade->$op(...$args));
+    $apache = new ApacheChange($cfg, $database);
     if (str_starts_with($command,'change-')) {
         $siteOperation=static function(string $operation,string $id) use ($upgrade): array {
             $status=$upgrade->status($id);
@@ -105,17 +109,20 @@ HELP;
             if ($operation==='rollback') $batch->rollback($id,true);
             return array_keys($sites);
         };
-        $transaction=new ChangeTransaction($store,['site'=>$siteOperation,'batch'=>$batchOperation]);
+        $transaction=new ChangeTransaction($store,['site'=>$siteOperation,'batch'=>$batchOperation,'apache'=>$apache]);
         if ($command==='change-plan') {
             $steps=[];
             foreach (explode(',',$target) as $input) {
                 [$type,$id]=array_pad(explode(':',$input,2),2,'');
-                if (!preg_match('/\A[a-f0-9]{24}\z/D',$id)) throw new OpException('site:ID または batch:ID で指定してください');
+                if (!preg_match('/\A[a-f0-9]{24}\z/D',$id)) throw new OpException('site:ID、batch:ID または apache:ID で指定してください');
                 $steps[]=['type'=>$type,'id'=>$id];
             }
             $result=$transaction->plan($steps);
         } elseif ($command==='change-status') {
             $result=$transaction->status($target);
+        } elseif ($command==='change-commit') {
+            if (!in_array('--confirm-commit',$flags,true)) throw new OpException('--confirm-commit が必要です');
+            $result=$transaction->commit($target);
         } else {
             $rollback=$command==='change-rollback';
             if ($rollback ? !in_array('--confirm-rollback',$flags,true)
@@ -128,6 +135,7 @@ HELP;
         exit;
     }
     $result=match($command){
+        'apache-plan'=>$apache->plan($target),
         'routing'=>$upgrade->routing($target,$apiScript),
         'jobs'=>['site'=>$target,'pending_jobs'=>$database('read',$target,[])['pending_jobs']],
         'batch-plan'=>$batch->plan(explode(',',$target),$runtime,$routing),

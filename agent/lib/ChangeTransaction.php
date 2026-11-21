@@ -12,7 +12,10 @@ final class ChangeTransaction
     {
         if (!$steps || count($steps) > 100) throw new OpException('変更は1〜100件で指定してください');
         $resources = [];
-        foreach ($steps as $step) {
+        foreach (array_values($steps) as $index => $step) {
+            if ($step['type'] === 'apache' && $index !== count($steps) - 1) {
+                throw new OpException('Apache設定変更は一件だけ、最後に指定してください');
+            }
             $handler = $this->handler($step);
             foreach ($handler('check', $step['id']) as $resource) {
                 if (isset($resources[$resource])) throw new OpException('変更対象が重複しています: '.$resource);
@@ -57,9 +60,38 @@ final class ChangeTransaction
         }
     }
 
+    public function commit(string $id): array
+    {
+        $lock = $this->store->lock('change-transaction');
+        try {
+            $journal = $this->status($id);
+            if ($journal['phase'] === 'committed') return $journal;
+            if (!in_array($journal['phase'], ['prepared','committing'], true)) {
+                throw new OpException('準備が完了した変更だけを確定できます');
+            }
+            $apache = array_values(array_filter($journal['steps'], static fn(array $step): bool=>$step['type']==='apache'));
+            if (!$apache) throw new OpException('Apache設定を含む変更だけに確定操作が必要です');
+            $step = $apache[0];
+            if ($journal['phase'] === 'prepared') {
+                ($this->handler($step))('check-commit', $step['id']);
+                $journal['phase'] = 'committing';
+                $this->save($journal);
+            }
+            ($this->handler($step))('commit', $step['id']);
+            $journal['phase'] = 'committed';
+            $this->save($journal);
+            return $journal;
+        } finally {
+            fclose($lock);
+        }
+    }
+
     private function restore(array $journal): array
     {
         if ($journal['phase'] === 'rolled-back') return $journal;
+        if (in_array($journal['phase'], ['committing','committed'], true)) {
+            throw new OpException('確定を開始した変更は一括切り戻しできません');
+        }
         // Check all touched operations before restoring any.
         foreach (array_slice($journal['steps'], 0, $journal['started']) as $step) {
             ($this->handler($step))('check-rollback', $step['id']);

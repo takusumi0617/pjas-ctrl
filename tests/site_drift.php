@@ -67,6 +67,32 @@ try {
     $recovery->rollback(fn()=>$vhost->reload());
     check(!is_link($link) && file_get_contents($path)===$body."\n# changed\n" && $recovery->status()['phase']==='idle',
         'agentなしで中断した設定変更を復旧し、検査後に記録を解除する');
+    symlink($path,$link);
+    file_put_contents($cfg['a2ensite'], "#!/bin/sh\nexit 0\n");
+    $store = new \Pjas\Agentd\ControlStore($cfg);
+    $apache = new \Pjas\Agentd\ApacheChange($cfg, static fn()=>['spec'=>$spec,'pending_jobs'=>[]]);
+    $steps = [];
+    $site = static function(string $operation) use (&$steps): array {
+        $steps[] = $operation;
+        return ['other-site'];
+    };
+    $transaction = new \Pjas\Agentd\ChangeTransaction($store, ['apache'=>$apache, 'site'=>$site]);
+    $before = file_get_contents($path);
+    $plan = $apache->plan('docs');
+    $change = $transaction->plan([['type'=>'site','id'=>'fixture'],['type'=>'apache','id'=>$plan['id']]]);
+    $transaction->run($change['id'],false);
+    check(file_get_contents($path)===$body && $recovery->status()['owner']===$plan['id'], '移行と独立した公開設定を一つの変更として適用し、復旧情報を保持する');
+    $transaction->run($change['id'],true);
+    check(file_get_contents($path)===$before && end($steps)==='rollback', '一括復旧でApacheと移行の両方を戻す');
+    $plan = $apache->plan('docs');
+    $change = $transaction->plan([['type'=>'apache','id'=>$plan['id']]]);
+    $transaction->run($change['id'],false);
+    file_put_contents($path,$before);
+    rejects(fn()=>$transaction->commit($change['id']));
+    file_put_contents($path,$body);
+    $transaction->commit($change['id']);
+    check($recovery->status()['phase']==='idle' && $transaction->status($change['id'])['phase']==='committed', '適用状態を確認してApache設定を確定する');
+    rejects(fn()=>$transaction->run($change['id'],true));
 } finally {
     cleanup($dir);
 }

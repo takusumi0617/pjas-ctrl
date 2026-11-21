@@ -423,7 +423,7 @@ final class Vhost
     }
 
     /** 書き出し → a2ensite → configtest → graceful。失敗したら元に戻す。 */
-    public function apply(array $params): array
+    public function apply(array $params, ?string $recoveryOwner = null): array
     {
         $lock = fopen($this->cfg['apache_sites'] . '/.pjas-vhost.lock', 'c');
         if (!$lock || !flock($lock, LOCK_EX)) throw new OpException('公開設定をロックできません');
@@ -444,11 +444,14 @@ final class Vhost
                     throw new OpException('確認後に設定・有効化状態・競合サイトが変更されました。プレビューを開き直してください');
                 }
             }
+            if ($recoveryOwner !== null && ($mode !== 'template' || !empty($params['migration_source']) || !empty($view['conflicts']))) {
+                throw new OpException('一括変更は競合・継承元変更のない標準公開設定だけに対応します');
+            }
             $history = new ApacheHistory($this->cfg);
             $path = $this->confPath($spec['name']);
             $before = is_file($path) ? (string)file_get_contents($path) : null;
             $history->save($spec['name'], $before, 'before', (string)($params['_actor'] ?? 'system'));
-            $result = $mode === 'errors' ? $this->applyErrors($params) : $this->applyUnlocked($params, true);
+            $result = $mode === 'errors' ? $this->applyErrors($params) : $this->applyUnlocked($params, true, $recoveryOwner);
             try {
                 $result['history_revision'] = $history->save($spec['name'], (string)file_get_contents($path), 'applied', (string)($params['_actor'] ?? 'system'));
             } catch (OpException $e) {
@@ -460,7 +463,7 @@ final class Vhost
         finally { flock($lock, LOCK_UN); fclose($lock); }
     }
 
-    private function applyUnlocked(array $params, bool $journal = false): array
+    private function applyUnlocked(array $params, bool $journal = false, ?string $recoveryOwner = null): array
     {
         $spec = Spec::service($params['service'] ?? null);
         $name = $spec['name'];
@@ -493,6 +496,7 @@ final class Vhost
             }
         };
         $conflicts = self::conflictingSites($this->enabledDir(), (string)$spec['domain'], $path);
+        if ($recoveryOwner !== null && ($conflicts || $migration !== null)) throw new OpException('一括変更の対象外のApache設定です');
         $recovery = null;
         if ($journal && isset($this->cfg['control_dir']) && $migration === null) {
             $recovery = new ApacheRecovery(new ControlStore($this->cfg));
@@ -501,7 +505,7 @@ final class Vhost
             foreach ($conflicts as $site) {
                 $changes[$this->enabledDir().'/'.$site.'.conf'] = ['kind'=>'absent'];
             }
-            $recovery->begin($name, $changes);
+            $recovery->begin($name, $changes, $recoveryOwner);
         }
         $write($conf,0644);
 
@@ -532,7 +536,8 @@ final class Vhost
                 chmod($tmp, 0600);
                 if (!rename($tmp, $snapshotPath)) { @unlink($tmp); throw new OpException('継承設定を保存できません'); }
             }
-            $recovery?->complete();
+            if ($recoveryOwner === null) $recovery?->complete();
+            else $recovery->markPrepared($recoveryOwner);
             return [
                 'hash'       => hash('sha256', $conf),
                 'configtest' => trim($test['err'] ?: $test['out']) ?: 'Syntax OK',

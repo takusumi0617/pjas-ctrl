@@ -21,6 +21,8 @@ try {
     if (!$lock || !flock($lock, LOCK_EX)) throw new OpException('公開設定をロックできません');
     try {
         if ($args[0] === 'rollback') {
+            if (isset($recovery->status()['owner'])) throw new OpException('一括変更の change-rollback を使用してください');
+
             $recovery->rollback(static function () use ($cfg): void {
                 Proc::must([$cfg['apachectl'],'configtest'], null, 30);
                 Proc::must([$cfg['apachectl'],'graceful'], null, 60);
