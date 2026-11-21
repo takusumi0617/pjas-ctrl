@@ -36,7 +36,7 @@ final class SiteDrift
         $runtime = $isolation['runtime'] ?? 'static';
         if (($isolation['status'] ?? '') === 'ready' && $runtime !== 'static') {
             $pool = '/etc/php/'.PhpRuntime::version($runtime).'/fpm/pool.d/pjas-'.$name.'.conf';
-            $body = SiteIsolation::pool($name, $runtime, $cfg['apache_user'], rtrim($cfg['www_root'], '/').'/'.$name);
+            $body = SiteIsolation::pool($name, $runtime, $cfg['apache_user'], rtrim($cfg['www_root'], '/').'/'.$name, SiteIsolation::poolEnvironment($name));
             $rows = array_merge($rows, ComponentDrift::inspect(['files'=>[$pool=>hash('sha256', $body)]]));
         }
         return array_merge($rows, (new \Pjas\Agentd\Ops\Daemon($cfg))->configurationDrift($name));
