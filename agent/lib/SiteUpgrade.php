@@ -62,6 +62,14 @@ final class SiteUpgrade
     public function preflight(string $runtime,string $name): array
     {
         PhpRuntime::requireInstalled($runtime);
+        if ($runtime!=='static') {
+            Proc::must([PhpRuntime::fpm($runtime),'--test'],null,30);
+            Proc::must([PhpRuntime::cli($runtime),'-r','if (!extension_loaded("posix")) exit(1);'],null,15);
+        }
+        $environment=SiteIsolation::poolEnvironment($name);
+        if ($runtime!=='static') {
+            SiteIsolation::pool($name,$runtime,$this->cfg['apache_user'],rtrim($this->cfg['www_root'],'/').'/'.Spec::name($name),$environment);
+        }
         Proc::must(['/usr/bin/python3',__DIR__.'/isolate_tree.py','--check',$this->cfg['www_root'].'/'.Spec::name($name)],null,600);
         return [];
     }
