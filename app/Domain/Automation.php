@@ -23,18 +23,21 @@ final class Automation
     }
     public static function tick(?int $now=null): array
     {
+        $notifications = new HealthNotifications();
         try {
             AgentClient::call('ping', [], 'monitor');
-            $result = self::tickConnected($now);
+            $result = self::tickConnected($now, $notifications);
             Alerting::check('host.agent', null, true, '監視エージェントとの接続が復旧しました');
             return $result;
         } catch (\Pjas\Agent\AgentConnectionException $e) {
             Alerting::check('host.agent', null, false, '監視エージェントへ接続できません。サイトの状態判定を保留しています', false);
             return ['started'=>0,'checked'=>0,'backups'=>0,'agent_unavailable'=>true];
+        } finally {
+            $notifications->send();
         }
     }
 
-    private static function tickConnected(?int $now=null): array
+    private static function tickConnected(?int $now, HealthNotifications $notifications): array
     {
         $now??=time();$stats=['started'=>0,'checked'=>0,'backups'=>0];
         if(!Db::one("SELECT name FROM app_state WHERE name='jobs.alerts.seeded'")){
@@ -67,14 +70,14 @@ final class Automation
             }
         }
         foreach(Db::all("SELECT q.id,j.state,j.detail FROM publication_queue q JOIN jobs j ON j.id=q.job_id WHERE q.state='running' AND j.state IN ('succeeded','failed')") as $row)Db::run('UPDATE publication_queue SET state=?,detail=? WHERE id=?',[$row['state']==='succeeded'?'done':'failed',$row['detail'],$row['id']]);
-        ServerMonitoring::tick($now);
+        ServerMonitoring::tick($now, $notifications);
         $diskChecked=false;
         foreach(ServiceRepo::all() as $site){$policy=SitePolicy::get((int)$site['id']);
             DriftMonitoring::tick($site,(bool)$policy['notifications'],$now);
             $p=['service'=>Deployer::spec($site)];
             if (Db::one('SELECT service_id FROM component_sites WHERE service_id=?',[$site['id']])) { ComponentMonitoring::check($site,$policy); $stats['checked']++; continue; }
             try{$health=AgentClient::call('health.check',$p,'monitor');$message=$site['name'].': '.(!empty($health['paused'])?'公開停止中の応答':(!empty($health['ok'])?'正常に応答しています':'サイトの応答を確認できません（HTTP '.($health['status']?:'応答なし').'）'));
-                Alerting::check('health:'.$site['id'],(int)$site['id'],!empty($health['ok']),$message,$policy['notifications']);ServiceRepo::setState((int)$site['id'],!empty($health['ok'])?'healthy':'unhealthy');$stats['checked']++;
+                $notifications->check('health:'.$site['id'],(int)$site['id'],!empty($health['ok']),$message,$policy['notifications']);ServiceRepo::setState((int)$site['id'],!empty($health['ok'])?'healthy':'unhealthy');$stats['checked']++;
                 $daemons=AgentClient::call('daemon.list',['service'=>$site['name']],'monitor')['daemons'];foreach($daemons as $d){$active=$d['state']['ActiveState']??'';$expected=($d['state']['UnitFileState']??'')==='enabled';if(!$expected&&$active==='inactive')continue;
                     Alerting::check('daemon:'.$site['id'].':'.$d['unit'],(int)$site['id'],in_array($active,['active','activating'],true),$site['name'].' の常駐プログラム '.$d['unit'].' は '.$active.' です',$policy['notifications']);}
                 if(!$diskChecked){$disk=AgentClient::call('ops.resources',$p,'monitor');$free=$disk['total']>0?$disk['free']/$disk['total']:0;Alerting::check('host.disk',null,$free>=0.1&&$disk['free']>=1024*1024*1024,'サイト領域の空き容量: '.round($free*100,1).'%（'.round($disk['free']/1073741824,1).'GB）');$diskChecked=true;}

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run external HTTPS monitor for %i
+
+[Timer]
+OnBootSec=45s
+OnUnitInactiveSec=60s
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

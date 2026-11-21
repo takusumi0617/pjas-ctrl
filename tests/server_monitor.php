@@ -16,9 +16,23 @@ try{
  $monitor=new ServerMonitor($cfg);foreach(['ssh.service','pjas-agentd.service','apache2.service;id','../../evil','php8.5-fpm.service --all'] as $unit)rejects(fn()=>$monitor->restart(['unit'=>$unit]));
  $store=new ControlStore($cfg);$state=['time'=>time(),'checks'=>[],'cpu_ticks'=>[1,2],'fingerprints'=>['/secret'=>'hash'],'streak'=>['cpu'=>2],'history'=>[]];$store->write('server-monitor',$state);$out=$monitor->snapshot();check(!isset($out['fingerprints'],$out['cpu_ticks'],$out['streak'])&&$out['time']===$state['time'],'短時間の測定を再利用し内部データを公開しない');
  $state['time']=time()-120;$state['fingerprints']=['/etc/removed-fixture.conf'=>'abc'];$store->write('server-monitor',$state);
- $monitor=new ServerMonitor($cfg,static function($args){$out=match($args[0]){'/bin/systemctl'=>"Id=apache2.service\nLoadState=loaded\nActiveState=failed\nUnitFileState=enabled\nRequiredBy=frontend.service api.service\nRequisiteOf=\nBoundBy=api.service\nConsistsOf=\nPropagatesStopTo=\n",'/usr/bin/journalctl'=>str_repeat("Failed password for fixture\n",21),'/usr/bin/apt'=>"demo/noble-security 2 amd64 [upgradable from: 1]\n",default=>''};return ['code'=>0,'out'=>$out,'err'=>''];});
+ $monitor=new ServerMonitor($cfg,static function($args){
+    $block=static fn($unit,$required,$state='active')=>"Id=$unit\nLoadState=loaded\nActiveState=$state\nUnitFileState=enabled\nRequiredBy=$required\nRequisiteOf=\nBoundBy=\nConsistsOf=\nPropagatesStopTo=\n";
+    $out=match($args[0]){
+        '/bin/systemctl'=>match(end($args)){
+            'frontend.service'=>$block('frontend.service','worker.service')."\n".$block('api.service','apache2.service'),
+            'worker.service'=>$block('worker.service','frontend.service'),
+            default=>$block('apache2.service','frontend.service api.service api.service','failed'),
+        },
+        '/usr/bin/journalctl'=>str_repeat("Failed password for fixture\n",21),
+        '/usr/bin/apt'=>"demo/noble-security 2 amd64 [upgradable from: 1]\n",
+        default=>'',
+    };
+    return ['code'=>0,'out'=>$out,'err'=>''];
+ });
  $out=$monitor->snapshot();$checks=array_column($out['checks'],null,'key');
  check($out['units'][0]['stop_dependents']===['api.service','frontend.service'],'停止影響のあるunitを重複なく取得する');
+ check($out['units'][0]['indirect_stop_dependents']===['worker.service']&&$out['units'][0]['stop_impact_complete'],'循環する依存を重複させず間接的な停止影響を表示する');
  check(!$checks['service.apache2.service']['ok']&&!$checks['ssh']['ok']&&!$checks['updates']['ok'],'停止した主要サービス・SSH失敗急増・セキュリティ更新を検知する');
  check(count(array_filter($out['changes'],static fn($c)=>$c['file']==='/etc/removed-fixture.conf'&&$c['type']==='削除'))===1&&!isset($out['fingerprints']),'設定削除を検知し秘密の本文を保存しない');
  $calls=[];$restart=new ServerMonitor($cfg,static function($args)use(&$calls){$calls[]=$args;return ['code'=>0,'out'=>'active','err'=>''];});

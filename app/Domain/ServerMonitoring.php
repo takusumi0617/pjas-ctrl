@@ -16,12 +16,18 @@ final class ServerMonitoring
             }catch(\Pjas\Agent\AgentException $e){Db::run('UPDATE alerts SET notification_error=? WHERE id=?',[$e->getMessage(),$a['id']]);}
         }
     }
-    public static function tick(int $now): array
+    public static function tick(int $now, ?HealthNotifications $notifications = null): array
     {
         try{
             $snapshot=AgentClient::call('server.snapshot',[],'monitor');
             if(!isset($snapshot['checks'])||!is_array($snapshot['checks']))throw new \RuntimeException('監視応答が不正です');
-            foreach($snapshot['checks'] as $c)Alerting::check('server.'.$c['key'],null,(bool)$c['ok'],$c['message']);
+            foreach ($snapshot['checks'] as $c) {
+                if ($notifications && str_starts_with($c['key'], 'service.')) {
+                    $notifications->check('server.'.$c['key'], null, (bool)$c['ok'], $c['message']);
+                } else {
+                    Alerting::check('server.'.$c['key'], null, (bool)$c['ok'], $c['message']);
+                }
+            }
             $keys=array_merge(['server.collector','server.ctrl-login'],array_map(static fn($c)=>'server.'.$c['key'],$snapshot['checks']));
             foreach(Db::all("SELECT check_key FROM monitor_state WHERE check_key LIKE 'server.%'") as $row)if(!in_array($row['check_key'],$keys,true))Db::run('DELETE FROM monitor_state WHERE check_key=?',[$row['check_key']]);
             Alerting::check('server.collector',null,true,'サーバー監視を再開しました。');

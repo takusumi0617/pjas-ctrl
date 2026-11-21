@@ -1,0 +1,18 @@
+[Unit]
+Description=External HTTPS monitor for %i
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+EnvironmentFile=/etc/pjas-external-monitor/%i.env
+LoadCredential=discord-url:/etc/pjas-external-monitor/%i.discord-url
+StateDirectory=pjas-external-monitor-%i
+StateDirectoryMode=0700
+ExecStart=/bin/sh /opt/pjas-external-monitor/pjas-external-monitor ${MONITOR_URL} ${MONITOR_STATUS} %i
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK

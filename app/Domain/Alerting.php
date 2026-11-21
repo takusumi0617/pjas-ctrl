@@ -12,10 +12,14 @@ final class Alerting
         catch(AgentException $e){Db::run('UPDATE alerts SET notification_error=? WHERE id=?',[$e->getMessage(),$id]);}
         return $id;
     }
-    public static function check(string $key,?int $service,bool $ok,string $message,bool $notify=true): void
+    public static function check(string $key,?int $service,bool $ok,string $message,bool $notify=true): bool
     {
         $old=Db::one('SELECT ok FROM monitor_state WHERE check_key=?',[$key]);
         Db::run("INSERT INTO monitor_state(check_key,service_id,ok,detail) VALUES (?,?,?,?) ON CONFLICT(check_key) DO UPDATE SET ok=excluded.ok,detail=excluded.detail,checked_at=datetime('now')",[$key,$service,(int)$ok,$message]);
-        if((!$old&&!$ok)||($old&&(bool)$old['ok']!==$ok))self::event($service,$key,$message,$ok,$notify);
+        if ((!$old && !$ok) || ($old && (bool)$old['ok'] !== $ok)) {
+            self::event($service,$key,$message,$ok,$notify);
+            return true;
+        }
+        return false;
     }
 }

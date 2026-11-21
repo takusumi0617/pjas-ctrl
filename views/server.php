@@ -19,8 +19,8 @@ curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8184/</code></pre><p 
 <div class="card"><div class="card-h">主要サービス</div><table><thead><tr><th>名前</th><th>状態</th><th>操作</th></tr></thead><tbody><?php foreach($snapshot['units']??[] as $u):if(!$u['loaded'])continue;?><tr><td><?= $e($u['unit']) ?></td><td><?= $e(['active'=>'稼働中','activating'=>'起動中','inactive'=>'停止','failed'=>'失敗'][$u['state']]??$u['state']) ?></td><td><?php if($u['unit']==='apache2.service'||preg_match('/\Aphp[0-9]+\.[0-9]+-fpm\.service\z/D',$u['unit'])):?><details><summary>再起動する</summary><form method="post" action="/server"><?= Csrf::field() ?><input type="hidden" name="action" value="restart"><input type="hidden" name="unit" value="<?= $e($u['unit']) ?>"><p>このサービスを使う全サイトに一時的な影響があります。管理用PHPの再起動では、稼働していた管理用HTTPも起動して確認します。設定の検査が通った場合だけ再起動します。</p><label><input type="checkbox" name="confirmed" required> サイトへの影響を確認しました</label><div class="field"><label>現在のパスワード</label><input type="password" name="password" autocomplete="current-password" required></div><button class="btn">確認して再起動</button></form></details><?php else:?>状態確認のみ<?php endif;?></td></tr><?php endforeach;?></tbody></table></div>
 <details class="card">
 <summary class="card-h">主要サービスの停止影響</summary>
-<div class="card-b hint">systemd が報告した直接の依存先です。間接的な影響や、同じ PHP-FPM を使うサイトへの影響も変更前に確認してください。</div>
-<table><thead><tr><th>停止するサービス</th><th>影響を受ける可能性がある unit</th></tr></thead><tbody>
+<div class="card-b hint">systemd の停止依存と、登録設定から確認した影響候補です。</div>
+<table><thead><tr><th>停止するサービス</th><th>影響を受ける可能性がある unit</th><th>登録サイト</th></tr></thead><tbody>
 <?php foreach ($snapshot['units'] ?? [] as $unit): if (!$unit['loaded']) continue; ?>
 <tr><td><?= $e($unit['unit']) ?></td><td>
 <?php if (!isset($unit['stop_dependents'])): ?>未測定
@@ -28,7 +28,11 @@ curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8184/</code></pre><p 
 <?php else: ?>
 <ul><?php foreach ($unit['stop_dependents'] as $dependent): ?><li><?= $e($dependent) ?></li><?php endforeach; ?></ul>
 <?php endif; ?>
-</td></tr>
+<?php if (!empty($unit['indirect_stop_dependents'])): ?>
+<p>間接の依存先</p><ul><?php foreach ($unit['indirect_stop_dependents'] as $dependent): ?><li><?= $e($dependent) ?></li><?php endforeach; ?></ul>
+<?php endif; ?>
+<?php if (isset($unit['stop_impact_complete']) && !$unit['stop_impact_complete']): ?><p class="hint">一部の依存関係は未確認です。</p><?php endif; ?>
+</td><td><?= empty($affected_sites[$unit['unit']])?'—':$e(implode('、',$affected_sites[$unit['unit']])) ?></td></tr>
 <?php endforeach; ?>
 </tbody></table>
 </details>

@@ -211,3 +211,40 @@ sudo php8.5 bin/pjas-site-upgrade batch-status "$PJAS_BATCH_ID"
 コードのデプロイでは、公開前の構文・Apache設定検査と公開後のHTTP検査を行います。
 自動切り戻しが有効で元のリリースがある場合は、公開失敗後に前のリリースを
 復帰させ、そのHTTP検査結果をジョブに記録します。共有データは別途復旧します。
+
+## 別ホストから外部HTTPSを定期監視する
+
+ctrlのサーバーとは別の、systemdとcurlを備えたホストに監視スクリプトと
+ユニットを配置します。以下はctrlのログイン画面を監視する例です。
+
+```bash
+sudo install -d -m 0755 /opt/pjas-external-monitor
+sudo install -m 0755 bin/pjas-external-check bin/pjas-external-monitor /opt/pjas-external-monitor/
+sudo install -m 0644 systemd/pjas-external-monitor@.service systemd/pjas-external-monitor@.timer /etc/systemd/system/
+sudo install -d -m 0700 /etc/pjas-external-monitor
+sudoedit /etc/pjas-external-monitor/ctrl.env
+```
+
+`ctrl.env` に監視先と期待するHTTPコードを記入します。
+
+```ini
+MONITOR_URL=https://ctrl.example.com/login
+MONITOR_STATUS=200
+```
+
+`/etc/pjas-external-monitor/ctrl.discord-url` にDiscord Webhook URLだけを保存し、
+root所有・0600にします。配置後にタイマーを有効化します。
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now pjas-external-monitor@ctrl.timer
+sudo systemctl start pjas-external-monitor@ctrl.service
+sudo journalctl -u pjas-external-monitor@ctrl.service -n 20 --no-pager
+```
+
+およそ1分ごとにTLSとHTTP応答を確認します。応答が期待値から外れたときと
+復旧したときに通知し、送信に失敗した場合は次回の検査で再試行します。
+他のサイトは別のインスタンス名と設定ファイルで追加できます。
+
+ctrl自身の監視では、同じ周期に起きた主要サービスとサイトHTTPの状態変化を
+障害・復旧ごとにまとめて通知し、個々の検査結果は管理画面で確認できます。

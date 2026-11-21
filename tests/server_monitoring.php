@@ -24,6 +24,16 @@ try{
  $retry=Db::insert("INSERT INTO alerts(kind,message,notification_error,created_at) VALUES ('server.retry','fixture','failed',?)",[gmdate('Y-m-d H:i:s',time()-600)]);
  ServerMonitoring::retryNotifications(time());check((bool)Db::one('SELECT notified_at FROM alerts WHERE id=?',[$retry])['notified_at'],'通知失敗後に時間を空けて再送する');
  $calls=count(AgentClient::$calls);ServerMonitoring::retryNotifications(time());check(count(AgentClient::$calls)===$calls,'送信済みの通知を重複して再送しない');
+ $summary = new \Pjas\Domain\HealthNotifications();
+ $before = count(AgentClient::$calls);
+ $summary->check('test.first',null,false,'first');
+ $summary->check('test.second',null,false,'second');
+ $summary->check('test.silent',null,false,'silent',false);
+ $summary->send();
+ $calls = array_slice(AgentClient::$calls,$before);
+ check(count($calls)===1&&$calls[0][0]==='ops.notify'&&str_contains($calls[0][1]['message'],'2件')
+    &&!str_contains($calls[0][1]['message'],'silent')&&Db::one("SELECT id FROM alerts WHERE kind='test.silent'"),
+    '同じ周期の異常を一通にまとめ、通知無効の異常も個別に記録する');
  $viewer=Db::insert('INSERT INTO users(email,password_hash,role) VALUES (?,?,?)',['viewer@example.com','unused','viewer']);$_SESSION['uid']=$viewer;
  try{(new ServerController())->index();throw new \Exception('閲覧が許可されました');}catch(\RuntimeException $e){check($e->getMessage()==='HTTP 403','閲覧専用利用者はサーバー情報を取得できない');}
  $_POST=['action'=>'restart','unit'=>'apache2.service'];$before=count(AgentClient::$calls);try{(new ServerController())->action();throw new \Exception('操作が許可されました');}catch(\RuntimeException $e){check($e->getMessage()==='HTTP 403'&&count(AgentClient::$calls)===$before,'閲覧専用利用者の再起動操作をRPC送信前に拒否する');}

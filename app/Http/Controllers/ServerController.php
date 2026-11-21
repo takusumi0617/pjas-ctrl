@@ -10,7 +10,24 @@ final class ServerController
     {
         Auth::require('owner');$snapshot=[];$error='';
         try{$snapshot=AgentClient::call('server.snapshot',[],Auth::actor());}catch(AgentException $e){$error=$e->getMessage();}
-        View::render('server',['title'=>'サーバー','snapshot'=>$snapshot,'error'=>$error,
+        $sites = Db::all("SELECT name,runtime FROM services WHERE id NOT IN (SELECT service_id FROM service_lifecycle WHERE state<>'active') ORDER BY name");
+        $affected = ['apache2.service'=>array_column($sites,'name')];
+        foreach ($sites as $site) {
+            if (preg_match('/\Aphp[0-9]+\.[0-9]+-fpm\z/D', $site['runtime'])) {
+                $affected[$site['runtime'].'.service'][] = $site['name'];
+            }
+        }
+        $affectedByUnit = [];
+        foreach ($snapshot['units'] ?? [] as $unit) {
+            $dependencies = array_merge([$unit['unit']], $unit['stop_dependents'] ?? [], $unit['indirect_stop_dependents'] ?? []);
+            $names = [];
+            foreach ($dependencies as $dependency) {
+                foreach ($affected[$dependency] ?? [] as $site) $names[$site] = true;
+            }
+            $affectedByUnit[$unit['unit']] = array_keys($names);
+            sort($affectedByUnit[$unit['unit']], SORT_STRING);
+        }
+        View::render('server',['title'=>'サーバー','snapshot'=>$snapshot,'error'=>$error,'affected_sites'=>$affectedByUnit,
             'checks'=>Db::all("SELECT * FROM monitor_state WHERE service_id IS NULL ORDER BY ok,check_key"),
             'alerts'=>Db::all("SELECT a.*,k.alert_id AS acknowledged FROM alerts a LEFT JOIN server_alert_ack k ON k.alert_id=a.id WHERE a.service_id IS NULL ORDER BY a.id DESC LIMIT 50"),
             'last_tick'=>Db::one("SELECT value FROM app_state WHERE name='tick.last'")['value']??'']);

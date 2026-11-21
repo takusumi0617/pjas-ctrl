@@ -26,13 +26,13 @@ final class ServerMonitor
         foreach(glob('/lib/systemd/system/php*-fpm.service')?:[] as $file)if(preg_match('/\Aphp[0-9]+\.[0-9]+-fpm\.service\z/D',basename($file)))$units[]=basename($file);
         return array_values(array_unique($units));
     }
-    private function unitStates(): array
+    private function unitStates(?array $requested = null): array
     {
         $relations = ['RequiredBy', 'RequisiteOf', 'BoundBy', 'ConsistsOf', 'PropagatesStopTo'];
         $properties = array_merge(['Id', 'LoadState', 'ActiveState', 'UnitFileState'], $relations);
         $result = $this->run(array_merge(
             ['/bin/systemctl', 'show', '--all', '--no-pager', '--property='.implode(',', $properties), '--'],
-            $this->units()
+            $requested ?? $this->units()
         ));
         $out = [];
         foreach (preg_split('/\n\s*\n/', trim($result['out'])) as $block) {
@@ -61,6 +61,46 @@ final class ServerMonitor
         }
         return $out;
     }
+    private function stopImpact(array $roots): array
+    {
+        $graph = array_column($roots, 'stop_dependents', 'unit');
+        // Discover additional units in batches and bound work on large hosts.
+        for ($depth = 0; $depth < 4; ++$depth) {
+            $missing = [];
+            foreach ($graph as $edges) {
+                foreach ($edges ?? [] as $name) {
+                    if (!array_key_exists($name, $graph)) $missing[$name] = true;
+                }
+            }
+            $names = array_slice(array_keys($missing), 0, max(0, 128 - count($graph)));
+            if (!$names) break;
+            foreach ($names as $name) $graph[$name] = null;
+            foreach ($this->unitStates($names) as $unit) $graph[$unit['unit']] = $unit['stop_dependents'];
+        }
+        foreach ($roots as &$unit) {
+            $name = $unit['unit'];
+            $direct = $graph[$name] ?? [];
+            $seen = [$name=>true];
+            $queue = [$name];
+            $complete = true;
+            for ($i = 0; $i < count($queue); ++$i) {
+                $edges = $graph[$queue[$i]] ?? null;
+                if ($edges === null) $complete = false;
+                foreach ($edges ?? [] as $dependent) {
+                    if (isset($seen[$dependent])) continue;
+                    $seen[$dependent] = true;
+                    $queue[] = $dependent;
+                }
+            }
+            $indirect = array_values(array_diff(array_slice($queue, 1), $direct));
+            sort($indirect, SORT_STRING);
+            $unit['indirect_stop_dependents'] = $indirect;
+            $unit['stop_impact_complete'] = $complete;
+        }
+        unset($unit);
+        return $roots;
+    }
+
     private function fingerprints(): array
     {
         $files=[];
@@ -79,7 +119,7 @@ final class ServerMonitor
             $checks=[];$add=static function(string $key,bool $ok,string $message)use(&$checks){$checks[]=['key'=>$key,'ok'=>$ok,'message'=>$message];};
             $streak=$old['streak']??[];foreach(['cpu'=>$usage,'memory'=>$memory] as $key=>$value){$streak[$key]=$value!==null&&$value>=90?($streak[$key]??0)+1:0;$add($key,$value!==null&&$streak[$key]<3,($key==='cpu'?'CPUの使用率':'メモリの使用率').': '.($value===null?'測定できません':$value.'%').($streak[$key]>=3?'。高い状態が続いています。負荷の高いサイトを確認してください。':''));}
             foreach($disks as $i=>$d)$add('disk.'.$i,$d['used']!==null&&$d['used']<90&&$d['free']>=1073741824,$d['path'].' の空き容量: '.round($d['free']/1073741824,1).'GB。不要な保存データやバックアップを確認してください。');
-            $units=$this->unitStates();$add('service.read',count($units)>0,'主要サービスの状態'.($units?'を取得しました':'を取得できません。systemdを確認してください。'));
+            $units=$this->stopImpact($this->unitStates());$add('service.read',count($units)>0,'主要サービスの状態'.($units?'を取得しました':'を取得できません。systemdを確認してください。'));
             foreach($units as $u){if(!$u['loaded']){if(in_array($u['unit'],['apache2.service','php'.\Pjas\Shared\PhpRuntime::controlVersion().'-fpm.service','pjas-agentd.service','pjas-control-web.service','pjas-monitor.timer'],true))$add('service.'.$u['unit'],false,$u['unit'].' が見つかりません。初回準備を確認してください。');continue;}if(!$u['enabled']&&$u['state']==='inactive'&&!in_array($u['unit'],['apache2.service','php'.\Pjas\Shared\PhpRuntime::controlVersion().'-fpm.service','pjas-agentd.service','pjas-control-web.service','pjas-monitor.timer'],true))continue;$add('service.'.$u['unit'],in_array($u['state'],['active','activating'],true),$u['unit'].' の状態: '.$u['state'].'。停止している場合はサービスの記録を確認してください。');}
             // Reuse the local APT cache; never perform updates or network refreshes here.
             $cacheFiles=array_merge(glob('/var/lib/apt/lists/*_InRelease')?:[],glob('/var/lib/apt/lists/*_Release')?:[]);$cacheTime=0;foreach($cacheFiles as $f)$cacheTime=max($cacheTime,(int)@filemtime($f));
