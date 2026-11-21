@@ -137,6 +137,12 @@ sudo php8.5 bin/pjas-site-upgrade batch-apply "$PJAS_BATCH_ID" \
 
 サイトごとに順番に適用・再開し、失敗したサイトで停止します。完了済みは維持します。`manual`となるコンポーネントサイトは専用操作へ分け、対象外とする場合だけ`--skip-manual`を指定します。静的サイトは静的のまま維持します。
 
+### pjas-chatのFPM環境変数を引き継ぐ
+
+既存の環境変数は管理者が `/etc/pjas/site-pool-env/pjas-chat.json` に登録します。配置先をroot所有・0700、ファイルをroot所有・0600にし、既存の公開鍵はサーバー内で転記してください。
+
+`CF_ACCESS_TEAM` と `CF_ACCESS_AUD` には、それぞれ文字列 `$CF_ACCESS_TEAM` と `$CF_ACCESS_AUD` を指定します。FPMサービス側の環境変数の供給元は既存のものを使います。`PJAS_DB` は `/var/lib/pjas-chat/pjas.sqlite`、`VAPID_PUBLIC_KEY` は実際の公開鍵です。登録後は `sudo php8.5 bin/pjas-host-check --drift=pjas-chat` でFPMプールが一致することを先に確認します。
+
 ### APIと静的画面が別フォルダの場合
 
 `prepared`かつ停止中に、公開フォルダ外のAPI入口を設定できます。フォルダ全体を公開する操作ではありません。
