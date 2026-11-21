@@ -45,7 +45,6 @@ final class Operations
         $spec = Spec::service(array_replace(is_array($params['spec']??null) ? $params['spec'] : [], ['name'=>$site]));
         try {
             \Pjas\Agentd\SiteLifecycleGuard::active($this->cfg,$site);
-            \Pjas\Agentd\SiteLifecycleGuard::upgrade($this->cfg,$site);
         } catch (OpException $e) {
             return ['skip'=>'サイト移行・管理終了の処理中'];
         }
