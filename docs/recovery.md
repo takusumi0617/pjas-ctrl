@@ -163,3 +163,22 @@ sudo php8.5 bin/pjas-site-upgrade batch-rollback "$PJAS_BATCH_ID" --confirm-roll
 アプリデータの復元は別手順です。公開済みサイトを含む場合は一括切り戻しを
 開始できません。全サイトの準備を確認して公開する場合は、同じ ID で
 `batch-apply` を実行します。切り戻した後に再移行する場合は新しい計画を作成します。
+
+### 複数の移行計画を同じ変更IDで準備・復旧する
+
+未着手の単独移行と一括移行を組み合わせる場合は、次のコマンドで
+調整用の変更IDを作ります。一括計画に含めたAPI設定も準備時に反映されます。
+重複するサイトを含む計画は登録できません。
+
+```bash
+sudo php8.5 bin/pjas-site-upgrade change-plan "site:$SITE_UPGRADE_ID,batch:$PJAS_BATCH_ID"
+sudo php8.5 bin/pjas-site-upgrade change-prepare "$CHANGE_ID" \
+  --accept-standard-apache --external-processes-stopped
+sudo php8.5 bin/pjas-site-upgrade change-status "$CHANGE_ID"
+```
+
+`CHANGE_ID` は最初のコマンドが返す `id` です。準備が中断した場合は
+`change-rollback "$CHANGE_ID" --confirm-rollback` で着手済みの計画を逆順に戻します。
+復旧が中断しても同じコマンドを再実行できます。
+準備を完了し公開する場合は、各計画の `activate` または `batch-apply` を使います。
+公開を開始した後は、同じ変更IDでまとめて切り戻せません。
