@@ -14,12 +14,12 @@ try {
  mkdir($dir.'/data',0700);mkdir($dir.'/www/cert',0755);mkdir($dir.'/run',0755);file_put_contents($dir.'/data/db','original');chmod($dir.'/data/db',0600);file_put_contents($dir.'/key',random_bytes(32));chmod($dir.'/key',0600);
  $catalog=['version'=>1,'sites'=>['cert'=>['repository'=>'https://github.com/test/cert','domain'=>'cert.example.com','runtime'=>'static','document_root'=>'public','https'=>false]],'profiles'=>['ca'=>['sites'=>['cert'],'type'=>'worker','user'=>$user,'group'=>$group,'executables'=>[$dir.'/true']]],'storage'=>['state'=>['sites'=>['cert'],'profile'=>'ca','path'=>$dir.'/data','purpose'=>'intermediate-ca']],'secrets'=>['api'=>['sites'=>['cert'],'profile'=>'ca','path'=>$dir.'/api-secret','purpose'=>'api']],'setup'=>['init'=>['sites'=>['cert'],'profile'=>'ca','command'=>[$dir.'/true'],'check'=>[$dir.'/true'],'absent'=>[$dir.'/true']]],'health'=>['ready'=>['sites'=>['cert'],'profile'=>'ca','command'=>[$dir.'/true']]],'backup_policies'=>['backup'=>['sites'=>['cert'],'storage'=>['state'],'key_file'=>$dir.'/key','verify_restore'=>[$dir.'/true']]]];
  if ($componentType==='php') {
-  $manifest['site']['runtime']='php8.4-fpm';$catalog['sites']['cert']['runtime']='php8.4-fpm';
+  $manifest['site']['runtime']='php8.5-fpm';$catalog['sites']['cert']['runtime']='php8.5-fpm';
   $manifest['components'][0]['type']='php';$manifest['components'][0]['command']=[];
   $catalog['profiles']['ca']['type']='php';$catalog['profiles']['ca']['fpm_binary']=$dir.'/true';$catalog['profiles']['ca']['apache_user']=$user;
  }
  file_put_contents($cfg['component_catalog'],json_encode($catalog));chmod($cfg['component_catalog'],0600);
- file_put_contents($cfg['systemctl'],"#!/bin/sh\ncase \"\$1\" in\nis-active) if [ -f '$dir/active' ]; then echo active; exit 0; else echo inactive; exit 3; fi;;\nstart) touch '$dir/active';;\nstop) rm -f '$dir/active';;\nesac\nexit 0\n");chmod($cfg['systemctl'],0700);
+ file_put_contents($cfg['systemctl'],"#!/bin/sh\ncase \"\$1\" in\nis-active) if [ -f '$dir/active' ]; then echo active; exit 0; else echo inactive; exit 3; fi;;\ndaemon-reload) if [ -f '$dir/fail-reload' ]; then rm '$dir/fail-reload'; exit 1; fi;;\nstart) touch '$dir/active';;\nstop) rm -f '$dir/active';;\nesac\nexit 0\n");chmod($cfg['systemctl'],0700);
  file_put_contents($cfg['systemd_run'],"#!/bin/sh\necho run >> '$dir/tasks'\nif [ -f '$dir/fail-task' ]; then exit 1; fi\nexit 0\n");chmod($cfg['systemd_run'],0700);
  $token=str_repeat('a',32);$checkout=$dir.'/repositories/previews/'.$token;mkdir($checkout,0700,true);mkdir($checkout.'/public');file_put_contents($checkout.'/public/index.html','certificate');file_put_contents($checkout.'/.pjas',json_encode($manifest));
  Proc::must(['/usr/bin/git','init','--quiet',$checkout]);Proc::must(['/usr/bin/git','add','.'],$checkout);Proc::must(['/usr/bin/git','-c','user.name=test','-c','user.email=test@example.com','commit','--quiet','-m','fixture'],$checkout);
@@ -52,6 +52,29 @@ try {
  $catalog['health']['ready']['timeout']=11;
  file_put_contents($cfg['component_catalog'],json_encode($catalog));
  $updatedPlan=$ops->plan($p);
+ $store=new ControlStore($cfg);
+ $previous=$store->read('components-cert');
+ touch($dir.'/fail-reload');
+ rejects(fn()=>$ops->apply(['service'=>'cert','review'=>$updatedPlan['review']]));
+ $transaction=$store->read('component-tx-cert');
+ check($transaction['phase']==='rolled_back' && $store->read('components-cert')===$previous,
+   'daemon-reload失敗後は承認済み構成とCA初期化済み状態を復旧する');
+ $unitPath=$dir.'/units/pjas-component-cert-ca.service';
+ $unitBody=file_get_contents($unitPath);
+ $candidate=$unitBody."\n# interrupted apply\n";
+ $id=str_repeat('b',32);
+ $store->write('component-tx-cert',['id'=>$id,'phase'=>'pending','previous'=>$previous,'files'=>[
+   $unitPath=>['body'=>$unitBody,'mode'=>0644,'next'=>hash('sha256',$candidate)],
+ ]]);
+ file_put_contents($unitPath,$candidate."# outside change\n");
+ rejects(fn()=>$ops->recoverConfiguration('cert',$id));
+ check(str_contains(file_get_contents($unitPath),'outside change'),'中断後の復旧で外部変更を上書きしない');
+ file_put_contents($unitPath,$candidate);
+ rejects(fn()=>$ops->action(['service'=>'cert','action'=>'start']));
+ $recovered=$ops->recoverConfiguration('cert',$id);
+ check($recovered['phase']==='rolled_back' && file_get_contents($unitPath)===$unitBody
+   && $ops->recoverConfiguration('cert',$id)===$recovered,'中断した設定を同じ操作IDで安全に復旧し再試行できる');
+ check(file_get_contents($dir.'/data/db')==='original','構成切り戻しでCAデータを変更しない');
  $updated=$ops->apply(['service'=>'cert','review'=>$updatedPlan['review']]);
  $updatedState=$ops->status(['service'=>'cert']);
  check(($updated['phase']??'')==='initialized' && ($updatedState['configured']??false)===true,
