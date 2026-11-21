@@ -106,6 +106,7 @@ final class SiteIsolation
         foreach ((new \Pjas\Agentd\Ops\Daemon($this->cfg))->listing(['service'=>$name])['daemons']??[] as $row)$blockers[]='常駐処理を含む移行はCLIのpjas-site-upgradeを使用してください（関連付けは維持します）';
         foreach(glob(($this->cfg['cron_script_dir']??'/var/lib/pjas/cron').'/task-*.sh')?:[] as $file) if(str_contains((string)file_get_contents($file),$this->cfg['www_root'].'/'.$name.'/'))$blockers[]='cronを含む移行はCLIのpjas-site-upgradeを使用できます';
         if(trim($spec['extra_conf'])!=='')$warnings[]='追加Apache設定を退避して削除します。アプリの公開ルートを確認してください';
-        return ['isolated'=>($state['status']??'')==='ready','state'=>$state,'user'=>$state?self::identity($name):$this->cfg['web_user'],'runtime'=>$state['runtime']??$spec['runtime'],'warnings'=>$warnings,'blockers'=>array_values(array_unique($blockers))];
+        $drift = SiteDrift::inspect($state && ($state['status']??'')==='ready' ? $this->scope($name) : $this->cfg, $spec, $state);
+        return ['drift'=>$drift,'isolated'=>($state['status']??'')==='ready','state'=>$state,'user'=>$state?self::identity($name):$this->cfg['web_user'],'runtime'=>$state['runtime']??$spec['runtime'],'warnings'=>$warnings,'blockers'=>array_values(array_unique($blockers))];
     }
 }
