@@ -34,14 +34,75 @@ final class SiteUpgradeBatch
     {
         $j=$this->load($id);foreach($j['sites'] as &$site)if(isset($site['id'])&&$site['phase']!=='blocked')$site['phase']=($this->single)('status',[$site['id']])['phase'];unset($site);return $j;
     }
+    /**
+     * Prepare each site while keeping it paused. Recovery uses the existing
+     * per-site journals so it also works without the web UI or agent.
+     */
+    public function prepare(string $id, bool $standard, bool $external): array
+    {
+        if (!$standard || !$external) throw new OpException('Apache標準化と外部処理停止の確認が必要です');
+        return $this->staged($id, false);
+    }
+
+    public function rollback(string $id, bool $confirm): array
+    {
+        if (!$confirm) throw new OpException('切り戻しの確認が必要です');
+        return $this->staged($id, true);
+    }
+
+    private function staged(string $id, bool $rollback): array
+    {
+        $this->load($id);
+        $lock = $this->store->lock('upgrade-batch-'.$id);
+        try {
+            $batch = $this->status($id);
+            foreach ($batch['sites'] as $name => $site) {
+                $allowed = $rollback
+                    ? ['blocked', 'manual', 'current', 'planned', 'quiescing', 'isolating', 'isolated', 'prepared', 'activating', 'rolling-back', 'rolled-back']
+                    : ['current', 'planned', 'quiescing', 'isolated', 'prepared'];
+                if (!in_array($site['phase'], $allowed, true)) {
+                    throw new OpException($name.' / この段階では一括操作できません: '.$site['phase']);
+                }
+            }
+            $sites = $rollback ? array_reverse($batch['sites'], true) : $batch['sites'];
+            foreach ($sites as $name => $site) {
+                $skip = $rollback
+                    ? ['current', 'manual', 'blocked', 'planned', 'rolled-back']
+                    : ['current', 'prepared'];
+                if (in_array($site['phase'], $skip, true)) continue;
+                try {
+                    $result = $rollback
+                        ? ($this->single)('rollback', [$site['id'], true])
+                        : ($this->single)('apply', [$site['id'], true, true]);
+                    $batch['sites'][$name]['phase'] = $result['phase'];
+                    unset($batch['sites'][$name]['error']);
+                } catch (\Throwable $error) {
+                    $batch['sites'][$name]['error'] = '単独のstatusで状態と復旧方法を確認してください';
+                    $this->save($batch);
+                    throw new OpException($name.' / 単独移行ID '.$site['id'].' / '.$error->getMessage(), 0, $error);
+                }
+                $this->save($batch);
+            }
+            return $this->status($id);
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
     public function apply(string $id,bool $standard,bool $external,bool $activate,bool $skipManual):array
     {
         if(!$standard||!$external||!$activate)throw new OpException('Apache標準化・外部処理停止・再開の確認フラグが必要です');
         $lock=$this->store->lock('upgrade-batch-'.$id);
         try{
-            $j=$this->load($id);
+            $j=$this->status($id);
             // Refuse known blockers before stopping the first site.
             foreach($j['sites'] as $name=>$site)if($site['phase']==='blocked'||($site['phase']==='manual'&&!$skipManual))throw new OpException($name.': '.$site['reason']);
+            foreach ($j['sites'] as $name => $site) {
+                if (in_array($site['phase'], ['rolled-back', 'rolling-back'], true)) {
+                    throw new OpException($name.': 切り戻し後は新しい一括計画が必要です');
+                }
+            }
             foreach($j['sites'] as $name=>&$site){
                 if(in_array($site['phase'],['manual','current','active'],true))continue;
                 try{

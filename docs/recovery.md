@@ -145,3 +145,21 @@ sudo python3 agent/lib/isolate_tree.py --split-internal-hardlinks \
 ## CA状態を戻す
 
 「実行環境」で対象バックアップの復元影響を確認します。復元後も発行停止を維持し、DB・鍵・証明書の整合性、発行・失効履歴の欠落、外部署名処理との二重稼働がないことを検査します。履歴の欠落を明示確認して停止を解除し、起動は別操作で行います。PHP更新やコード公開のために初回セットアップを再実行しません。
+
+## 公開前の一括サイト移行を復旧する
+
+一括移行の全サイトを公開前に確認したい場合は、`batch-plan` の後に
+`batch-prepare ID --accept-standard-apache --external-processes-stopped` を実行します。
+対象サイトは停止したままです。管理画面と agent が停止していても、管理DBと
+ホスト上の設定・ジャーナルにアクセスできれば、サーバー上で状態を確認できます。
+
+```bash
+cd /opt/pjas-ctrl
+sudo php8.5 bin/pjas-site-upgrade batch-status "$PJAS_BATCH_ID"
+sudo php8.5 bin/pjas-site-upgrade batch-rollback "$PJAS_BATCH_ID" --confirm-rollback
+```
+
+切り戻しは着手済みサイトを逆順で処理し、設定と関連付けを復旧します。
+アプリデータの復元は別手順です。公開済みサイトを含む場合は一括切り戻しを
+開始できません。全サイトの準備を確認して公開する場合は、同じ ID で
+`batch-apply` を実行します。切り戻した後に再移行する場合は新しい計画を作成します。
