@@ -98,6 +98,8 @@ try{
 
  foreach($retiredPhp as $runtime){$run([\Pjas\Shared\PhpRuntime::fpm($runtime),'--test']);$run(['/bin/systemctl','restart',$runtime]);}
  $run(['/bin/systemctl','daemon-reload']);$run(['/bin/systemctl','restart','pjas-agentd']);$run(['/bin/systemctl','restart','php'.$phpVersion.'-fpm']);$run(['/bin/systemctl','enable','--now','pjas-control-web.service']);$run(['/bin/systemctl','restart','apache2']);$run(['/bin/systemctl','enable','--now','pjas-monitor.timer']);
+ $http=Proc::must(['/usr/bin/curl','--disable','--silent','--show-error','--noproxy','*','--retry','5','--retry-connrefused','--retry-delay','1','--retry-max-time','10','--max-time','10','--output','/dev/null','--write-out','%{http_code}','http://127.0.0.1:8184/login'],null,25);
+ if(trim($http)!=='200')throw new RuntimeException('管理用ログイン画面のHTTP検査に失敗しました');
  echo "追加機能を有効にしました。退避先: {$backup}\n管理画面へログインし直して「接続設定」からGitHub Appなどを設定してください。\n";
 }catch(Throwable $e){
  if($apply&&$changesStarted){
