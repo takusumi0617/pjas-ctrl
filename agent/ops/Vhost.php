@@ -431,12 +431,27 @@ final class Vhost
         $conf = $migration['rendered'] ?? $this->render($spec);
         $this->assertControlHostSafe($conf);
 
-        $backup = is_file($path) ? (string) file_get_contents($path) : null;
-
-        if (file_put_contents($path, $conf) === false) {
-            throw new OpException("設定ファイルを書き出せません: {$path}");
+        $enabledPath = $this->enabledDir().'/'.basename($path);
+        foreach ([$path, $enabledPath] as $candidate) {
+            if (file_exists($candidate) && !is_file($candidate)) throw new OpException('Apache設定先の種類が不正です');
         }
-        chmod($path, 0644);
+        if (is_link($path) || (file_exists($enabledPath) && !is_link($enabledPath))) throw new OpException('Apache設定・有効化リンクが標準の構成と異なります');
+        if (is_link($enabledPath) && realpath($enabledPath) !== realpath($path)) throw new OpException('既存の有効化リンクが別の設定を参照しています');
+        $wasEnabled = is_link($enabledPath);
+        $backup = is_file($path) ? file_get_contents($path) : null;
+        if ($backup === false) throw new OpException('適用前のApache設定を読み取れません');
+        $previousMode = $backup === null ? 0644 : fileperms($path)&0777;
+        $write = static function (string $body, int $mode) use ($path): void {
+            $temporary = $path.'.tmp-'.bin2hex(random_bytes(8));
+            try {
+                if (file_put_contents($temporary,$body,LOCK_EX) === false || !chmod($temporary,$mode) || !rename($temporary,$path)) {
+                    throw new OpException('Apache設定を保存できません');
+                }
+            } finally {
+                if (is_file($temporary)) unlink($temporary);
+            }
+        };
+        $write($conf,0644);
 
         // 同じ ServerName の管理外サイトは、二重定義になるのでここで無効化する。
         // 失敗したときは下の catch で元に戻すため、Apache から見て中途半端な状態にはならない。
@@ -472,20 +487,23 @@ final class Vhost
                 'disabled'   => $disabled,
             ];
         } catch (\Throwable $e) {
-            if ($migration !== null) @unlink($this->inheritedPath($name));
-            // 失敗したら直前の内容へ戻し、Apache を安全側に保つ
-            if ($backup !== null) {
-                file_put_contents($path, $backup);
-            } else {
-                @unlink($path);
-                Proc::run([$this->a2dissite(), '-q', "pjas-{$name}"], null, 30);
+            try {
+                if ($backup !== null) {
+                    $write($backup,$previousMode);
+                } elseif (is_file($path) && !unlink($path)) {
+                    throw new OpException('新規Apache設定を削除できません');
+                }
+                if (!$wasEnabled && is_link($enabledPath)) {
+                    Proc::must([$this->a2dissite(), '-q', "pjas-{$name}"], null, 30);
+                }
+                foreach ($disabled as $site) {
+                    Proc::must([$this->cfg['a2ensite'], '-q', $site], null, 30);
+                }
+                $this->reload();
+            } catch (\Throwable $recovery) {
+                throw new OpException('Apache設定の復旧が未完了です: '.$recovery->getMessage(),0,$e);
             }
-            // 無効化した管理外サイトも戻す (元の設定で配信され続けるように)
-            foreach ($disabled as $site) {
-                Proc::run([$this->cfg['a2ensite'], '-q', $site], null, 30);
-            }
-            Proc::run([$this->cfg['apachectl'], 'graceful'], null, 60);
-            throw new OpException($e->getMessage() . ' (設定は適用前の状態に戻しました)');
+            throw new OpException($e->getMessage() . ' (設定は適用前の状態に戻しました)',0,$e);
         }
     }
 
