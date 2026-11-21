@@ -22,7 +22,7 @@ final class AgentClient
         'tls.renew','tls.plan','tls.apply','tls.status',
         'server.snapshot','server.restart',
         'site.plan','site.status','site.start','site.cleanup',
-        'ops.run','ops.settings','ops.save','ops.notify','ops.resources','ops.certificate','ops.logs',
+        'ops.run','ops.settings','ops.save','ops.notify','ops.drift','ops.resources','ops.certificate','ops.logs',
         'github.app.status','github.app.save','github.app.convert','github.app.test','github.webhook.verify','github.connection',
         'backup.list','backup.create','backup.restore','backup.download','backup.key','backup.prune',
         'deploy.cleanup','deploy.prepare','deploy.review','deploy.preparations','deploy.diff','apache.restore','apache.history',
