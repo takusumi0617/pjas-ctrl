@@ -56,7 +56,8 @@ try {
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         ]);
         $db->exec('PRAGMA busy_timeout = 5000');
-        $query = $db->prepare("SELECT services.* FROM services WHERE id NOT IN (SELECT service_id FROM service_lifecycle WHERE state <> 'active') AND (? IS NULL OR name = ?) ORDER BY name");
+        // Deployment hooks are stored as text and are not part of the vhost specification.
+        $query = $db->prepare("SELECT name, domain, runtime, docroot, allow_override, extra_conf, tls FROM services WHERE id NOT IN (SELECT service_id FROM service_lifecycle WHERE state <> 'active') AND (? IS NULL OR name = ?) ORDER BY name");
         $query->execute([$component, $component]);
         $sites = $query->fetchAll(PDO::FETCH_ASSOC);
         if (!$sites) echo "SKIP 照合対象の有効なサイトがありません\n";
@@ -65,11 +66,14 @@ try {
         $isolation = new \Pjas\Agentd\SiteIsolation($cfg);
         foreach ($sites as $site) {
             $name = $site['name'];
+            $stage = '登録情報';
             try {
                 $spec = \Pjas\Agentd\Spec::service($site);
+                $stage = '隔離構成';
                 $v2 = \Pjas\Agentd\Ops\Components::protectedSite($cfg, $name);
                 $state = is_dir($store->root()) ? $store->read(($v2 ? 'components-' : 'isolation-').$name) : [];
                 $scoped = !$v2 && ($state['status'] ?? '') === 'ready' ? $isolation->scope($name) : $cfg;
+                $stage = '構成比較';
                 $rows = \Pjas\Agentd\SiteDrift::inspect($scoped, $spec, $v2 ? [] : $state);
                 if ($v2) {
                     $rows = array_merge($rows, \Pjas\Agentd\ComponentDrift::inspect($state));
@@ -88,7 +92,7 @@ try {
                     }
                 }
             } catch (Throwable $e) {
-                echo "FAIL $name — 照合に必要な設定を確認できません\n";
+                echo "FAIL $name — {$stage}を確認できません\n";
                 $failed = true;
             }
         }
