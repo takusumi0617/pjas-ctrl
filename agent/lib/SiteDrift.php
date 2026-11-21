@@ -11,7 +11,7 @@ final class SiteDrift
     public static function inspect(array $cfg, array $spec, array $isolation = []): array
     {
         $name = Spec::name($spec['name']);
-        $vhost = new Vhost($cfg);
+        $vhost = new Vhost($cfg, new Paths($cfg['www_root']));
         $path = $vhost->confPath($name);
         $enabled = rtrim($vhost->enabledDir(), '/').'/'.basename($path);
         $rows = [];
