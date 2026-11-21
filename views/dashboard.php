@@ -12,20 +12,18 @@
   <div class="card-h">構成照合</div>
   <div class="card-b">
     <ul>
-    <?php foreach ($driftStatuses as $drift): ?>
+    <?php foreach ($driftStatuses as $drift): $details=array_filter($drift['rows']??[],static fn($row)=>$row['status']!=='match'); ?>
       <li><strong><?= View::e($drift['name']) ?></strong>
         <?php if (isset($drift['checked_at'])): ?>
-          <time datetime="<?= View::e(gmdate('c',$drift['checked_at'])) ?>"><?= View::e((new DateTimeImmutable('@'.$drift['checked_at']))->setTimezone(new DateTimeZone('Asia/Tokyo'))->format('Y-m-d H:i')) ?> JST</time>
+          最終照合 <time datetime="<?= View::e(gmdate('c',$drift['checked_at'])) ?>"><?= View::e((new DateTimeImmutable('@'.$drift['checked_at']))->setTimezone(new DateTimeZone('Asia/Tokyo'))->format('Y-m-d H:i')) ?> JST</time>
         <?php endif; ?>
         <?php if (!empty($drift['skip'])): ?>
           <span>SKIP — <?= View::e($drift['skip']) ?></span>
         <?php elseif (!isset($drift['checked_at'])): ?>
           <span>検査待ち</span>
         <?php else: ?>
-          <?php $details=array_filter($drift['rows'],static fn($row)=>$row['status']!=='match'); ?>
           <?php if (!$details): ?><span>PASS — 構成と一致</span><?php endif; ?>
         <?php endif; ?>
-        <?php $details=array_filter($drift['rows']??[],static fn($row)=>$row['status']!=='match'); ?>
         <?php if ($details): ?><ul>
           <?php foreach ($details as $row): ?>
             <li><?= $row['status']==='skip'?'SKIP':'FAIL' ?> <code><?= View::e($row['path']) ?></code> — <?= View::e($row['detail']) ?></li>
