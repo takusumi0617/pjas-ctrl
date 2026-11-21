@@ -7,6 +7,34 @@
 <?php foreach($attention as $s):$p=$s['presentation'];?><div class="attention-row"><div><h3><span class="tag <?= $p['tone'] ?>"><?= View::e($p['label']) ?></span> <?= View::e($s['name']) ?></h3><p class="muted"><?= View::e($p['reason']) ?></p></div><a class="btn" href="/services/<?= View::e($s['name']) ?><?= !empty($p['observed']['upgrade'])?'?tab=environment':'' ?>">原因と次の操作</a></div><?php endforeach;?>
 <?php foreach($serverChecks??[] as $check):?><div class="attention-row"><div><h3>サーバー・ctrlの確認</h3><p><?= View::e($check['detail']) ?></p></div><a class="btn" href="/server">稼働状態を見る</a></div><?php endforeach;?></section>
 <?php else:?><div class="note ok">現在の確認結果では、対応が必要な項目はありません。</div><?php endif;?>
+<?php if (!empty($driftStatuses)): ?>
+<section class="card section-gap">
+  <div class="card-h">構成照合</div>
+  <div class="card-b">
+    <ul>
+    <?php foreach ($driftStatuses as $drift): $details=array_filter($drift['rows']??[],static fn($row)=>$row['status']!=='match'); ?>
+      <li><strong><?= View::e($drift['name']) ?></strong>
+        <?php if (isset($drift['checked_at'])): ?>
+          最終照合 <time datetime="<?= View::e(gmdate('c',$drift['checked_at'])) ?>"><?= View::e((new DateTimeImmutable('@'.$drift['checked_at']))->setTimezone(new DateTimeZone('Asia/Tokyo'))->format('Y-m-d H:i')) ?> JST</time>
+        <?php endif; ?>
+        <?php if (!empty($drift['skip'])): ?>
+          <span>SKIP — <?= View::e($drift['skip']) ?></span>
+        <?php elseif (!isset($drift['checked_at'])): ?>
+          <span>検査待ち</span>
+        <?php else: ?>
+          <?php if (!$details): ?><span>PASS — 構成と一致</span><?php endif; ?>
+        <?php endif; ?>
+        <?php if ($details): ?><ul>
+          <?php foreach ($details as $row): ?>
+            <li><?= $row['status']==='skip'?'SKIP':'FAIL' ?> <code><?= View::e($row['path']) ?></code> — <?= View::e($row['detail']) ?></li>
+          <?php endforeach; ?>
+        </ul><?php endif; ?>
+      </li>
+    <?php endforeach; ?>
+    </ul>
+  </div>
+</section>
+<?php endif; ?>
 <section class="card section-gap"><div class="card-h">サイトの状態<span class="spacer"></span><a class="btn sm" href="/services">サイト一覧</a></div><?php require __DIR__.'/partials/sites_table.php';?></section>
 <?php if(Auth::can('owner'))require __DIR__.'/partials/control_update.php';?>
 <section class="card section-gap"><div class="card-h">最近の作業</div><div class="table-scroll"><table><thead><tr><th>作業</th><th>サイト</th><th>内容</th><th>開始（日本時間）</th><th>結果</th></tr></thead><tbody><?php foreach($jobs as $j):?><tr><td><a href="/jobs/<?= (int)$j['id'] ?>">#<?= (int)$j['id'] ?> <?= View::e(Labels::jobType($j['type'])) ?></a></td><td><?= View::e($j['service']??'') ?></td><td><?= View::e($j['detail']) ?></td><td><?= View::e(Time::display($j['started_at'])) ?></td><td><span class="tag <?= $j['state']==='failed'?'t-err':($j['state']==='succeeded'?'t-ok':'t-warn') ?>"><?= View::e(Labels::jobState($j['state'])) ?></span></td></tr><?php endforeach;?><?php if(!$jobs):?><tr><td colspan="5">作業の記録はありません。</td></tr><?php endif;?></tbody></table></div></section>

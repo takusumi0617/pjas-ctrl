@@ -107,6 +107,7 @@ $registry = [
     'ops.run'=>[(new \Pjas\Agentd\Ops\AsyncTasks($cfg,$paths)),'start'],
     'ops.settings'=>[$operations,'settings'],
     'ops.save'=>[$operations,'saveSettings'],
+    'ops.drift'=>[$operations,'drift'],
     'ops.notify'=>[$operations,'notify'],
     'ops.resources'=>[$operations,'resources'],
     'ops.certificate'=>[$operations,'certificate'],
