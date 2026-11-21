@@ -389,20 +389,20 @@ final class Components
         }
     }
 
-    private function assertApplied(string $site, array $s): array
+    private function assertApplied(string $site, array $s, bool $regenerate = true): array
     {
         if (!$s || !in_array($s['phase'],['dependencies_checked','secrets_waiting','initialized','ready','stopped','setup_failed','restore_hold'],true)) throw new OpException('先に設定を適用してください');
         if (($s['policy']??'')!==$this->fingerprint()) throw new OpException('管理者の許可設定が更新されました。再プレビュー・適用が必要です');
         $rows=$this->checkManifest($this->policy(),$site,$s['manifest']);
         $rendered=null;
         foreach ($s['files'] as $path=>$hash) {
-            if (!is_file($path) && str_starts_with($path,rtrim($this->cfg['component_run_dir']??'/run/pjas-components','/').'/')) {
+            if ($regenerate && !is_file($path) && str_starts_with($path,rtrim($this->cfg['component_run_dir']??'/run/pjas-components','/').'/')) {
                 $rendered??=$this->render($site,$rows);
                 if (!isset($rendered[$path]) || hash('sha256',$rendered[$path])!==$hash) throw new OpException('再生成する設定が承認内容と一致しません');
                 foreach ($rows as $id=>$r) $this->prepareRuntime($site,$id,$r);
                 $this->write($path,$rendered[$path],0644);
             }
-            if (!is_file($path) || hash_file('sha256',$path)!==$hash) throw new OpException('起動設定が承認済みの内容と一致しません');
+            if (is_link($path) || !is_file($path) || hash_file('sha256',$path)!==$hash) throw new OpException('起動設定が承認済みの内容と一致しません');
         }
         return $rows;
     }
@@ -758,7 +758,7 @@ final class Components
         }
         try {
             $result['drift']=array_merge($result['drift'],\Pjas\Agentd\SiteDrift::inspect($this->cfg,$this->webSpec($site)));
-            $rows=$this->assertApplied($site,$s);
+            $rows=$this->assertApplied($site,$s,false);
             foreach ($rows as $id=>$r) {
                 $active=Proc::run([$this->cfg['systemctl'],'is-active','--',$this->unitFor($site,$id,$r)],null,5);
                 $checks=[]; foreach ($r['declaration']['health_checks'] as $ref) {
