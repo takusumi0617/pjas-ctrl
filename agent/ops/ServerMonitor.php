@@ -28,8 +28,37 @@ final class ServerMonitor
     }
     private function unitStates(): array
     {
-        $r=$this->run(array_merge(['/bin/systemctl','show','--no-pager','--property=Id,LoadState,ActiveState,UnitFileState'],$this->units()));$out=[];
-        foreach(preg_split('/\n\s*\n/',trim($r['out'])) as $block){$v=[];foreach(explode("\n",$block) as $line){$kv=explode('=',$line,2);if(count($kv)===2)$v[$kv[0]]=$kv[1];}if(isset($v['Id']))$out[]=['unit'=>$v['Id'],'state'=>$v['ActiveState']??'unknown','loaded'=>($v['LoadState']??'')==='loaded','enabled'=>in_array($v['UnitFileState']??'',['enabled','enabled-runtime'],true)];}
+        $relations = ['RequiredBy', 'RequisiteOf', 'BoundBy', 'ConsistsOf', 'PropagatesStopTo'];
+        $properties = array_merge(['Id', 'LoadState', 'ActiveState', 'UnitFileState'], $relations);
+        $result = $this->run(array_merge(
+            ['/bin/systemctl', 'show', '--all', '--no-pager', '--property='.implode(',', $properties), '--'],
+            $this->units()
+        ));
+        $out = [];
+        foreach (preg_split('/\n\s*\n/', trim($result['out'])) as $block) {
+            $values = [];
+            foreach (explode("\n", $block) as $line) {
+                $parts = explode('=', $line, 2);
+                if (count($parts) === 2) $values[$parts[0]] = $parts[1];
+            }
+            if (empty($values['Id'])) continue;
+
+            $dependents = [];
+            foreach ($relations as $relation) {
+                foreach (preg_split('/\s+/', trim($values[$relation] ?? ''), -1, PREG_SPLIT_NO_EMPTY) as $unit) {
+                    if ($unit !== $values['Id']) $dependents[$unit] = true;
+                }
+            }
+            $names = array_keys($dependents);
+            sort($names, SORT_STRING);
+            $out[] = [
+                'unit' => $values['Id'],
+                'state' => $values['ActiveState'] ?? 'unknown',
+                'loaded' => ($values['LoadState'] ?? '') === 'loaded',
+                'enabled' => in_array($values['UnitFileState'] ?? '', ['enabled', 'enabled-runtime'], true),
+                'stop_dependents' => array_diff($relations, array_keys($values)) === [] ? $names : null,
+            ];
+        }
         return $out;
     }
     private function fingerprints(): array
