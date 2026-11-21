@@ -1,0 +1,20 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+if(PHP_SAPI!=='cli')exit(2);
+require dirname(__DIR__).'/app/bootstrap.php';
+use Pjas\Shared\PhpRuntime;
+use Pjas\Support\Config;
+try {
+    $db=new PDO('sqlite:'.Config::get('db'),null,null,[PDO::SQLITE_ATTR_OPEN_FLAGS=>PDO::SQLITE_OPEN_READONLY,PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+    $sites=$db->query("SELECT name,runtime FROM services WHERE id NOT IN(SELECT service_id FROM service_lifecycle WHERE state<>'active') ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+    $runtimes=[];
+    foreach(PhpRuntime::catalog() as $runtime){
+        $runtime['sites']=array_column(array_filter($sites,static fn($site)=>$site['runtime']===$runtime['runtime']),'name');
+        $runtime['validation']='CLI/FPM実行ファイルの配置確認。アプリ動作の互換性は移行時の検証が必要';
+        $runtimes[]=$runtime;
+    }
+    echo json_encode(['os'=>php_uname('s').' '.php_uname('r'),'architecture'=>php_uname('m'),
+        'control_php'=>PhpRuntime::controlVersion(),'runtimes'=>$runtimes],
+        JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),PHP_EOL;
+}catch(Throwable $e){fwrite(STDERR,$e->getMessage().PHP_EOL);exit(1);}

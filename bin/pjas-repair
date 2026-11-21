@@ -1,0 +1,65 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+use Pjas\Agentd\{ControlStore,Paths,Proc,SiteDrift,SiteIsolation,Spec};
+use Pjas\Agentd\Ops\Vhost;
+use Pjas\Shared\PhpRuntime;
+use Pjas\Support\Config;
+
+if (PHP_SAPI!=='cli' || !function_exists('posix_geteuid') || posix_geteuid()!==0) exit(77);
+$root=dirname(__DIR__);
+require $root.'/app/bootstrap.php';
+spl_autoload_register(static function(string $class) use($root): void {
+    $prefix='Pjas\\Agentd\\';
+    if (!str_starts_with($class,$prefix)) return;
+    $relative=substr($class,strlen($prefix));
+    $file=$root.'/agent/'.(str_starts_with($relative,'Ops\\')?'ops/'.substr($relative,4):'lib/'.$relative).'.php';
+    if (is_file($file)) require_once $file;
+});
+try {
+    $name=Spec::name($argv[1]??'');
+    $action=$argv[2]??'plan';
+    if (!in_array($action,['plan','apply'],true) || ($action==='apply' && !preg_match('/\A[a-f0-9]{64}\z/D',$argv[3]??''))) {
+        throw new RuntimeException('使い方: sudo php8.5 bin/pjas-repair サイト名 plan または apply 確認ハッシュ');
+    }
+    $cfg=require $root.'/agent/config.php';
+    $store=new ControlStore($cfg);
+    $update=$store->read('control-update');
+    if (in_array($update['phase']??'',['queued','running','recovering'],true)
+        || (($update['phase']??'')==='failed' && empty($update['rollback_complete']))) throw new RuntimeException('ctrlの更新・復旧中です');
+    if (\Pjas\Agentd\Ops\Components::protectedSite($cfg,$name)) throw new RuntimeException('v2は実行環境の構成レビューと専用復旧CLIを使用してください');
+    $lockPath=$cfg['apache_sites'].'/.pjas-deploy-'.$name.'.lock';
+    if (is_link($lockPath)) throw new RuntimeException('サイトロックが不正です');
+    $lock=fopen($lockPath,'c');
+    if (!$lock || !flock($lock,LOCK_EX|LOCK_NB)) throw new RuntimeException('サイトは別の作業中です');
+    try {
+        \Pjas\Agentd\SiteLifecycleGuard::active($cfg,$name);
+        $db=new PDO('sqlite:'.Config::get('db'),null,null,[PDO::SQLITE_ATTR_OPEN_FLAGS=>PDO::SQLITE_OPEN_READONLY,PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+        $q=$db->prepare("SELECT name,domain,runtime,docroot,allow_override,extra_conf,tls FROM services WHERE name=? AND id NOT IN(SELECT service_id FROM service_lifecycle WHERE state<>'active')");
+        $q->execute([$name]);
+        $spec=Spec::service($q->fetch(PDO::FETCH_ASSOC));
+        $iso=new SiteIsolation($cfg);
+        $state=$iso->state($name);
+        if (($state['status']??'')!=='ready') throw new RuntimeException('先に隔離移行を完了してください');
+        $scoped=$iso->scope($name);
+        $vhost=new Vhost($scoped,new Paths($cfg['www_root']));
+        $preview=$vhost->preview(['service'=>$spec,'update_mode'=>'settings']);
+        $rows=SiteDrift::inspect($scoped,$spec,$state);
+        $review=hash('sha256',json_encode([$preview['change_review'],$rows,$state],JSON_THROW_ON_ERROR));
+        if ($action==='plan') {
+            echo json_encode(['review'=>$review,'target'=>'Apache公開設定のみ','drift'=>$rows,'impact'=>$preview['impact'],
+                'recovery'=>'適用失敗時は既存のApache切り戻しを実行'],JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),PHP_EOL;
+        } else {
+            if (!hash_equals($review,$argv[3])) throw new RuntimeException('確認後に構成が変わりました。planを再実行してください');
+            $result=$vhost->apply(['service'=>$spec,'update_mode'=>'settings','current_hash'=>$preview['current_hash'],
+                'require_change_review'=>true,'change_review'=>$preview['change_review'],'_actor'=>'root-repair']);
+            echo json_encode($result,JSON_UNESCAPED_UNICODE),PHP_EOL;
+        }
+    } finally {
+        if (is_resource($lock)) fclose($lock);
+    }
+} catch(Throwable $e) {
+    fwrite(STDERR,$e->getMessage().PHP_EOL);
+    exit(1);
+}
