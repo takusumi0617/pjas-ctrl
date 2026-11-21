@@ -23,6 +23,19 @@ final class Automation
     }
     public static function tick(?int $now=null): array
     {
+        try {
+            AgentClient::call('ping', [], 'monitor');
+            $result = self::tickConnected($now);
+            Alerting::check('host.agent', null, true, '監視エージェントとの接続が復旧しました');
+            return $result;
+        } catch (\Pjas\Agent\AgentConnectionException $e) {
+            Alerting::check('host.agent', null, false, '監視エージェントへ接続できません。サイトの状態判定を保留しています', false);
+            return ['started'=>0,'checked'=>0,'backups'=>0,'agent_unavailable'=>true];
+        }
+    }
+
+    private static function tickConnected(?int $now=null): array
+    {
         $now??=time();$stats=['started'=>0,'checked'=>0,'backups'=>0];
         if(!Db::one("SELECT name FROM app_state WHERE name='jobs.alerts.seeded'")){
             Db::run("INSERT OR IGNORE INTO job_notifications(job_id) SELECT id FROM jobs WHERE state IN ('succeeded','failed')");Db::run("INSERT INTO app_state(name,value) VALUES ('jobs.alerts.seeded','1')");
@@ -43,7 +56,7 @@ final class Automation
                 $source=json_decode($row['source'],true,512,JSON_THROW_ON_ERROR);$actor='queue:'.$row['id'].':'.$row['actor'];
                 $job=match($source['type']){'prepared'=>Deployer::fromPrepared($site,$source['token'],$source['options']??[],$actor),'git'=>Deployer::fromGit($site,$source['sha'],$source['options']??[],$actor),default=>throw new \InvalidArgumentException('予約の取得元が不正です')};
                 Db::run("UPDATE publication_queue SET state='running',job_id=? WHERE id=?",[$job,$row['id']]);$stats['started']++;
-            }catch(\Throwable $e){Db::run("UPDATE publication_queue SET state='failed',detail=? WHERE id=?",[$e->getMessage(),$row['id']]);Alerting::event((int)$row['service_id'],'reservation','予約公開を開始できませんでした: '.$e->getMessage());}
+            }catch(\Pjas\Agent\AgentConnectionException $e){throw $e;}catch(\Throwable $e){Db::run("UPDATE publication_queue SET state='failed',detail=? WHERE id=?",[$e->getMessage(),$row['id']]);Alerting::event((int)$row['service_id'],'reservation','予約公開を開始できませんでした: '.$e->getMessage());}
         }
         foreach(Db::all("SELECT id FROM jobs WHERE state IN ('queued','running') ORDER BY id LIMIT 200") as $job)JobRepo::sync((int)$job['id']);
         foreach(Db::all("SELECT j.* FROM jobs j LEFT JOIN job_notifications n ON n.job_id=j.id WHERE n.job_id IS NULL AND j.state IN ('succeeded','failed') ORDER BY j.id LIMIT 200") as $job){
@@ -70,7 +83,7 @@ final class Automation
                     $job=JobRepo::create((int)$site['id'],'backup','定期バックアップ','共有データ・DBの定期保存');AgentClient::call('ops.run',$p+['kind'=>'backup','job_id'=>$job,'reason'=>'scheduled'],'monitor');$policy['backup_last']=$now;SitePolicy::write((int)$site['id'],$policy);$stats['backups']++;
                 }
                 Alerting::check('monitor:'.$site['id'],(int)$site['id'],true,$site['name'].' の運用確認を再開しました',$policy['notifications']);
-            }catch(\Throwable $e){Alerting::check('monitor:'.$site['id'],(int)$site['id'],false,$site['name'].' の運用確認に失敗しました: '.$e->getMessage(),$policy['notifications']);}
+            }catch(\Pjas\Agent\AgentConnectionException $e){throw $e;}catch(\Throwable $e){Alerting::check('monitor:'.$site['id'],(int)$site['id'],false,$site['name'].' の運用確認に失敗しました: '.$e->getMessage(),$policy['notifications']);}
         }
         $cleanup=Db::one("SELECT value FROM app_state WHERE name='preparations.cleanup'");
         if(!$cleanup||(int)$cleanup['value']<$now-86400)try{AgentClient::call('deploy.cleanup',[],'monitor');AgentClient::call('site.cleanup',[],'monitor');Db::run("INSERT INTO app_state(name,value) VALUES ('preparations.cleanup',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value",[(string)$now]);}catch(AgentException){}

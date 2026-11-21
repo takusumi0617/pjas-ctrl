@@ -51,10 +51,15 @@ final class AgentClient
         $socket  = (string) Config::get('agent_socket');
         $timeout = (int) Config::get('agent_timeout', 900);
 
-        $fp = @stream_socket_client('unix://' . $socket, $errno, $errstr, 10);
+        $deadline = microtime(true) + ($actor === 'monitor' ? 5 : 0);
+        do {
+            $fp = @stream_socket_client('unix://' . $socket, $errno, $errstr, $actor === 'monitor' ? 1 : 10);
+            if ($fp || microtime(true) >= $deadline) break;
+            usleep(200000);
+        } while (true);
         if (!$fp) {
             $why = trim((string) $errstr) !== '' ? $errstr : "errno {$errno}";
-            throw new AgentException("pjas-agentd に接続できません ({$socket}): {$why}");
+            throw new AgentConnectionException("pjas-agentd に接続できません ({$socket}): {$why}");
         }
         stream_set_timeout($fp, $timeout);
 
@@ -70,7 +75,7 @@ final class AgentClient
         fclose($fp);
 
         if ($line === false) {
-            throw new AgentException("pjas-agentd から応答がありません (op={$op})");
+            throw new AgentConnectionException("pjas-agentd から応答がありません (op={$op})");
         }
         $res = json_decode(trim($line), true);
         if (!is_array($res)) {
