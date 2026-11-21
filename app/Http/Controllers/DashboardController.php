@@ -39,6 +39,7 @@ final class DashboardController
         if(\Pjas\Http\Auth::can('owner'))try{$controlUpdate=AgentClient::call('control.status',[],\Pjas\Http\Auth::actor());}catch(\Pjas\Agent\AgentException $e){$controlUpdateError=$e->getMessage();}
         View::render('dashboard', [
             'controlUpdate'=>$controlUpdate,'controlUpdateError'=>$controlUpdateError,'controlReview'=>$_SESSION['control_update_review']??null,
+            'driftStatuses'=>array_map(static fn($site)=>['name'=>$site['name']]+\Pjas\Domain\DriftMonitoring::status((int)$site['id']),$services),
             'title'    => 'ホーム','alerts'=>$alerts,
             'services' => $services,
             'jobs'     => $jobs,
