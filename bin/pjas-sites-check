@@ -7,18 +7,31 @@ spl_autoload_register(static function(string $class):void {
     $rel=substr($class,strlen($prefix));$path=PJAS_ROOT.'/agent/'.(str_starts_with($rel,'Ops\\')?'ops/'.substr($rel,4):'lib/'.$rel).'.php';
     if(is_file($path))require_once $path;
 });
-use Pjas\Agentd\{SiteIsolation,Proc,Paths};
+use Pjas\Agentd\{ControlStore,SiteIsolation,Proc,Paths};
 use Pjas\Shared\PhpRuntime;
-use Pjas\Support\{Config,Db};
+use Pjas\Support\Config;
 if(posix_geteuid()!==0){fwrite(STDERR,"rootで実行してください。検証は未実施です。\n");exit(77);}
 $cfg=require PJAS_ROOT.'/agent/config.php';$iso=new SiteIsolation($cfg);$paths=new Paths($cfg['www_root']);$failed=false;$identities=[];
 $apache=posix_getpwnam($cfg['apache_user']??'');$legacy=posix_getpwnam($cfg['web_user']);
 if(!$apache||$apache['uid']===0||$apache['uid']===$legacy['uid']){fwrite(STDERR,"ApacheとアプリのUIDが分離されていません\n");exit(1);}
-$sites=Db::all("SELECT name,runtime,docroot FROM services WHERE id NOT IN(SELECT service_id FROM service_lifecycle WHERE state<>'active')");
+try {
+    // Db::conn() is for the application and may create or chmod the DB.
+    $db = new PDO('sqlite:'.(string) Config::get('db'), null, null, [
+        PDO::SQLITE_ATTR_OPEN_FLAGS => PDO::SQLITE_OPEN_READONLY,
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    ]);
+    $db->exec('PRAGMA busy_timeout = 5000');
+    $sites = $db->query("SELECT name,runtime,docroot FROM services WHERE id NOT IN(SELECT service_id FROM service_lifecycle WHERE state<>'active')")->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    fwrite(STDERR, '管理DBを読み取れません: '.$e->getMessage().PHP_EOL);
+    exit(1);
+}
+$store = new ControlStore($cfg);
 foreach($sites as $site){
     $name=$site['name'];
     if(\Pjas\Agentd\Ops\Components::protectedSite($cfg,$name)){echo $name.": v2（pjas-components-checkで検証）\n";continue;}
     try{
+        if (!is_dir($store->root())) throw new RuntimeException('構成状態の保存先がありません');
         $state=$iso->state($name);if(($state['status']??'')!=='ready')throw new RuntimeException('隔離へ移行してください');
         $scoped=$iso->scope($name);$user=$scoped['web_user'];$uid=posix_getpwnam($user)['uid'];
         if(isset($identities[$uid]))throw new RuntimeException('別サイトとUIDが共有されています');$identities[$uid]=$name;
