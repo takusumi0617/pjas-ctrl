@@ -57,7 +57,7 @@ final class Automation
         ServerMonitoring::tick($now);
         $diskChecked=false;
         foreach(ServiceRepo::all() as $site){$policy=SitePolicy::get((int)$site['id']);
-            DriftMonitoring::tick($site,$policy['notifications'],$now);
+            DriftMonitoring::tick($site,(bool)$policy['notifications'],$now);
             $p=['service'=>Deployer::spec($site)];
             if (Db::one('SELECT service_id FROM component_sites WHERE service_id=?',[$site['id']])) { ComponentMonitoring::check($site,$policy); $stats['checked']++; continue; }
             try{$health=AgentClient::call('health.check',$p,'monitor');$message=$site['name'].': '.(!empty($health['paused'])?'公開停止中の応答':(!empty($health['ok'])?'正常に応答しています':'サイトの応答を確認できません（HTTP '.($health['status']?:'応答なし').'）'));
