@@ -56,7 +56,7 @@ final class Automation
                 $source=json_decode($row['source'],true,512,JSON_THROW_ON_ERROR);$actor='queue:'.$row['id'].':'.$row['actor'];
                 $job=match($source['type']){'prepared'=>Deployer::fromPrepared($site,$source['token'],$source['options']??[],$actor),'git'=>Deployer::fromGit($site,$source['sha'],$source['options']??[],$actor),default=>throw new \InvalidArgumentException('予約の取得元が不正です')};
                 Db::run("UPDATE publication_queue SET state='running',job_id=? WHERE id=?",[$job,$row['id']]);$stats['started']++;
-            }catch(\Throwable $e){Db::run("UPDATE publication_queue SET state='failed',detail=? WHERE id=?",[$e->getMessage(),$row['id']]);Alerting::event((int)$row['service_id'],'reservation','予約公開を開始できませんでした: '.$e->getMessage());}
+            }catch(\Pjas\Agent\AgentConnectionException $e){throw $e;}catch(\Throwable $e){Db::run("UPDATE publication_queue SET state='failed',detail=? WHERE id=?",[$e->getMessage(),$row['id']]);Alerting::event((int)$row['service_id'],'reservation','予約公開を開始できませんでした: '.$e->getMessage());}
         }
         foreach(Db::all("SELECT id FROM jobs WHERE state IN ('queued','running') ORDER BY id LIMIT 200") as $job)JobRepo::sync((int)$job['id']);
         foreach(Db::all("SELECT j.* FROM jobs j LEFT JOIN job_notifications n ON n.job_id=j.id WHERE n.job_id IS NULL AND j.state IN ('succeeded','failed') ORDER BY j.id LIMIT 200") as $job){
