@@ -1,0 +1,36 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+use Pjas\Agentd\{ApacheRecovery, ControlStore, OpException, Proc};
+
+if (PHP_SAPI !== 'cli' || posix_geteuid() !== 0) exit(77);
+$args = array_slice($argv, 1);
+if ($args !== ['status'] && $args !== ['rollback','--confirm-rollback']) {
+    fwrite(STDERR, "使い方: pjas-apache-recover status | rollback --confirm-rollback\n");
+    exit(2);
+}
+$root = dirname(__DIR__);
+foreach (['OpException','ControlStore','Proc','ApacheRecovery'] as $class) {
+    require_once $root.'/agent/lib/'.$class.'.php';
+}
+try {
+    $cfg = require $root.'/agent/config.php';
+    $recovery = new ApacheRecovery(new ControlStore($cfg));
+    $lock = fopen($cfg['apache_sites'].'/.pjas-vhost.lock', 'c');
+    if (!$lock || !flock($lock, LOCK_EX)) throw new OpException('公開設定をロックできません');
+    try {
+        if ($args[0] === 'rollback') {
+            $recovery->rollback(static function () use ($cfg): void {
+                Proc::must([$cfg['apachectl'],'configtest'], null, 30);
+                Proc::must([$cfg['apachectl'],'graceful'], null, 60);
+            });
+        }
+        echo json_encode($recovery->status(), JSON_THROW_ON_ERROR|JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES)."\n";
+    } finally {
+        fclose($lock);
+    }
+} catch (Throwable $error) {
+    fwrite(STDERR, $error->getMessage()."\n");
+    exit(1);
+}

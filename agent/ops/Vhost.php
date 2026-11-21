@@ -13,6 +13,8 @@ use Pjas\Agentd\OpException;
 use Pjas\Agentd\InheritedVhost;
 use Pjas\Agentd\SitePause;
 use Pjas\Agentd\ApacheHistory;
+use Pjas\Agentd\ApacheRecovery;
+use Pjas\Agentd\ControlStore;
 require_once dirname(__DIR__) . '/lib/ApacheHistory.php';
 require_once dirname(__DIR__) . '/lib/SitePause.php';
 use Pjas\Agentd\Paths;
@@ -222,6 +224,7 @@ final class Vhost
         $path = $this->inheritedPath($spec['name']);
         $old = is_file($path) ? file_get_contents($path) : null;
         try {
+            if (isset($this->cfg['control_dir'])) (new ApacheRecovery(new ControlStore($this->cfg)))->assertIdle();
             if (!preg_match('/^\s*ServerName\s+(\S+)/mi',$body,$host)) throw new OpException('ServerNameがありません');
             $snapshot = ['body'=>$body,'domain'=>$host[1],'source'=>'.pjas'];
             $this->inheritedRender($body,$spec,$host[1]);
@@ -251,6 +254,7 @@ final class Vhost
         if (!$lock || !flock($lock, LOCK_EX)) throw new OpException('公開設定をロックできません');
         $pause = new SitePause($this->cfg);
         try {
+            if (isset($this->cfg['control_dir'])) (new ApacheRecovery(new ControlStore($this->cfg)))->assertIdle();
             if (!$this->pauseStatus(['service' => $spec])['can_pause']) throw new OpException('先にこのサイトの公開設定を反映してください。独自設定がある場合は既存confを継承してから操作してください');
             $old = $pause->read($spec['name']);
             $state = $action === 'pause' ? $pause->validate($params) : array_replace($old, ['enabled' => false]);
@@ -424,6 +428,7 @@ final class Vhost
         $lock = fopen($this->cfg['apache_sites'] . '/.pjas-vhost.lock', 'c');
         if (!$lock || !flock($lock, LOCK_EX)) throw new OpException('公開設定をロックできません');
         try {
+            if (isset($this->cfg['control_dir'])) (new ApacheRecovery(new ControlStore($this->cfg)))->assertIdle();
             $spec = Spec::service($params['service'] ?? null);
             $mode = $this->resolvedMode($params, $spec);
             if (in_array($this->updateMode($params),['auto','settings'],true)) {
@@ -443,7 +448,7 @@ final class Vhost
             $path = $this->confPath($spec['name']);
             $before = is_file($path) ? (string)file_get_contents($path) : null;
             $history->save($spec['name'], $before, 'before', (string)($params['_actor'] ?? 'system'));
-            $result = $mode === 'errors' ? $this->applyErrors($params) : $this->applyUnlocked($params);
+            $result = $mode === 'errors' ? $this->applyErrors($params) : $this->applyUnlocked($params, true);
             try {
                 $result['history_revision'] = $history->save($spec['name'], (string)file_get_contents($path), 'applied', (string)($params['_actor'] ?? 'system'));
             } catch (OpException $e) {
@@ -455,7 +460,7 @@ final class Vhost
         finally { flock($lock, LOCK_UN); fclose($lock); }
     }
 
-    private function applyUnlocked(array $params): array
+    private function applyUnlocked(array $params, bool $journal = false): array
     {
         $spec = Spec::service($params['service'] ?? null);
         $name = $spec['name'];
@@ -487,6 +492,17 @@ final class Vhost
                 if (is_file($temporary)) unlink($temporary);
             }
         };
+        $conflicts = self::conflictingSites($this->enabledDir(), (string)$spec['domain'], $path);
+        $recovery = null;
+        if ($journal && isset($this->cfg['control_dir']) && $migration === null) {
+            $recovery = new ApacheRecovery(new ControlStore($this->cfg));
+            $changes = [$path=>['kind'=>'file','body'=>base64_encode($conf)],
+                $enabledPath=>['kind'=>'link','resolved'=>realpath(dirname($path)).'/'.basename($path)]];
+            foreach ($conflicts as $site) {
+                $changes[$this->enabledDir().'/'.$site.'.conf'] = ['kind'=>'absent'];
+            }
+            $recovery->begin($name, $changes);
+        }
         $write($conf,0644);
 
         // 同じ ServerName の管理外サイトは、二重定義になるのでここで無効化する。
@@ -494,7 +510,7 @@ final class Vhost
         $disabled = [];
 
         try {
-            foreach (self::conflictingSites($this->enabledDir(), (string) $spec['domain'], $path) as $site) {
+            foreach ($conflicts as $site) {
                 Proc::must([$this->a2dissite(), '-q', $site], null, 30);
                 $disabled[] = $site;
             }
@@ -516,6 +532,7 @@ final class Vhost
                 chmod($tmp, 0600);
                 if (!rename($tmp, $snapshotPath)) { @unlink($tmp); throw new OpException('継承設定を保存できません'); }
             }
+            $recovery?->complete();
             return [
                 'hash'       => hash('sha256', $conf),
                 'configtest' => trim($test['err'] ?: $test['out']) ?: 'Syntax OK',
@@ -524,18 +541,22 @@ final class Vhost
             ];
         } catch (\Throwable $e) {
             try {
-                if ($backup !== null) {
-                    $write($backup,$previousMode);
-                } elseif (is_file($path) && !unlink($path)) {
-                    throw new OpException('新規Apache設定を削除できません');
+                if ($recovery !== null) {
+                    $recovery->rollback(fn()=>$this->reload());
+                } else {
+                    if ($backup !== null) {
+                        $write($backup,$previousMode);
+                    } elseif (is_file($path) && !unlink($path)) {
+                        throw new OpException('新規Apache設定を削除できません');
+                    }
+                    if (!$wasEnabled && is_link($enabledPath)) {
+                        Proc::must([$this->a2dissite(), '-q', "pjas-{$name}"], null, 30);
+                    }
+                    foreach ($disabled as $site) {
+                        Proc::must([$this->cfg['a2ensite'], '-q', $site], null, 30);
+                    }
+                    $this->reload();
                 }
-                if (!$wasEnabled && is_link($enabledPath)) {
-                    Proc::must([$this->a2dissite(), '-q', "pjas-{$name}"], null, 30);
-                }
-                foreach ($disabled as $site) {
-                    Proc::must([$this->cfg['a2ensite'], '-q', $site], null, 30);
-                }
-                $this->reload();
             } catch (\Throwable $recovery) {
                 throw new OpException('Apache設定の復旧が未完了です: '.$recovery->getMessage(),0,$e);
             }
@@ -557,6 +578,7 @@ final class Vhost
         $lock=fopen($this->cfg['apache_sites'].'/.pjas-vhost.lock','c');if(!$lock||!flock($lock,LOCK_EX))throw new OpException('公開設定をロックできません');
         $snapshot=$this->inheritedPath($name);$previousSnapshot=is_file($snapshot)?file_get_contents($snapshot):null;
         try{
+            if (isset($this->cfg['control_dir'])) (new ApacheRecovery(new ControlStore($this->cfg)))->assertIdle();
             if(!empty((new SitePause($this->cfg))->read($name)['enabled']))throw new OpException('一時停止中は公開設定を復元できません');
             $old=$this->currentForErrors($spec);
             if(!hash_equals(hash('sha256',$old),(string)($params['current_hash']??'')))throw new OpException('確認後に公開設定が変わりました。もう一度変更点を確認してください');

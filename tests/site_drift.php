@@ -51,6 +51,22 @@ try {
     rejects(fn()=>$vhost->apply(['service'=>$spec]));
     check(!is_link($link) && file_get_contents($path)===$body."\n# changed\n" && (fileperms($path)&0777)===0640,
         'Apache検証失敗後にファイル内容・権限・有効化状態を復旧する');
+    $recovery = new \Pjas\Agentd\ApacheRecovery(new \Pjas\Agentd\ControlStore($cfg));
+    $pid = pcntl_fork();
+    if ($pid === -1) throw new RuntimeException('fork failed');
+    if ($pid === 0) {
+        file_put_contents($cfg['apachectl'], "#!/bin/sh\nkill -KILL ".getmypid()."\n");
+        $vhost->apply(['service'=>$spec]);
+        exit(1);
+    }
+    pcntl_waitpid($pid,$status);
+    check(pcntl_wifsignaled($status) && $recovery->status()['phase']==='pending' && is_link($link),
+        'Apache設定の書き換え後に強制終了しても復旧記録を保持する');
+    file_put_contents($cfg['apachectl'], "#!/bin/sh\nexit 0\n");
+    rejects(fn()=>$vhost->apply(['service'=>$spec]));
+    $recovery->rollback(fn()=>$vhost->reload());
+    check(!is_link($link) && file_get_contents($path)===$body."\n# changed\n" && $recovery->status()['phase']==='idle',
+        'agentなしで中断した設定変更を復旧し、検査後に記録を解除する');
 } finally {
     cleanup($dir);
 }

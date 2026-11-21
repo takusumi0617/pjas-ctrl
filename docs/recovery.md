@@ -182,3 +182,20 @@ sudo php8.5 bin/pjas-site-upgrade change-status "$CHANGE_ID"
 復旧が中断しても同じコマンドを再実行できます。
 準備を完了し公開する場合は、各計画の `activate` または `batch-apply` を使います。
 公開を開始した後は、同じ変更IDでまとめて切り戻せません。
+
+### 標準のApache公開設定の変更が中断した場合
+
+通常の公開設定適用中に agent が強制終了した場合は、サーバー上で
+復旧記録を確認できます。対象の設定ファイルと有効化リンクを変更前へ
+戻し、Apacheの構文検査と再読み込みが成功してから記録を解除します。
+別の設定変更を検出した場合は復旧を中止します。
+
+```bash
+cd /opt/pjas-ctrl
+sudo php8.5 bin/pjas-apache-recover status
+sudo php8.5 bin/pjas-apache-recover rollback --confirm-rollback
+```
+
+復旧の記録はサーバーの管理領域に保存されます。コマンドは管理画面や
+agentへの接続を必要としません。継承元の入れ替えや公開済みリリースの
+切り戻しには、それぞれの復旧手順を使ってください。
