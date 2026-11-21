@@ -1,0 +1,19 @@
+#!/bin/sh
+# Exercises temporary fixtures only. Each test owns and removes its fixture.
+set -eu
+if [ "$#" -ne 0 ]; then
+    printf '%s\n' '使い方: PHP_BIN=/usr/bin/php8.5 sh bin/pjas-recovery-rehearsal' >&2
+    exit 2
+fi
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+php_bin=${PHP_BIN:-php8.5}
+if ! command -v "$php_bin" >/dev/null 2>&1; then
+    printf '%s\n' 'PHP_BIN にPHP 8.5の実行ファイルを指定してください' >&2
+    exit 2
+fi
+cd "$root"
+for test in change_transaction site_drift site_upgrade site_upgrade_batch manual_rollback control_update; do
+    printf '\n実行 %s\n' "$test"
+    "$php_bin" "tests/$test.php"
+done
+printf '\n%s\n' '復旧演習が成功しました。本番ホストの復元は未実施です。'
