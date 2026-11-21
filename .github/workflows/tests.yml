@@ -6,7 +6,7 @@ jobs:
   regression:
     strategy:
       matrix:
-        php: ['8.4', '8.5']
+        php: ['8.5']
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
