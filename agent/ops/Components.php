@@ -684,6 +684,7 @@ final class Components
         $site=$this->site($p); $s=$this->state($site);
         if (!$s) return ['phase'=>'unregistered','components'=>[]];
         $result=['releases'=>$s['releases']??[],'current'=>$s['current']??null,'phase'=>$s['phase'],'revision'=>$s['revision'],'sha'=>$s['source']['sha'],'setup'=>$s['setup'],'components'=>[],'backup'=>$s['backup']??null,'restore_hold'=>$s['phase']==='restore_hold','audit'=>$this->store->read('component-audit-'.$site)];
+        $result['drift']=\Pjas\Agentd\ComponentDrift::inspect($s);
         try {
             $rows=$this->assertApplied($site,$s);
             foreach ($rows as $id=>$r) {
