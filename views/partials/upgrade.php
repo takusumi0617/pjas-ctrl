@@ -5,6 +5,11 @@
 <ol class="workflow-steps"><li class="<?= !in_array($phase,['planned','quiescing'],true)?'complete':'' ?>">退避・処理の停止</li><li class="<?= in_array($phase,['isolated','prepared','activating','active'],true)?'complete':'' ?>">専用ユーザー・PHPの変更</li><li class="<?= $phase==='active'?'complete':'' ?>">公開前のHTTP検査</li><li class="<?= $phase==='active'?'complete':'' ?>">公開と関連処理の再開</li></ol>
 <?php if(!empty($upgrade['last_error'])):?><div class="note err" role="alert"><?= View::e($upgrade['last_error']) ?></div><?php endif;?>
 <?php if(isset($upgrade['health']['status'])):?><p>直近のHTTP検査：<?= (int)$upgrade['health']['status'] ?> / 期待値 <?= (int)$upgrade['health']['expected'] ?></p><?php endif;?>
+<?php if (!empty($upgrade['restarts_shared_fpm']) && Auth::can('owner')): ?>
+<?php $related=array_values(array_filter(\Pjas\Domain\ServiceRepo::all(),static fn($site)=>$site['name']!==$s['name'] && in_array($site['runtime'],[$upgrade['source'],$upgrade['target']],true))); ?>
+<p>PHP-FPMの再読み込み・再起動の影響を受ける可能性がある登録サイト：
+<?= $related ? View::e(implode('、',array_column($related,'name'))) : '該当候補なし' ?></p>
+<?php endif; ?>
 <p>関連する常駐処理：<?= count($upgrade['workers']) ?> 件 / cron：<?= count($upgrade['cron_ids']) ?> 件</p>
 <?php if($phase==='prepared' && !empty($upgrade['paused']) && Auth::can('owner')):?><details class="runtime-details"><summary>検査して公開を再開する</summary><p>元々稼働していた処理と公開状態を復帰し、HTTP応答を検査します。検査に失敗した場合は停止を維持します。</p>
 <form method="post" action="/services/<?= View::e($s['name']) ?>/upgrade/activate"><?= Csrf::field() ?><input type="hidden" name="id" value="<?= View::e($upgrade['id']) ?>"><label class="inline"><input type="checkbox" name="confirm" value="1" required>対象サイトと関連処理、停止中に行った互換性確認の結果を確認しました</label><div class="field"><label for="upgrade-password">現在のパスワード</label><input id="upgrade-password" type="password" name="password" autocomplete="current-password" required></div><button class="btn p">検査して公開を再開</button></form></details><?php endif;?>

@@ -43,6 +43,8 @@ final class VhostController
             if($mode==='settings' && !hash_equals(hash('sha256',json_encode(Deployer::spec($s),JSON_THROW_ON_ERROR)),(string)($_POST['spec_hash']??'')))throw new AgentException('保存内容がプレビュー後に変更されました。変更点を開き直してください');
             $r = \Pjas\Agent\AgentClient::call('apache.apply', [
                 'job_id'  => $job,
+                'require_change_review' => true,
+                'change_review' => (string) ($_POST['change_review'] ?? ''),
                 'update_mode' => $mode,
                 'current_hash' => (string) ($_POST['current_hash'] ?? ''),
                 'migration_source' => (string) ($_POST['migration_source'] ?? ''),

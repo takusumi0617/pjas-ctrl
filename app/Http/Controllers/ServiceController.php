@@ -268,7 +268,7 @@ final class ServiceController
             );
             try {
                 $cur = AgentClient::call('apache.render', ['service' => Deployer::spec($s), 'migration_source' => (string) ($_GET['migration_source'] ?? ''), 'update_mode'=>$data['update_mode']], Auth::actor());
-                foreach (['migration_sources', 'migration_source', 'migration_hash', 'inherited', 'current_hash', 'errors_available', 'preview_error', 'resolved_mode', 'can_apply', 'history', 'history_warning'] as $field) $data[$field] = $cur[$field] ?? null;
+                foreach (['migration_sources', 'migration_source', 'migration_hash', 'inherited', 'current_hash', 'errors_available', 'preview_error', 'resolved_mode', 'can_apply', 'history', 'history_warning', 'impact', 'change_review'] as $field) $data[$field] = $cur[$field] ?? null;
                 $data['live']    = (string) ($cur['current'] ?? '');
                 $data['managed'] = (bool) ($cur['managed'] ?? false);
                 $data['conflicts'] = (array) ($cur['conflicts'] ?? []);

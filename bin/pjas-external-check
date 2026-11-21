@@ -1,0 +1,33 @@
+#!/bin/sh
+# Run from an independent monitoring host with curl installed.
+set -eu
+
+if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
+    printf '%s\n' '使い方: sh bin/pjas-external-check https://サイト/ヘルスチェック [期待HTTPコード]' >&2
+    exit 2
+fi
+
+url=$1
+expected=${2:-200}
+case "$url" in
+    https://?*) ;;
+    *) printf '%s\n' 'https:// で始まるURLを指定してください' >&2; exit 2 ;;
+esac
+case "$expected" in
+    [1-5][0-9][0-9]) ;;
+    *) printf '%s\n' '期待HTTPコードは100〜599です' >&2; exit 2 ;;
+esac
+
+if result=$(curl --disable --silent --show-error --noproxy '*' \
+    --proto '=https' --connect-timeout 5 --max-time 12 \
+    --output /dev/null --write-out '%{http_code}' --url "$url"); then
+    if [ "$result" = "$expected" ]; then
+        printf 'PASS HTTP %s\n' "$result"
+        exit 0
+    fi
+    printf 'FAIL HTTP %s（期待値 %s）\n' "$result" "$expected" >&2
+else
+    code=$?
+    printf 'FAIL 接続またはTLSの検査に失敗しました（curl %s）\n' "$code" >&2
+fi
+exit 1

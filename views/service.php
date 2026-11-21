@@ -136,6 +136,20 @@ if (Auth::can('owner')) $tabs = array_slice($tabs,0,1,true)+(!empty($componentSi
   </table></div>
 
 <?php elseif ($tab === 'vhost'): ?>
+  <?php if (!empty($impact)): ?>
+  <section class="card section-gap">
+    <div class="card-h">公開設定の変更影響</div>
+    <div class="card-b">
+      <dl>
+        <dt>設定ファイル</dt><dd><code><?= View::e($impact['path']) ?></code>（<?= $impact['changed']?'差分あり':'内容は一致' ?>）</dd>
+        <dt>Apacheの有効化リンク</dt><dd><code><?= View::e($impact['enabled_path']) ?></code></dd>
+        <dt>サービスへの反映</dt><dd>Apacheの構文確認と段階的な再読み込み。PHP-FPMプールの再起動はありません。</dd>
+        <?php if ($impact['conflicts']): ?><dt>無効化される競合設定</dt><dd><?= View::e(implode('、',$impact['conflicts'])) ?></dd><?php endif; ?>
+        <dt>失敗時</dt><dd>Apache公開設定を適用前へ戻し、元の設定を再読み込みします。</dd>
+      </dl>
+    </div>
+  </section>
+  <?php endif; ?>
   <?php $settingsMode=($update_mode??'auto')==='settings'; $errorsOnly = ($resolved_mode ?? 'errors') === 'errors'; ?>
   <div class="sub">変更点を確認して「公開設定を反映する」を押してください。</div>
   <?php if ($errorsOnly): ?>
@@ -194,6 +208,7 @@ if (Auth::can('owner')) $tabs = array_slice($tabs,0,1,true)+(!empty($componentSi
       <form method="post" action="/services/<?= $name ?>/vhost">
         <?= Csrf::field() ?>
         <input type="hidden" name="update_mode" value="<?= $settingsMode?'settings':'auto' ?>"><input type="hidden" name="spec_hash" value="<?= View::e(hash('sha256',json_encode(\Pjas\Domain\Deployer::spec($s),JSON_THROW_ON_ERROR))) ?>">
+        <input type="hidden" name="change_review" value="<?= View::e($change_review ?? '') ?>">
         <input type="hidden" name="current_hash" value="<?= View::e($current_hash ?? '') ?>">
         <input type="hidden" name="migration_source" value="<?= View::e($migration_source ?? '') ?>">
         <input type="hidden" name="migration_hash" value="<?= View::e($migration_hash ?? '') ?>">

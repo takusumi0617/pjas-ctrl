@@ -30,6 +30,14 @@ try {
     unlink($link);
     check(array_column(SiteDrift::inspect($cfg,$spec),'status')===['changed','missing'],'有効化リンクの欠落を検出する');
 
+    $params=['service'=>$spec,'require_change_review'=>true];
+    $review=$vhost->preview($params);
+    check($review['impact']['path']===$path && $review['impact']['changed'],'変更対象と生成差分をプレビューに含める');
+    symlink($path,$link);
+    rejects(fn()=>$vhost->apply($params+['change_review'=>$review['change_review']]));
+    check(is_link($link) && file_get_contents($path)===$body."\n# changed\n",'確認後に有効化リンクが変わったら適用前に停止する');
+    unlink($link);
+
     $cfg['a2ensite']=$dir.'/enable-site';
     $cfg['a2dissite']=$dir.'/disable-site';
     $cfg['apachectl']=$dir.'/apache';

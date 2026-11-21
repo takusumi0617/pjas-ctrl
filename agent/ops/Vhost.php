@@ -338,6 +338,36 @@ final class Vhost
     /** 現行ファイルと生成結果を返す (書き込みはしない) */
     public function preview(array $params): array
     {
+        $view = $this->previewConfiguration($params);
+        $spec = Spec::service($params['service'] ?? null);
+        $path = $this->confPath($spec['name']);
+        $link = rtrim($this->enabledDir(),'/').'/'.basename($path);
+        $target = is_link($link) ? readlink($link) : (file_exists($link) ? 'not-a-link' : null);
+        $conflicts = $view['conflicts'];
+        sort($conflicts,SORT_STRING);
+        $review = [
+            'name'=>$spec['name'],
+            'mode'=>$view['resolved_mode'],
+            'current'=>$view['current_hash'],
+            'candidate'=>hash('sha256',$view['rendered']),
+            'migration'=>$view['migration_hash']??null,
+            'enabled_target'=>$target,
+            'conflicts'=>$conflicts,
+        ];
+        return $view + [
+            'change_review'=>hash('sha256',json_encode($review,JSON_THROW_ON_ERROR)),
+            'impact'=>[
+                'path'=>$path,
+                'enabled_path'=>$link,
+                'conflicts'=>$conflicts,
+                'runtime'=>$spec['runtime'],
+                'changed'=>$review['candidate']!==$review['current'],
+            ],
+        ];
+    }
+
+    private function previewConfiguration(array $params): array
+    {
         $spec = Spec::service($params['service'] ?? null);
         $path = $this->confPath($spec['name']);
         $cur  = is_file($path) ? (string) file_get_contents($path) : '';
@@ -402,6 +432,12 @@ final class Vhost
                     throw new OpException('公開設定がプレビュー後に変更されています。画面を開き直して変更点を確認してください');
                 }
                 if ($mode === 'template' && ($error = $this->creationError($params, $spec)) !== '') throw new OpException($error);
+            }
+            if (!empty($params['require_change_review'])) {
+                $view = $this->preview($params);
+                if (!$view['can_apply'] || !hash_equals($view['change_review'],(string)($params['change_review']??''))) {
+                    throw new OpException('確認後に設定・有効化状態・競合サイトが変更されました。プレビューを開き直してください');
+                }
             }
             $history = new ApacheHistory($this->cfg);
             $path = $this->confPath($spec['name']);
