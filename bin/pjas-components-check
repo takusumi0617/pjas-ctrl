@@ -12,8 +12,14 @@ spl_autoload_register(static function($class)use($root){
 });
 use Pjas\Agentd\{ComponentPolicy,ControlStore,Proc,Spec};
 try {
- $cfg=require $root.'/agent/config.php';$site=Spec::name($argv[1]??'');$policy=new ComponentPolicy($cfg);$s=(new ControlStore($cfg))->read('components-'.$site);
+ $cfg=require $root.'/agent/config.php';$site=Spec::name($argv[1]??'');$policy=new ComponentPolicy($cfg);$store=new ControlStore($cfg);
+ if (!is_dir($store->root())) throw new RuntimeException('構成状態の保存先がありません');
+ $s=$store->read('components-'.$site);
  if (!$s) throw new RuntimeException('隔離サイトの設定を先に適用してください');
+ if (($argv[2]??'')==='--running-only' && in_array($s['phase']??'', ['initialized', 'stopped', 'restore_hold'], true)) {
+  echo "SKIP 稼働時の検査は起動後に実施してください (状態: ".$s['phase'].")\n";
+  exit(77);
+ }
  $fail=0;
  $check=static function(bool $ok,string $label)use(&$fail){echo ($ok?'PASS ':'FAIL ').$label."\n";if(!$ok)$fail++;};
  $profiles=[];
