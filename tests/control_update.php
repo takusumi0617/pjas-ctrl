@@ -22,7 +22,14 @@ function makeUpdateFixture(bool $httpFailure=false): array {
   if($args[0]===$cfg['systemctl']&&in_array('--property=Type',$args,true))return ['code'=>0,'out'=>'simple','err'=>''];
   if($args[0]===$cfg['systemctl']&&in_array('show',$args,true)&&str_starts_with(end($args),'php'))return ['code'=>0,'out'=>'RequiredBy=worker.service','err'=>''];
   if($args[0]===$cfg['systemctl']){file_put_contents($dir.'/services.log',implode(' ',$args)."\n",FILE_APPEND);return ['code'=>0,'out'=>in_array('is-active',$args,true)?'active':'','err'=>''];}
-  if($args[0]==='/usr/bin/curl'){++$probe;return ['code'=>0,'out'=>$httpFailure&&$probe===1?'500':'200','err'=>''];}
+  if($args[0]==='/usr/bin/curl'){
+   check(in_array('--retry-connrefused',$args,true),'更新・復旧のHTTP検査は起動直後の接続拒否を再試行する');
+   foreach (['--retry'=>'5','--retry-delay'=>'1','--retry-max-time'=>'10','--max-time'=>'10'] as $option=>$value) {
+    $index=array_search($option,$args,true);
+    check($index!==false&&($args[$index+1]??null)===$value,'HTTP検査の再試行を制限する: '.$option);
+   }
+   ++$probe;return ['code'=>0,'out'=>$httpFailure&&$probe===1?'500':'200','err'=>''];
+  }
   if(preg_match('~/php8\.[0-9]+$~',$args[0])) {
    if(in_array('-l',$args,true)){return Proc::run(array_merge([PHP_BINARY,'-c',php_ini_loaded_file()],array_slice($args,1)),$cwd,30);}
    check($user===posix_getpwuid(posix_geteuid())['name'],'管理DBのスキーマ更新はDB所有者へ権限を落とす');
@@ -50,6 +57,7 @@ foreach([false,true] as $fail){
   $oldMask=umask(0077);try{$result=$update->execute($job['id']);}finally{umask($oldMask);}
   $sqlite=new SQLite3($dir.'/control.sqlite');$value=$sqlite->querySingle('SELECT value FROM content');$sqlite->close();
   if(!$fail)check((fileperms($root.'/app/new/feature.php')&0777)===0640&&(fileperms($root.'/app/new')&0777)===0750,'厳しいumaskを維持し、新しいコードだけを管理ユーザーのグループに読み取り可能にする');
+  if($fail)check(str_contains($store->read('control-update-error-'.$job['id'])['reason']??'','HTTP 500'),'最終HTTPステータスを更新エラーに記録する');
   if($fail)check($result['state']['phase']==='failed'&&$result['state']['rollback_complete']&&$git(['rev-parse','HEAD'])===$base&&$value==='original','HTTP検査失敗時はコード・管理DB・設定を実際に復旧する');
   else check($result['state']['phase']==='succeeded'&&$git(['rev-parse','HEAD'])===$target&&$value==='migrated','実Gitのfast-forwardとSQLite更新を完了する');
   check(str_contains(file_get_contents($root.'/agent/config.php'),'preserved')&&(fileperms($root.'/agent/config.php')&0777)===0640,'ローカルagent設定と権限を維持する');

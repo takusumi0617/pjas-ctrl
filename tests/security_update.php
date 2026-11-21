@@ -73,7 +73,7 @@ if (is_executable('/usr/bin/systemd-analyze') && is_executable('/usr/sbin/apache
             mkdir($verifyDir.'/'.$name.'.service.d',0755);
             copy($root.'/systemd/'.$name.'-security.conf',$verifyDir.'/'.$name.'.service.d/90-pjas-security.conf');
         }
-        file_put_contents($verifyDir.'/php8.4-fpm.service',"[Service]\nExecStart=/usr/bin/true\n");
+        file_put_contents($verifyDir.'/php8.5-fpm.service',"[Service]\nExecStart=/usr/bin/true\n");
         file_put_contents($verifyDir.'/pjas-components-boot.service',$boot);
         $verified=Pjas\Agentd\Proc::run(['/usr/bin/systemd-analyze','--user','verify',
             $verifyDir.'/pjas-agentd.service',$verifyDir.'/pjas-control-web.service',$verifyDir.'/pjas-components-boot.service'],null,30,null,
