@@ -23,7 +23,7 @@ function scenario(array $options, int $exit, array $expected): void
                 }],
                 'php8.5' => match (basename($argv[1])) {
                     'pjas-sites-check' => [0, '通常サイトの検査結果'],
-                    'pjas-components-check' => $argv[2] === 'pjas-cert'
+                    'pjas-components-check' => array_slice($argv, 2) === ['pjas-cert', '--running-only']
                         ? [$options['componentCode'] ?? 0, 'コンポーネントの検査結果']
                         : throw new RuntimeException('コンポーネント名が違います'),
                     default => throw new RuntimeException('予期しない検査CLI'),
