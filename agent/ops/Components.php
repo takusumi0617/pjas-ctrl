@@ -205,11 +205,24 @@ final class Components
             $policy=$this->policy(); $src=$this->source($site,(string)($p['token']??''),$policy);
             $rows=$this->checkManifest($policy,$site,$src['manifest'],false);
             $s=$this->state($site); $files=$this->render($site,$rows);
-            $review=['sha'=>$src['sha'],'manifest'=>$src['manifest'],'files'=>$files,'previous'=>$s['revision']??null,'policy'=>$this->fingerprint()];
+            $before=[];
+            foreach (array_unique(array_merge(array_keys($files),array_keys($s['files']??[]))) as $path) {
+                if (is_link($path) || (file_exists($path) && !is_file($path))) throw new OpException('設定先の種類が不正です');
+                $value=is_file($path)?hash_file('sha256',$path):null;
+                if ($value===false) throw new OpException('設定を読み取れません');
+                $before[$path]=$value;
+            }
+            $review=['before'=>$before,'sha'=>$src['sha'],'manifest'=>$src['manifest'],'files'=>$files,'previous'=>$s['revision']??null,'policy'=>$this->fingerprint()];
             $hash=hash('sha256',json_encode($review,JSON_THROW_ON_ERROR));
             $this->store->write('component-plan-'.$site,['hash'=>$hash,'source'=>$src,'review'=>$review,'expires'=>time()+1800]);
             $pending=[]; foreach ($rows as $id=>$row) foreach ($row['secrets'] as $ref=>$secret) if (!empty($secret['pending'])) $pending[]=$ref;
-            return ['missing_secrets'=>$pending,'review'=>$hash,'sha'=>$src['sha'],'previous'=>$s['manifest']??null,'proposed'=>$src['manifest'],'files'=>$files,'state'=>$s['phase']??'unregistered'];
+            $impact=[];
+            foreach ($rows as $id=>$row) $impact[]=[
+                'component'=>$id,'unit'=>$this->unitFor($site,$id,$row),
+                'user'=>$row['profile']['user'],'depends_on'=>$row['declaration']['depends_on'],
+                'configuration'=>empty($row['existing'])?'生成済み設定を変更':'承認済みの既存サービスを利用',
+            ];
+            return ['impact'=>$impact,'missing_secrets'=>$pending,'review'=>$hash,'sha'=>$src['sha'],'previous'=>$s['manifest']??null,'proposed'=>$src['manifest'],'files'=>$files,'state'=>$s['phase']??'unregistered'];
         });
     }
     private function render(string $site,array $rows): array
@@ -255,6 +268,11 @@ final class Components
             $plan=$this->store->read('component-plan-'.$site); $s=$this->state($site);
             if (!$plan || ($plan['expires']??0)<time() || !hash_equals($plan['hash'],(string)($p['review']??''))) throw new OpException('プレビューの再確認が必要です');
             if (($s['revision']??null)!==$plan['review']['previous'] || $this->fingerprint()!==$plan['review']['policy']) throw new OpException('設定が競合しています。再プレビューしてください');
+            foreach ($plan['review']['before']??[] as $path=>$expected) {
+                if (is_link($path) || (file_exists($path) && !is_file($path))) throw new OpException('確認後に設定先の種類が変わりました');
+                $actual=is_file($path)?hash_file('sha256',$path):null;
+                if ($actual!==$expected) throw new OpException('確認後に設定が変更されました。再プレビューしてください');
+            }
             $policy=$this->policy();
             try { $rows=$this->checkManifest($policy,$site,$plan['source']['manifest']); }
             catch (OpException $e) {
