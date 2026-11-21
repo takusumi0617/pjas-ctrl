@@ -40,37 +40,54 @@ require $root.'/agent/lib/Proc.php';
 
 try {
     if ($drift) {
-        foreach (['OpException', 'ControlStore', 'ComponentDrift'] as $class) {
-            require $root.'/agent/lib/'.$class.'.php';
-        }
-        $store = new \Pjas\Agentd\ControlStore(require $root.'/agent/config.php');
-        $sites = $component === null ? [] : [$component];
-        if ($component === null && is_dir($store->root())) {
-            foreach (new DirectoryIterator($store->root()) as $entry) {
-                if (preg_match('/\Acomponents-([a-z0-9][a-z0-9-]{0,31})\.json\z/D', $entry->getFilename(), $name)) {
-                    $sites[] = $name[1];
-                }
-            }
-            sort($sites);
-        }
-        if (!$sites || !is_dir($store->root())) {
-            echo "SKIP 承認済みのコンポーネント構成がありません\n";
-            exit(0);
-        }
+        require $root.'/app/bootstrap.php';
+        spl_autoload_register(static function (string $class) use ($root): void {
+            $prefix = 'Pjas\\Agentd\\';
+            if (!str_starts_with($class, $prefix)) return;
+            $relative = substr($class, strlen($prefix));
+            $path = $root.'/agent/'.(str_starts_with($relative, 'Ops\\') ? 'ops/'.substr($relative, 4) : 'lib/'.$relative).'.php';
+            if (is_file($path)) require_once $path;
+        });
+
+        $cfg = require $root.'/agent/config.php';
+        $store = new \Pjas\Agentd\ControlStore($cfg);
+        $db = new PDO('sqlite:'.(string) \Pjas\Support\Config::get('db'), null, null, [
+            PDO::SQLITE_ATTR_OPEN_FLAGS => PDO::SQLITE_OPEN_READONLY,
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        ]);
+        $db->exec('PRAGMA busy_timeout = 5000');
+        $query = $db->prepare("SELECT services.* FROM services WHERE id NOT IN (SELECT service_id FROM service_lifecycle WHERE state <> 'active') AND (? IS NULL OR name = ?) ORDER BY name");
+        $query->execute([$component, $component]);
+        $sites = $query->fetchAll(PDO::FETCH_ASSOC);
+        if (!$sites) echo "SKIP 照合対象の有効なサイトがありません\n";
+
         $failed = false;
+        $isolation = new \Pjas\Agentd\SiteIsolation($cfg);
         foreach ($sites as $site) {
+            $name = $site['name'];
             try {
-                $rows = \Pjas\Agentd\ComponentDrift::inspect($store->read('components-'.$site));
-                if (!$rows) {
-                    echo "SKIP $site — 照合対象の生成済み設定がありません\n";
+                $spec = \Pjas\Agentd\Spec::service($site);
+                $v2 = \Pjas\Agentd\Ops\Components::protectedSite($cfg, $name);
+                $state = is_dir($store->root()) ? $store->read(($v2 ? 'components-' : 'isolation-').$name) : [];
+                $scoped = !$v2 && ($state['status'] ?? '') === 'ready' ? $isolation->scope($name) : $cfg;
+                $rows = \Pjas\Agentd\SiteDrift::inspect($scoped, $spec, $v2 ? [] : $state);
+                if ($v2) {
+                    $rows = array_merge($rows, \Pjas\Agentd\ComponentDrift::inspect($state));
                 }
+                if (!$rows) echo "SKIP $name — 照合対象の生成済み設定がありません\n";
                 foreach ($rows as $row) {
                     $ok = $row['status'] === 'match';
                     $failed = $failed || !$ok;
-                    printf("%s %s %s — %s\n", $ok ? 'PASS' : 'FAIL', $site, $row['path'], $row['detail']);
+                    printf("%s %s %s — %s\n", $ok ? 'PASS' : 'FAIL', $name, $row['path'], $row['detail']);
+                    if ($v2 && $ok && str_ends_with($row['path'], '.service')) {
+                        $loaded = Proc::run([$cfg['systemctl'], 'show', '--property=NeedDaemonReload', '--value', '--', basename($row['path'])], null, 5);
+                        if ($loaded['code'] !== 0 || trim($loaded['out']) === 'yes') {
+                            printf("WARN %s %s — %s\n", $name, basename($row['path']), $loaded['code'] === 0 ? 'systemdの再読み込み待ち' : 'systemdの読み込み状態を確認できません');
+                        }
+                    }
                 }
             } catch (Throwable $e) {
-                echo "FAIL $site — 承認済み構成を読み取れません\n";
+                echo "FAIL $name — 照合に必要な設定を確認できません\n";
                 $failed = true;
             }
         }
