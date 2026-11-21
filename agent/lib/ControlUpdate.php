@@ -117,7 +117,7 @@ final class ControlUpdate
     {
         return array_intersect_key($j,array_flip(['id','base','target','changes','blockers','dependent_services','auth','expires_at']))+['repository'=>$s['repository'],'branch'=>$s['branch'],'up_to_date'=>$j['base']===$j['target']];
     }
-    public function start(array $p, bool $stableId = false): array
+    public function start(array $p, bool $stableId = false, array $preparedMigrations = []): array
     {
         $lock=$this->lock();
         try{
@@ -132,12 +132,33 @@ final class ControlUpdate
             if($j['blockers']||$j['base']===$j['target'])throw new OpException('適用可能な更新ではありません');
             if($j['configuration']!==hash('sha256',json_encode($s))||$j['local']!==$this->local($s))throw new OpException('確認後にコードまたは設定が変わりました。更新内容を確認し直してください');
             if(!is_file($this->store->root().'/updater/bin/pjas-control-update'))throw new OpException('rootの更新サービスを初回登録してください');
-            $job=$stableId?$id:bin2hex(random_bytes(16));$this->store->write('control-update-job-'.$job,$j+['job'=>$job]);
+            $this->checkPreparedMigrations($preparedMigrations);
+            $job=$stableId?$id:bin2hex(random_bytes(16));$this->store->write('control-update-job-'.$job,$j+['job'=>$job,'prepared_migrations'=>$preparedMigrations]);
             $this->state($job,'queued','更新サービスの起動待ち');$this->marker(bin2hex(random_bytes(32)));
             try{$this->must([$this->cfg['systemctl'],'start','--no-block','pjas-control-update@'.$job.'.service']);}catch(\Throwable $e){$this->unmark();$this->state($job,'failed','更新サービスを起動できませんでした',['rollback_complete'=>true]);throw $e;}
             return ['id'=>$job,'phase'=>'queued'];
         }finally{flock($lock,LOCK_UN);fclose($lock);}
     }
+    private function checkPreparedMigrations(array $expected): void
+    {
+        $actual = [];
+        foreach (glob($this->store->root().'/upgrade-active-*.json') ?: [] as $file) {
+            $key = basename($file, '.json');
+            $active = $this->store->read($key);
+            if ($active) $actual[substr($key, strlen('upgrade-active-'))] = $active['id'] ?? null;
+        }
+        ksort($actual);
+        ksort($expected);
+        if ($actual !== $expected) throw new OpException('変更計画に含まれないサイト移行、または移行状態の変更があります');
+        foreach ($expected as $site => $id) {
+            if (!is_string($id) || !preg_match('/\A[a-f0-9]{24}\z/D', $id)) throw new OpException('移行IDが不正です');
+            $migration = $this->store->read('site-upgrade-'.$id);
+            if (($migration['name'] ?? null) !== $site || ($migration['phase'] ?? null) !== 'prepared') {
+                throw new OpException($site.' の移行準備が完了していません');
+            }
+        }
+    }
+
     private function id(mixed $id): string{if(!is_string($id)||!preg_match('/\A[a-f0-9]{32}\z/D',$id))throw new OpException('更新IDが不正です');return $id;}
     private function state(string $id,string $phase,string $detail,array $extra=[]): void{$this->store->write('control-update',['id'=>$id,'phase'=>$phase,'detail'=>$detail,'updated_at'=>gmdate('c')]+$extra);}
     public function status(array $p=[]): array
@@ -237,9 +258,13 @@ final class ControlUpdate
     }
     public function execute(string $id,bool $recover=false): array
     {
-        $id=$this->id($id);$lock=$this->lock();$s=$this->settings();$job=$this->store->read('control-update-job-'.$id);$dir=$this->store->directory('control-updates/'.$id);$backup=$this->store->read('control-update-backup-'.$id);$changed=false;$stopped=false;$owned=false;$timerFailed=false;$token=bin2hex(random_bytes(32));
+        $id=$this->id($id);$lock=$this->store->lock('control-update');$s=$this->settings();$job=$this->store->read('control-update-job-'.$id);$dir=$this->store->directory('control-updates/'.$id);$backup=$this->store->read('control-update-backup-'.$id);$changed=false;$stopped=false;$owned=false;$timerFailed=false;$token=bin2hex(random_bytes(32));
         try{
-            if(!$job||($this->store->read('control-update')['id']??'')!==$id)throw new OpException('実行対象の更新を確認できません');
+            $state = $this->store->read('control-update');
+            if (!$job || ($state['id'] ?? '') !== $id) throw new OpException('実行対象の更新を確認できません');
+            if (!$recover && ($state['phase'] ?? '') !== 'queued') {
+                throw new OpException('実行待ちの更新だけ起動できます。中断された場合はrecoverを使ってください');
+            }
             $owned=true;
             if($recover){
                 $state=$this->store->read('control-update');
@@ -256,7 +281,7 @@ final class ControlUpdate
             $this->state($id,'running','更新前の検査');
             $web=require $s['root'].'/config.php';$db=$web['db'];if(is_link($db)||!is_file($db))throw new OpException('管理DBの保存先を確認してください');
             $read=new \SQLite3($db,SQLITE3_OPEN_READONLY);$busy=(int)$read->querySingle("SELECT COUNT(*) FROM jobs WHERE state IN ('queued','running')");$read->close();if($busy)throw new OpException('実行待ち・実行中の作業があります');
-            foreach(glob($this->store->root().'/upgrade-active-*.json')?:[] as $file)if(json_decode(file_get_contents($file),true))throw new OpException('サイトの移行中です');
+            $this->checkPreparedMigrations($job['prepared_migrations'] ?? []);
             $repo=$this->repository();$stage=$dir.'/candidate';if(!mkdir($stage,0700))throw new OpException('確認用フォルダを作成できません');
             $this->must(['/usr/bin/git','--git-dir='.$repo,'archive','--format=tar',$job['target']],null,GitRepositories::publicEnv(),120,null,$dir.'/candidate.tar');
             $this->must(['/usr/bin/tar','-xf',$dir.'/candidate.tar','-C',$stage,'--no-same-owner'],null,[],120);
@@ -270,6 +295,8 @@ final class ControlUpdate
             $this->store->write('control-update-backup-'.$id,$backup);
             $this->marker($token);$stopped=true;$this->state($id,'running','管理処理を停止して退避');$this->stop();
             $read=new \SQLite3($db,SQLITE3_OPEN_READONLY);$pending=(int)$read->querySingle("SELECT COUNT(*) FROM jobs WHERE state IN ('queued','running')");$read->close();if($pending)throw new OpException('停止前に開始された作業があります');
+            // This is the prepared state. Restore it before allowing the site journals to roll back.
+            $this->checkPreparedMigrations($job['prepared_migrations'] ?? []);
             $this->sqlite($db,$dir.'/database.sqlite');chmod($dir.'/database.sqlite',0600);
             foreach(['config.php','agent/config.php'] as $file){$saved=$dir.'/'.str_replace('/','-',$file);$this->must(['/usr/bin/cp','--preserve=mode,ownership,timestamps,xattr','--',$s['root'].'/'.$file,$saved]);chmod($saved,0600);}
             $this->must(['/usr/bin/git','-C',$s['root'],'archive','--format=tar',$job['base']],null,GitRepositories::publicEnv(),120,null,$dir.'/previous-code.tar');

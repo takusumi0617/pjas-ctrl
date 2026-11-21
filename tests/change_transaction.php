@@ -54,15 +54,14 @@ try {
     };
     $combined = new ChangeTransaction($store, ['site'=>$handler,'apache'=>$apache,'ctrl'=>$ctrl]);
     $pair = [['type'=>'apache','id'=>'vhost'],['type'=>'ctrl','id'=>'review']];
-    rejects(fn()=>$combined->plan([$first, ...$pair]));
-    $plan = $combined->plan($pair);
+    $plan = $combined->plan([$first, ...$pair]);
     $combined->run($plan['id'], false);
     $pending = $combined->commit($plan['id']);
     check($pending['control_update']==='queued' && !in_array('apache:commit',$events,true), 'ctrl更新の完了までApacheの復旧記録を保持する');
     rejects(fn()=>$combined->run($plan['id'], true));
     $updatePhase = 'failed';
     $combined->commit($plan['id']);
-    check($combined->run($plan['id'], true)['phase']==='rolled-back' && end($events)==='apache:rollback',
+    check($combined->run($plan['id'], true)['phase']==='rolled-back' && end($events)==='apache:rollback' && !$store->read('fixture-first'),
         'ctrlの復旧後にApacheを切り戻せる');
     $plan = $combined->plan($pair);
     $combined->run($plan['id'], false);

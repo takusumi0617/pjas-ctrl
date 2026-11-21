@@ -53,14 +53,27 @@ foreach([false,true] as $fail){
   $saved=$store->read('control-update-review-'.$review['id']);$expired=$saved;$expired['expires_at']=time()-1;$store->write('control-update-review-'.$review['id'],$expired);rejects(fn()=>$update->start(['review'=>$review['id'],'confirm'=>true]));$store->write('control-update-review-'.$review['id'],$saved);
   $beforeConfig=file_get_contents($root.'/config.php');file_put_contents($root.'/config.php',$beforeConfig.' // changed');rejects(fn()=>$update->start(['review'=>$review['id'],'confirm'=>true]));file_put_contents($root.'/config.php',$beforeConfig);
   check(true,'期限切れの確認・確認後の設定変更を拒否する');
-  $job=$update->start(['review'=>$review['id'],'confirm'=>true],$fail);
+  $prepared = [];
+  if ($fail) {
+   $migrationId=str_repeat('a',24);
+   $store->write('upgrade-active-example',['id'=>$migrationId]);
+   $store->write('site-upgrade-'.$migrationId,['name'=>'example','phase'=>'quiescing']);
+   $prepared=['example'=>$migrationId];
+   rejects(fn()=>$update->start(['review'=>$review['id'],'confirm'=>true],true,$prepared));
+   $store->write('site-upgrade-'.$migrationId,['name'=>'example','phase'=>'prepared']);
+   rejects(fn()=>$update->start(['review'=>$review['id'],'confirm'=>true],true));
+   $sqlite=new SQLite3($dir.'/control.sqlite');
+   $sqlite->exec("UPDATE content SET value='site-prepared'");
+   $sqlite->close();
+  }
+  $job=$update->start(['review'=>$review['id'],'confirm'=>true],$fail,$prepared);
   if($fail)check($job['id']===$review['id']&&$update->start(['review'=>$review['id'],'confirm'=>true],true)===$job,'一括変更からの更新起動を再実行しても同じジョブになる');
   rejects(fn()=>$update->start(['review'=>$review['id'],'confirm'=>true]));
   $oldMask=umask(0077);try{$result=$update->execute($job['id']);}finally{umask($oldMask);}
   $sqlite=new SQLite3($dir.'/control.sqlite');$value=$sqlite->querySingle('SELECT value FROM content');$sqlite->close();
   if(!$fail)check((fileperms($root.'/app/new/feature.php')&0777)===0640&&(fileperms($root.'/app/new')&0777)===0750,'厳しいumaskを維持し、新しいコードだけを管理ユーザーのグループに読み取り可能にする');
   if($fail)check(str_contains($store->read('control-update-error-'.$job['id'])['reason']??'','HTTP 500'),'最終HTTPステータスを更新エラーに記録する');
-  if($fail)check($result['state']['phase']==='failed'&&$result['state']['rollback_complete']&&$git(['rev-parse','HEAD'])===$base&&$value==='original','HTTP検査失敗時はコード・管理DB・設定を実際に復旧する');
+  if($fail)check($result['state']['phase']==='failed'&&$result['state']['rollback_complete']&&$git(['rev-parse','HEAD'])===$base&&$value==='site-prepared'&&$store->read('upgrade-active-example')===['id'=>$migrationId],'ctrl更新失敗後はサイト移行で準備したDBと移行記録が一致する');
   else check($result['state']['phase']==='succeeded'&&$git(['rev-parse','HEAD'])===$target&&$value==='migrated','実Gitのfast-forwardとSQLite更新を完了する');
   check(str_contains(file_get_contents($root.'/agent/config.php'),'preserved')&&(fileperms($root.'/agent/config.php')&0777)===0640,'ローカルagent設定と権限を維持する');
   check(str_contains(file_get_contents($dir.'/services.log'),'start worker.service'),'PHP停止で連動停止する稼働中サービスも復帰する');

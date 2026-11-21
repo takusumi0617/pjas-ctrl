@@ -30,7 +30,7 @@ try{
   php8.5 bin/pjas-site-upgrade routing ID --api-front-controller=server/index.php
   php8.5 bin/pjas-site-upgrade jobs SITE
   php8.5 bin/pjas-site-upgrade apache-plan SITE
-  php8.5 bin/pjas-site-upgrade change-plan site:ID,batch:ID[,apache:ID] apache:ID または ctrl:REVIEW_ID,ctrl:REVIEW_ID
+  php8.5 bin/pjas-site-upgrade change-plan site:ID,batch:ID[,apache:ID][,ctrl:REVIEW_ID]
   php8.5 bin/pjas-site-upgrade change-commit ID --confirm-commit
   php8.5 bin/pjas-site-upgrade change-status ID
   php8.5 bin/pjas-site-upgrade change-prepare ID --accept-standard-apache --external-processes-stopped
@@ -112,7 +112,26 @@ HELP;
             if ($operation==='rollback') $batch->rollback($id,true);
             return array_keys($sites);
         };
-        $transaction=new ChangeTransaction($store,['site'=>$siteOperation,'batch'=>$batchOperation,'apache'=>$apache,'ctrl'=>new ControlUpdateChange($store,new ControlUpdate($cfg))]);
+        $preparedSites = static function (array $steps) use ($upgrade, $batch): array {
+            $prepared = [];
+            foreach ($steps as $step) {
+                $sites = match ($step['type']) {
+                    'batch' => $batch->status($step['id'])['sites'],
+                    default => [],
+                };
+                if ($step['type'] === 'site') {
+                    $status = $upgrade->status($step['id']);
+                    $sites = [$status['site']=>$status];
+                }
+                foreach ($sites as $name => $status) {
+                    if ($status['phase'] === 'current') continue;
+                    if ($status['phase'] !== 'prepared') throw new OpException($name.' の移行準備が完了していません');
+                    $prepared[$name] = $status['id'];
+                }
+            }
+            return $prepared;
+        };
+        $transaction=new ChangeTransaction($store,['site'=>$siteOperation,'batch'=>$batchOperation,'apache'=>$apache,'ctrl'=>new ControlUpdateChange($store,new ControlUpdate($cfg),$preparedSites)]);
         if ($command==='change-plan') {
             $steps=[];
             foreach (explode(',',$target) as $input) {

@@ -12,9 +12,6 @@ final class ChangeTransaction
     {
         if (!$steps || count($steps) > 100) throw new OpException('変更は1〜100件で指定してください');
         $types = array_column($steps, 'type');
-        if (in_array('ctrl', $types, true) && array_diff($types, ['apache','ctrl'])) {
-            throw new OpException('進行中のサイト移行がある構成ではctrlを更新できません');
-        }
         $resources = [];
         foreach (array_values($steps) as $index => $step) {
             if (($step['type'] === 'ctrl' && $index !== count($steps) - 1)
@@ -85,7 +82,7 @@ final class ChangeTransaction
             }
             if (isset($final['ctrl'])) {
                 $step = $final['ctrl'];
-                $result = ($this->handler($step))('commit', $step['id']);
+                $result = ($this->handler($step))('commit', $step['id'], $journal['steps']);
                 if ($result !== ['succeeded']) return $journal + ['control_update'=>$result[0]];
             }
             if (isset($final['apache'])) {

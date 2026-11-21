@@ -163,8 +163,15 @@ final class SiteUpgrade
     public function status(string $id): array {if(!preg_match('/\A[a-f0-9]{24}\z/D',$id)){$pending=$this->store->read('upgrade-active-'.Spec::name($id));$id=$pending['id']??throw new OpException('このサイトに進行中の移行はありません');}return $this->summary($this->load($id));}
     private function locked(string $id,\Closure $fn): array
     {
-        $j=$this->load($id);$site=$j['name'];$locks=[];
-        try{
+        $locks = [$this->store->lock('control-update')];
+        try {
+            $update = $this->store->read('control-update');
+            if (in_array($update['phase'] ?? '', ['queued','running','recovering'], true)
+                || (($update['phase'] ?? '') === 'failed' && empty($update['rollback_complete']))) {
+                throw new OpException('ctrl更新または復旧の完了後にサイト移行を操作してください');
+            }
+            $j = $this->load($id);
+            $site = $j['name'];
             foreach([$this->cfg['apache_sites'].'/.pjas-deploy-'.$site.'.lock',($this->cfg['daemon_dir']??'/var/lib/pjas-daemons').'/lock'] as $p){if(is_link($p))throw new OpException('ロックがリンクです');if(!is_dir(dirname($p)))mkdir(dirname($p),0755,true);$fp=fopen($p,'c');if(!$fp||!flock($fp,LOCK_EX|LOCK_NB))throw new OpException('サイトまたはデーモンの作業中です');$locks[]=$fp;}
             $active=$this->store->read('upgrade-active-'.$site);if($active&&($active['id']??'')!==$id)throw new OpException('別の移行が進行中です');
             return $fn($j);
