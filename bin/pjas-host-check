@@ -77,9 +77,10 @@ try {
                 if (!$rows) echo "SKIP $name — 照合対象の生成済み設定がありません\n";
                 foreach ($rows as $row) {
                     $ok = $row['status'] === 'match';
-                    $failed = $failed || !$ok;
-                    printf("%s %s %s — %s\n", $ok ? 'PASS' : 'FAIL', $name, $row['path'], $row['detail']);
-                    if ($v2 && $ok && str_ends_with($row['path'], '.service')) {
+                    $label = $ok ? 'PASS' : ($row['status'] === 'skip' ? 'SKIP' : 'FAIL');
+                    $failed = $failed || $label === 'FAIL';
+                    printf("%s %s %s — %s\n", $label, $name, $row['path'], $row['detail']);
+                    if ($ok && str_ends_with($row['path'], '.service')) {
                         $loaded = Proc::run([$cfg['systemctl'], 'show', '--property=NeedDaemonReload', '--value', '--', basename($row['path'])], null, 5);
                         if ($loaded['code'] !== 0 || trim($loaded['out']) === 'yes') {
                             printf("WARN %s %s — %s\n", $name, basename($row['path']), $loaded['code'] === 0 ? 'systemdの再読み込み待ち' : 'systemdの読み込み状態を確認できません');
