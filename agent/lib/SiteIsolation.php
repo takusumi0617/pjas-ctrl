@@ -51,8 +51,13 @@ final class SiteIsolation
             $version=PhpRuntime::version($runtime);$pool='/etc/php/'.$version.'/fpm/pool.d/pjas-'.$name.'.conf';
             if(is_link($pool))throw new OpException('FPM設定先がリンクです');
             foreach(['.tmp','.sessions'] as $part){$dir=$base.'/shared/'.$part;if(is_link($dir))throw new OpException('PHP一時領域がリンクです');if(!is_dir($dir)&&!mkdir($dir,0700))throw new OpException('PHP一時領域を作成できません');chown($dir,$user);chgrp($dir,$user);chmod($dir,0700);}
-            $body=self::pool($name,$runtime,$scoped['apache_user'],$base);
+            $environment=self::poolEnvironment($name);
+            $body=self::pool($name,$runtime,$scoped['apache_user'],$base,$environment);
             $old=is_file($pool)?file_get_contents($pool):null;
+            if ($old===false) throw new OpException('現在のFPM設定を読み取れません');
+            if ($name==='pjas-chat' && !$environment && $old!==null && preg_match('/^\h*env\[/m',$old)) {
+                throw new OpException('pjas-chatの既存FPM環境変数を管理者設定へ取り込んでください');
+            }
             try {
                 if(file_put_contents($pool,$body,LOCK_EX)===false)throw new OpException('FPM設定を保存できません');chmod($pool,0644);
                 Proc::must([PhpRuntime::fpm($runtime),'--test']);
@@ -83,11 +88,46 @@ final class SiteIsolation
         return $file;
     }
     public static function socket(string $name,string $runtime): string { return '/run/php/pjas-'.Spec::name($name).'-'.PhpRuntime::version($runtime).'.sock'; }
-    public static function pool(string $name,string $runtime,string $apache,string $base='/var/www'): string
+    public static function poolEnvironment(string $name): array
+    {
+        if ($name !== 'pjas-chat') return [];
+        $file = '/etc/pjas/site-pool-env/pjas-chat.json';
+        if (!file_exists($file) && !is_link($file)) return [];
+        foreach (['/etc/pjas', dirname($file), $file] as $path) {
+            $info = lstat($path);
+            if (!$info || is_link($path) || $info['uid'] !== 0 || ($info['mode'] & 0022)
+                || ($path === $file ? (!is_file($path) || ($info['mode'] & 0077)) : !is_dir($path))) {
+                throw new OpException('FPM環境変数ファイルの所有者・権限が不正です');
+            }
+        }
+        $content = file_get_contents($file);
+        if ($content === false) throw new OpException('FPM環境変数ファイルを読み取れません');
+        $environment = json_decode($content,true,512,JSON_THROW_ON_ERROR);
+        if (!is_array($environment) || !$environment) throw new OpException('FPM環境変数ファイルが空または不正です');
+        return $environment;
+    }
+
+    private static function environmentLines(string $name, array $environment): string
+    {
+        if (!$environment) return '';
+        $fixed = ['CF_ACCESS_TEAM'=>'$CF_ACCESS_TEAM','CF_ACCESS_AUD'=>'$CF_ACCESS_AUD','PJAS_DB'=>'/var/lib/pjas-chat/pjas.sqlite'];
+        $key = $environment['VAPID_PUBLIC_KEY'] ?? null;
+        if ($name !== 'pjas-chat' || count($environment) !== 4 || !is_string($key)
+            || !preg_match('/\A[A-Za-z0-9_-]{87}\z/D', $key)) {
+            throw new OpException('pjas-chatのFPM環境変数が不正です');
+        }
+        foreach ($fixed as $name => $value) {
+            if (($environment[$name] ?? null) !== $value) throw new OpException('許可されていないFPM環境変数の値です');
+        }
+        return "\nenv[CF_ACCESS_TEAM] = \$CF_ACCESS_TEAM\nenv[CF_ACCESS_AUD] = \$CF_ACCESS_AUD\n"
+            ."env[PJAS_DB] = \"/var/lib/pjas-chat/pjas.sqlite\"\nenv[VAPID_PUBLIC_KEY] = \"".$key."\"\n";
+    }
+
+    public static function pool(string $name,string $runtime,string $apache,string $base='/var/www',array $environment=[]): string
     {
         $user=self::identity($name);
         if(!preg_match('/\A[a-z_][a-z0-9_-]*\z/D',$apache))throw new OpException('Apacheユーザーが不正です');
-        return "[pjas-{$name}]\nuser = {$user}\ngroup = {$user}\nlisten = ".self::socket($name,$runtime)."\nlisten.owner = {$apache}\nlisten.group = {$apache}\nlisten.mode = 0600\npm = ondemand\npm.max_children = 5\npm.process_idle_timeout = 10s\nclear_env = yes\nsecurity.limit_extensions = .php\nphp_admin_flag[display_errors] = off\nphp_admin_value[sys_temp_dir] = {$base}/shared/.tmp\nphp_admin_value[upload_tmp_dir] = {$base}/shared/.tmp\nphp_admin_value[session.save_path] = {$base}/shared/.sessions\n";
+        return "[pjas-{$name}]\nuser = {$user}\ngroup = {$user}\nlisten = ".self::socket($name,$runtime)."\nlisten.owner = {$apache}\nlisten.group = {$apache}\nlisten.mode = 0600\npm = ondemand\npm.max_children = 5\npm.process_idle_timeout = 10s\nclear_env = yes\nsecurity.limit_extensions = .php\nphp_admin_flag[display_errors] = off\nphp_admin_value[sys_temp_dir] = {$base}/shared/.tmp\nphp_admin_value[upload_tmp_dir] = {$base}/shared/.tmp\nphp_admin_value[session.save_path] = {$base}/shared/.sessions\n".self::environmentLines($name,$environment);
     }
     public static function protect(array $cfg,string $name,string $docroot): void
     {
