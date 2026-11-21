@@ -190,3 +190,24 @@ sudo php8.5 bin/pjas-site-upgrade routing "$PJAS_UPGRADE_ID" \
 
 ctrl が生成する設定に差分が出た場合は、生成元と稼働設定を照合してから再適用します。
 複数サイトを公開前にまとめて準備・復旧する場合は [復旧ガイド](recovery.md#公開前の一括サイト移行を復旧する) を参照してください。
+
+### PHP移行とAPI公開設定を同じ計画に含める
+
+静的な公開ディレクトリの外にPHP APIがあるサイトでは、対象サイトと
+リリース内のAPI入口を同じ計画に記録できます。
+
+```bash
+sudo php8.5 bin/pjas-site-upgrade batch-plan pjas-vault --php=8.5 \
+  --api=pjas-vault:server/index.php
+sudo php8.5 bin/pjas-site-upgrade batch-prepare "$PJAS_BATCH_ID" \
+  --accept-standard-apache --external-processes-stopped
+sudo php8.5 bin/pjas-site-upgrade batch-status "$PJAS_BATCH_ID"
+```
+
+`PJAS_BATCH_ID` には最初のコマンドが返したIDを設定します。
+準備で移行とAPI設定を適用し、サイトを停止したまま保持します。
+確認後に `batch-apply` で公開するか、公開前に `batch-rollback` で設定を戻せます。
+
+コードのデプロイでは、公開前の構文・Apache設定検査と公開後のHTTP検査を行います。
+自動切り戻しが有効で元のリリースがある場合は、公開失敗後に前のリリースを
+復帰させ、そのHTTP検査結果をジョブに記録します。共有データは別途復旧します。

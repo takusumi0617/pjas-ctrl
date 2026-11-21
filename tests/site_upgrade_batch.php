@@ -16,6 +16,7 @@ try{
         if($op==='status')return ['phase'=>$states[$id]];
         if($op==='apply'){if($fail&&$id===$plans['pjas-financial']['id']){$states[$id]='isolating';throw new RuntimeException('injected failure');}$states[$id]='prepared';return ['phase'=>'prepared'];}
         if($op==='activate'){$states[$id]='active';return [];}
+        if($op==='routing')return ['phase'=>$states[$id]];
         if($op==='rollback'){$states[$id]='rolled-back';return ['phase'=>'rolled-back'];}
         throw new RuntimeException($op);
     };
@@ -47,4 +48,19 @@ try{
     $batch->rollback($staged['id'],true);
     check(!array_filter($calls,fn($c)=>$c[0]==='rollback'),'復旧済みサイトを再変更しない');
     rejects(fn()=>$batch->apply($staged['id'],true,true,true,true));
+    $fail=false;
+    $front=$cfg['www_root'].'/pjas-financial/current/server';
+    mkdir($front,0755,true);
+    file_put_contents($front.'/index.php','<?php');
+    $routed=$batch->plan(['pjas-financial'],'php8.5-fpm',['pjas-financial'=>'server/index.php']);
+    $calls=[];
+    rejects(fn()=>$batch->apply($routed['id'],true,true,true,false));
+    check(!array_filter($calls,fn($c)=>in_array($c[0],['apply','activate'],true)),'確認済みのAPI設定なしで公開へ進まない');
+    $prepared=$batch->prepare($routed['id'],true,true);
+    $routingCalls=array_values(array_filter($calls,fn($c)=>$c[0]==='routing'));
+    check($routingCalls===[['routing',[$plans['pjas-financial']['id'],'server/index.php']]],'移行準備に確認済みのAPI設定を含める');
+    check($prepared['sites']['pjas-financial']['phase']==='prepared','API設定の反映後も停止状態を維持する');
+    $batch->prepare($routed['id'],true,true);
+    check(count(array_filter($calls,fn($c)=>$c[0]==='routing'))===1,'完了済みAPI設定を再適用しない');
+    $batch->rollback($routed['id'],true);
 }finally{cleanup($dir);}

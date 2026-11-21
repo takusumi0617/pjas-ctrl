@@ -26,7 +26,7 @@ try{
 使い方（rootで実行）:
   php8.5 bin/pjas-site-upgrade routing ID --api-front-controller=server/index.php
   php8.5 bin/pjas-site-upgrade jobs SITE
-  php8.5 bin/pjas-site-upgrade batch-plan SITE1,SITE2 --php=8.5 [--id-only]
+  php8.5 bin/pjas-site-upgrade batch-plan SITE1,SITE2 --php=8.5 [--api=SITE:server/index.php] [--id-only]
   php8.5 bin/pjas-site-upgrade batch-status ID
   php8.5 bin/pjas-site-upgrade batch-prepare ID --accept-standard-apache --external-processes-stopped
   php8.5 bin/pjas-site-upgrade batch-rollback ID --confirm-rollback
@@ -61,12 +61,26 @@ HELP;
     };
     $upgrade=new SiteUpgrade($cfg,$database);$target=$argv[2]??'';$flags=array_slice($argv,3);
     $allowed=match($command){'routing'=>[],'jobs'=>[],'batch-plan'=>['--id-only'],'batch-status'=>[],'batch-prepare'=>['--accept-standard-apache','--external-processes-stopped'],'batch-rollback'=>['--confirm-rollback'],'batch-apply'=>['--accept-standard-apache','--external-processes-stopped','--confirm-activation','--skip-manual'],'plan'=>['--id-only'],'apply'=>['--accept-standard-apache','--external-processes-stopped'],'activate'=>['--confirm-activation'],'rollback'=>['--confirm-rollback'],'status'=>[],default=>throw new OpException('helpで操作を確認してください')};
+    $routing=[];
+    if ($command === 'batch-plan') {
+        $remaining=[];
+        foreach ($flags as $flag) {
+            if (!str_starts_with($flag,'--api=')) {
+                $remaining[]=$flag;
+                continue;
+            }
+            [$site,$script]=array_pad(explode(':',substr($flag,6),2),2,'');
+            if ($site==='' || $script==='' || isset($routing[$site])) throw new OpException('--api=SITE:server/index.php の形式で各サイトを一度だけ指定してください');
+            $routing[$site]=$script;
+        }
+        $flags=$remaining;
+    }
     $apiScript='';$runtime='php8.5-fpm';foreach($flags as $flag){if($command==='routing'&&str_starts_with($flag,'--api-front-controller=')){$apiScript=substr($flag,strlen('--api-front-controller='));continue;}if(in_array($command,['plan','batch-plan'],true)&&preg_match('/\A--php=(8\.[0-9]+|static)\z/D',$flag,$m)){$runtime=$m[1]==='static'?'static':'php'.$m[1].'-fpm';continue;}if(!in_array($flag,$allowed,true))throw new OpException('未知のオプションです: '.$flag);}
     $batch=new SiteUpgradeBatch($cfg,$database,static fn(string $op,array $args)=>$upgrade->$op(...$args));
     $result=match($command){
         'routing'=>$upgrade->routing($target,$apiScript),
         'jobs'=>['site'=>$target,'pending_jobs'=>$database('read',$target,[])['pending_jobs']],
-        'batch-plan'=>$batch->plan(explode(',',$target),$runtime),
+        'batch-plan'=>$batch->plan(explode(',',$target),$runtime,$routing),
         'batch-status'=>$batch->status($target),
         'batch-prepare'=>$batch->prepare($target,in_array('--accept-standard-apache',$flags,true),in_array('--external-processes-stopped',$flags,true)),
         'batch-rollback'=>$batch->rollback($target,in_array('--confirm-rollback',$flags,true)),

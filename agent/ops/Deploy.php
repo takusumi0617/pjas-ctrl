@@ -279,6 +279,9 @@ final class Deploy
             // [5] 権限の正規化
             $this->normalizePerms($relDir, $log);
 
+            // Reject invalid input before running hooks that can write shared data.
+            $this->lintPhp($relDir, $spec, $log);
+
             // [6] after_deploy フック (www-data として実行)
             foreach ($spec['hooks'] as $argv) {
                 $argv = Spec::runtimeHook($argv, $spec['runtime']);
@@ -292,11 +295,7 @@ final class Deploy
             }
 
             // [7] 事前検証
-            $this->lintPhp($relDir, $spec, $log);
-            $docroot = rtrim($relDir . '/' . $spec['docroot'], '/');
-            if (!is_dir($docroot)) {
-                throw new OpException("DocumentRoot がリリース内にありません: {$spec['docroot']}");
-            }
+            $this->validateRelease($relDir, $spec, $log, (bool)$spec['hooks']);
             $test = Proc::run([$this->cfg['apachectl'], 'configtest'], null, 30);
             $log->proc('apachectl configtest', $test);
             if ($test['code'] !== 0) {
@@ -327,14 +326,7 @@ final class Deploy
             $log->set('health', $healthy ? 'ok' : 'ng');
 
             if (!$healthy) {
-                if ($opts['auto_rollback'] && $prev !== null) {
-                    $log->line("ヘルスチェック失敗 → {$prev} へ自動ロールバック");
-                    $this->switchCurrent($name, $prev, $log);
-                    $this->reloadRuntime($spec, $log);
-                    $log->set('release', ['tag' => $prev, 'state' => 'current', 'source' => 'auto-rollback']);
-                    throw new OpException("ヘルスチェックに失敗したため {$prev} に戻しました");
-                }
-                throw new OpException('ヘルスチェックに失敗しました (自動ロールバックは無効)');
+                throw new OpException('公開後のヘルスチェックに失敗しました');
             }
 
             // [10] 掃除 (この回に引き継いだリリースは切り戻し先として残す)
@@ -357,6 +349,9 @@ final class Deploy
                     $this->switchCurrent($name, $prev, $log);
                     $this->reloadRuntime($spec, $log);
                     $log->set('release', ['tag' => $prev, 'state' => 'current', 'source' => 'auto-rollback']);
+                    $recovered = $this->health->poll($spec, fn($m) => $log->line($m));
+                    $log->set('rollback_health', $recovered ? 'ok' : 'ng');
+                    if (!$recovered) $log->line('以前のリリースへ戻しましたが、復旧後のHTTP検査に失敗しました');
                 } catch (\Throwable $rollbackError) { $log->line('復元処理のエラー: ' . $rollbackError->getMessage()); }
             }
             if ($this->paths->currentTag($name) === $tag && isset($meta)) {
@@ -723,6 +718,14 @@ final class Deploy
         $log->line("所有者を {$user}:{$grp}、権限を dir 755 / file 644 に正規化しました");
     }
 
+    private function validateRelease(string $relDir, array $spec, JobLog $log, bool $lint): void
+    {
+        if (!is_dir(rtrim($relDir.'/'.$spec['docroot'], '/'))) {
+            throw new OpException("DocumentRoot がリリース内にありません: {$spec['docroot']}");
+        }
+        if ($lint) $this->lintPhp($relDir, $spec, $log);
+    }
+
     private function lintPhp(string $relDir, array $spec, JobLog $log): void
     {
         if ($spec['runtime'] === 'static') {
@@ -733,8 +736,9 @@ final class Deploy
             throw new OpException('指定したPHP CLIがありません: '.$php);
         }
         $r = Proc::run(['/usr/bin/find', $relDir, '-name', '*.php', '-type', 'f',
-                        '-not', '-path', '*/vendor/*', '-not', '-path', '*/node_modules/*'], null, 120);
-        $files = array_values(array_filter(explode("\n", trim($r['out']))));
+                        '-not', '-path', '*/vendor/*', '-not', '-path', '*/node_modules/*', '-print0'], null, 120);
+        if ($r['code'] !== 0) throw new OpException('PHP構文検査の対象を列挙できません');
+        $files = $r['out'] === '' ? [] : explode("\0", rtrim($r['out'], "\0"));
         $bad   = [];
         foreach ($files as $f) {
             $l = Proc::run([$php, '-l', '-n', $f], null, 20);
