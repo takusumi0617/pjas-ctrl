@@ -47,9 +47,10 @@ try {
   }catch(Throwable $e){if($old===null)@unlink($path);else file_put_contents($path,$old);throw $e;}
   echo "更新元・更新サービスを登録しました。pjas-agentdを再起動し、ホームから更新内容を確認してください。\n";exit;
  }
- if($command==='status')$result=$update->status();
+ if($command==='review')$result=$update->review();
+ elseif($command==='status')$result=$update->status();
  elseif(in_array($command,['run','recover'],true))$result=$update->execute($argv[2]??'',$command==='recover');
- else {echo "sudo php8.5 bin/pjas-control-update install [--branch=main] [--auth=auto|public|github_app]\nsudo php8.5 bin/pjas-control-update status\nsudo php8.5 /var/lib/pjas-control/updater/bin/pjas-control-update recover ID\n";exit;}
+ else {echo "sudo php8.5 bin/pjas-control-update install [--branch=main] [--auth=auto|public|github_app]\nsudo php8.5 bin/pjas-control-update review\nsudo php8.5 bin/pjas-control-update status\nsudo php8.5 /var/lib/pjas-control/updater/bin/pjas-control-update recover ID\n";exit;}
  echo json_encode($result,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
  if(in_array($result['state']['phase']??'', ['failed'],true))exit(1);
 } catch(Throwable $e){fwrite(STDERR,'更新操作を完了できませんでした: '.$e->getMessage()."\n");exit(1);}

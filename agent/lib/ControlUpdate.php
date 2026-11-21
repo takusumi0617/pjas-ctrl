@@ -117,16 +117,22 @@ final class ControlUpdate
     {
         return array_intersect_key($j,array_flip(['id','base','target','changes','blockers','dependent_services','auth','expires_at']))+['repository'=>$s['repository'],'branch'=>$s['branch'],'up_to_date'=>$j['base']===$j['target']];
     }
-    public function start(array $p): array
+    public function start(array $p, bool $stableId = false): array
     {
         $lock=$this->lock();
         try{
-            $this->busy();$s=$this->settings();$id=$this->id($p['review']??'');$j=$this->store->read('control-update-review-'.$id);
+            $id=$this->id($p['review']??'');
+            if ($stableId && $this->store->read('control-update-job-'.$id)) {
+                $state=$this->store->read('control-update');
+                if (($state['id']??null)!==$id) throw new OpException('別の更新が実行されたため、自動再開できません');
+                return ['id'=>$id,'phase'=>$state['phase']];
+            }
+            $this->busy();$s=$this->settings();$j=$this->store->read('control-update-review-'.$id);
             if(!$j||($j['expires_at']??0)<time()||($p['confirm']??false)!==true)throw new OpException('確認の期限と更新の影響を確認してください');
             if($j['blockers']||$j['base']===$j['target'])throw new OpException('適用可能な更新ではありません');
             if($j['configuration']!==hash('sha256',json_encode($s))||$j['local']!==$this->local($s))throw new OpException('確認後にコードまたは設定が変わりました。更新内容を確認し直してください');
             if(!is_file($this->store->root().'/updater/bin/pjas-control-update'))throw new OpException('rootの更新サービスを初回登録してください');
-            $job=bin2hex(random_bytes(16));$this->store->write('control-update-job-'.$job,$j+['job'=>$job]);
+            $job=$stableId?$id:bin2hex(random_bytes(16));$this->store->write('control-update-job-'.$job,$j+['job'=>$job]);
             $this->state($job,'queued','更新サービスの起動待ち');$this->marker(bin2hex(random_bytes(32)));
             try{$this->must([$this->cfg['systemctl'],'start','--no-block','pjas-control-update@'.$job.'.service']);}catch(\Throwable $e){$this->unmark();$this->state($job,'failed','更新サービスを起動できませんでした',['rollback_complete'=>true]);throw $e;}
             return ['id'=>$job,'phase'=>'queued'];

@@ -219,3 +219,25 @@ sudo php8.5 bin/pjas-site-upgrade change-prepare "$CHANGE_ID" \
 確定前に戻す場合は `change-rollback "$CHANGE_ID" --confirm-rollback` を使います。
 変更を維持する場合は `change-commit "$CHANGE_ID" --confirm-commit` で確定してから、
 移行サイトを `activate` または `batch-apply` で公開します。
+
+### Apache設定とctrl自己更新を同じ変更IDで管理する
+
+更新機構の最新版を `pjas-control-update install` で登録してから実行します。
+
+```bash
+sudo php8.5 bin/pjas-control-update review
+sudo php8.5 bin/pjas-site-upgrade change-plan "apache:$APACHE_PLAN_ID,ctrl:$REVIEW_ID"
+sudo php8.5 bin/pjas-site-upgrade change-prepare "$CHANGE_ID" \
+  --accept-standard-apache --external-processes-stopped
+sudo php8.5 bin/pjas-site-upgrade change-commit "$CHANGE_ID" --confirm-commit
+sudo php8.5 bin/pjas-control-update status
+```
+
+`REVIEW_ID` は更新内容を確認した際のIDです。確認には有効期限があります。
+`change-commit` で更新サービスを起動し、更新成功後に同じコマンドを再実行して
+Apache設定を確定します。更新失敗時は、更新側でコードと管理DBの復旧完了を
+確認してから `change-rollback "$CHANGE_ID" --confirm-rollback` を実行します。
+更新が中断した場合は先に独立した更新ランナーの `recover` を使います。
+成功した更新を管理DBごと過去へ戻すと、その後の操作を失うため、
+この組み合わせでは成功後の一括切り戻しはできません。
+管理DBを使うサイト移行とctrl更新は別の変更IDで実行します。

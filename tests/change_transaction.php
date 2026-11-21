@@ -41,6 +41,34 @@ try {
     check($recovered['phase'] === 'rolled-back' && $store->read('fixture-order') === ['second','first'], '別プロセスから逆順に復旧');
     $transaction->run($plan['id'], true);
     check($store->read('fixture-order') === ['second','first'], '復旧済みの変更を再適用しない');
+    $updatePhase = 'queued';
+    $events = [];
+    $apache = static function (string $operation) use (&$events): array {
+        $events[] = 'apache:'.$operation;
+        return ['test-vhost'];
+    };
+    $ctrl = static function (string $operation) use (&$updatePhase, &$events): array {
+        $events[] = 'ctrl:'.$operation;
+        if ($operation === 'check-rollback' && $updatePhase !== 'failed') throw new RuntimeException('update is not restored');
+        return $operation === 'commit' ? [$updatePhase] : [':ctrl-update'];
+    };
+    $combined = new ChangeTransaction($store, ['site'=>$handler,'apache'=>$apache,'ctrl'=>$ctrl]);
+    $pair = [['type'=>'apache','id'=>'vhost'],['type'=>'ctrl','id'=>'review']];
+    rejects(fn()=>$combined->plan([$first, ...$pair]));
+    $plan = $combined->plan($pair);
+    $combined->run($plan['id'], false);
+    $pending = $combined->commit($plan['id']);
+    check($pending['control_update']==='queued' && !in_array('apache:commit',$events,true), 'ctrl更新の完了までApacheの復旧記録を保持する');
+    rejects(fn()=>$combined->run($plan['id'], true));
+    $updatePhase = 'failed';
+    $combined->commit($plan['id']);
+    check($combined->run($plan['id'], true)['phase']==='rolled-back' && end($events)==='apache:rollback',
+        'ctrlの復旧後にApacheを切り戻せる');
+    $plan = $combined->plan($pair);
+    $combined->run($plan['id'], false);
+    $updatePhase = 'succeeded';
+    check($combined->commit($plan['id'])['phase']==='committed' && end($events)==='apache:commit',
+        'ctrl更新に成功してからApacheを確定する');
 } finally {
     cleanup($dir);
 }

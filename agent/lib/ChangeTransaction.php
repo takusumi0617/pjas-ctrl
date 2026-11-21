@@ -11,10 +11,15 @@ final class ChangeTransaction
     public function plan(array $steps): array
     {
         if (!$steps || count($steps) > 100) throw new OpException('変更は1〜100件で指定してください');
+        $types = array_column($steps, 'type');
+        if (in_array('ctrl', $types, true) && array_diff($types, ['apache','ctrl'])) {
+            throw new OpException('進行中のサイト移行がある構成ではctrlを更新できません');
+        }
         $resources = [];
         foreach (array_values($steps) as $index => $step) {
-            if ($step['type'] === 'apache' && $index !== count($steps) - 1) {
-                throw new OpException('Apache設定変更は一件だけ、最後に指定してください');
+            if (($step['type'] === 'ctrl' && $index !== count($steps) - 1)
+                || ($step['type'] === 'apache' && array_diff(array_slice($types, $index + 1), ['ctrl']))) {
+                throw new OpException('Apache設定変更の後はctrl更新だけを指定できます。ctrl更新は最後に指定してください');
             }
             $handler = $this->handler($step);
             foreach ($handler('check', $step['id']) as $resource) {
@@ -69,15 +74,24 @@ final class ChangeTransaction
             if (!in_array($journal['phase'], ['prepared','committing'], true)) {
                 throw new OpException('準備が完了した変更だけを確定できます');
             }
-            $apache = array_values(array_filter($journal['steps'], static fn(array $step): bool=>$step['type']==='apache'));
-            if (!$apache) throw new OpException('Apache設定を含む変更だけに確定操作が必要です');
-            $step = $apache[0];
+            $final = array_column($journal['steps'], null, 'type');
+            if (!isset($final['apache']) && !isset($final['ctrl'])) throw new OpException('確定対象がありません');
             if ($journal['phase'] === 'prepared') {
-                ($this->handler($step))('check-commit', $step['id']);
+                foreach (['apache','ctrl'] as $type) {
+                    if (isset($final[$type])) ($this->handler($final[$type]))('check-commit', $final[$type]['id']);
+                }
                 $journal['phase'] = 'committing';
                 $this->save($journal);
             }
-            ($this->handler($step))('commit', $step['id']);
+            if (isset($final['ctrl'])) {
+                $step = $final['ctrl'];
+                $result = ($this->handler($step))('commit', $step['id']);
+                if ($result !== ['succeeded']) return $journal + ['control_update'=>$result[0]];
+            }
+            if (isset($final['apache'])) {
+                $step = $final['apache'];
+                ($this->handler($step))('commit', $step['id']);
+            }
             $journal['phase'] = 'committed';
             $this->save($journal);
             return $journal;
@@ -89,7 +103,8 @@ final class ChangeTransaction
     private function restore(array $journal): array
     {
         if ($journal['phase'] === 'rolled-back') return $journal;
-        if (in_array($journal['phase'], ['committing','committed'], true)) {
+        $steps = array_column($journal['steps'], null, 'type');
+        if ($journal['phase'] === 'committed' || ($journal['phase'] === 'committing' && !isset($steps['ctrl']))) {
             throw new OpException('確定を開始した変更は一括切り戻しできません');
         }
         // Check all touched operations before restoring any.

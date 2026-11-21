@@ -1,6 +1,9 @@
 #!/usr/bin/env php
 <?php
 declare(strict_types=1);
+if (PHP_SAPI === 'cli' && posix_geteuid() === 0 && in_array($argv[1]??'', ['change-status','change-commit','change-rollback'], true)) {
+    putenv('PJAS_CONTROL_UPDATE=1');
+}
 require dirname(__DIR__).'/app/bootstrap.php';
 spl_autoload_register(static function(string $class):void{
     if(str_starts_with($class,'Pjas\\Agentd\\Ops\\'))$path=PJAS_ROOT.'/agent/ops/'.substr($class,16).'.php';
@@ -8,7 +11,7 @@ spl_autoload_register(static function(string $class):void{
     elseif(str_starts_with($class,'Pjas\\Shared\\'))$path=PJAS_ROOT.'/shared/'.substr($class,12).'.php';else return;
     if(is_file($path))require_once $path;
 });
-use Pjas\Agentd\{ApacheChange,ChangeTransaction,SiteUpgrade,SiteUpgradeBatch,SiteUpgradeDb,Proc,ControlStore,OpException};
+use Pjas\Agentd\{ApacheChange,ChangeTransaction,ControlUpdateChange,ControlUpdate,SiteUpgrade,SiteUpgradeBatch,SiteUpgradeDb,Proc,ControlStore,OpException};
 use Pjas\Support\Config;
 if(PHP_SAPI!=='cli')exit(77);
 try{
@@ -27,7 +30,7 @@ try{
   php8.5 bin/pjas-site-upgrade routing ID --api-front-controller=server/index.php
   php8.5 bin/pjas-site-upgrade jobs SITE
   php8.5 bin/pjas-site-upgrade apache-plan SITE
-  php8.5 bin/pjas-site-upgrade change-plan site:ID,batch:ID[,apache:ID]
+  php8.5 bin/pjas-site-upgrade change-plan site:ID,batch:ID[,apache:ID] apache:ID または ctrl:REVIEW_ID,ctrl:REVIEW_ID
   php8.5 bin/pjas-site-upgrade change-commit ID --confirm-commit
   php8.5 bin/pjas-site-upgrade change-status ID
   php8.5 bin/pjas-site-upgrade change-prepare ID --accept-standard-apache --external-processes-stopped
@@ -109,12 +112,12 @@ HELP;
             if ($operation==='rollback') $batch->rollback($id,true);
             return array_keys($sites);
         };
-        $transaction=new ChangeTransaction($store,['site'=>$siteOperation,'batch'=>$batchOperation,'apache'=>$apache]);
+        $transaction=new ChangeTransaction($store,['site'=>$siteOperation,'batch'=>$batchOperation,'apache'=>$apache,'ctrl'=>new ControlUpdateChange($store,new ControlUpdate($cfg))]);
         if ($command==='change-plan') {
             $steps=[];
             foreach (explode(',',$target) as $input) {
                 [$type,$id]=array_pad(explode(':',$input,2),2,'');
-                if (!preg_match('/\A[a-f0-9]{24}\z/D',$id)) throw new OpException('site:ID、batch:ID または apache:ID で指定してください');
+                if (!preg_match($type==='ctrl'?'/\A[a-f0-9]{32}\z/D':'/\A[a-f0-9]{24}\z/D',$id)) throw new OpException('site:ID、batch:ID apache:ID または ctrl:REVIEW_ID で指定してください');
                 $steps[]=['type'=>$type,'id'=>$id];
             }
             $result=$transaction->plan($steps);
@@ -132,7 +135,7 @@ HELP;
             $result=$transaction->run($target,$rollback);
         }
         echo json_encode($result,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)."\n";
-        exit;
+        exit(($result['control_update']??null)==='failed'?1:0);
     }
     $result=match($command){
         'apache-plan'=>$apache->plan($target),

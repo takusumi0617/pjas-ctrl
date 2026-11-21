@@ -53,7 +53,9 @@ foreach([false,true] as $fail){
   $saved=$store->read('control-update-review-'.$review['id']);$expired=$saved;$expired['expires_at']=time()-1;$store->write('control-update-review-'.$review['id'],$expired);rejects(fn()=>$update->start(['review'=>$review['id'],'confirm'=>true]));$store->write('control-update-review-'.$review['id'],$saved);
   $beforeConfig=file_get_contents($root.'/config.php');file_put_contents($root.'/config.php',$beforeConfig.' // changed');rejects(fn()=>$update->start(['review'=>$review['id'],'confirm'=>true]));file_put_contents($root.'/config.php',$beforeConfig);
   check(true,'期限切れの確認・確認後の設定変更を拒否する');
-  $job=$update->start(['review'=>$review['id'],'confirm'=>true]);rejects(fn()=>$update->start(['review'=>$review['id'],'confirm'=>true]));
+  $job=$update->start(['review'=>$review['id'],'confirm'=>true],$fail);
+  if($fail)check($job['id']===$review['id']&&$update->start(['review'=>$review['id'],'confirm'=>true],true)===$job,'一括変更からの更新起動を再実行しても同じジョブになる');
+  rejects(fn()=>$update->start(['review'=>$review['id'],'confirm'=>true]));
   $oldMask=umask(0077);try{$result=$update->execute($job['id']);}finally{umask($oldMask);}
   $sqlite=new SQLite3($dir.'/control.sqlite');$value=$sqlite->querySingle('SELECT value FROM content');$sqlite->close();
   if(!$fail)check((fileperms($root.'/app/new/feature.php')&0777)===0640&&(fileperms($root.'/app/new')&0777)===0750,'厳しいumaskを維持し、新しいコードだけを管理ユーザーのグループに読み取り可能にする');
