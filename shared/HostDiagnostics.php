@@ -71,7 +71,7 @@ final class HostDiagnostics
 
         $checks = ['pjas-sites-check' => []];
         if ($component !== null) {
-            $checks['pjas-components-check'] = [$component];
+            $checks['pjas-components-check'] = [$component, '--running-only'];
         }
         foreach ($checks as $check => $args) {
             $path = $root.'/bin/'.$check;
