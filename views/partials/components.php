@@ -6,6 +6,9 @@
 <section class="card section-gap">
   <div class="card-h">承認済み構成との照合</div>
   <div class="card-b">
+    <?php if (!empty($state['configuration_recovery'])): ?>
+      <p role="alert">設定の復旧が必要です。SSHで <code>sudo php8.5 /opt/pjas-ctrl/bin/pjas-component-recover <?= View::e($site['name']) ?> <?= View::e($state['configuration_recovery']) ?></code> を実行してください。</p>
+    <?php endif; ?>
     <?php if (empty($state['drift'])): ?>
       <p>照合対象の生成済み設定がありません。</p>
     <?php else: ?>
