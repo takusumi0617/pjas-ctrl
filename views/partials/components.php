@@ -1,4 +1,4 @@
-<?php use Pjas\Http\{View,Csrf}; ?>
+<?php use Pjas\Http\{View,Csrf}; use Pjas\Support\Time; ?>
 <p>処理ごとの実行ユーザー・永続領域・秘密情報を管理します。設定更新、コード公開、初回セットアップ、状態復元はそれぞれ独立した操作です。</p>
 <?php if($error): ?><p role="alert"><?= View::e($error) ?></p><?php endif; ?>
 <?php if($site): ?>
@@ -34,5 +34,24 @@
 <details class="runtime-details"><summary>初期セットアップ・CA状態の復元（管理者向け）</summary><div class="note">PHP更新やコード公開では初期化しません。CA状態の復元は履歴に影響するため、バックアップと停止範囲を確認してください。</div><form method="post" action="/services/<?= View::e($site['name']) ?>/components"><?= Csrf::field() ?><input type="hidden" name="service" value="<?= View::e($site['name']) ?>"><label>現在のパスワード<input type="password" name="password" autocomplete="current-password" required></label><button class="btn" name="operation" value="components.setup">初回セットアップを確認・実行</button></form><h2>CA状態の復元</h2><form method="post" action="/services/<?= View::e($site['name']) ?>/components"><?= Csrf::field() ?><input type="hidden" name="service" value="<?= View::e($site['name']) ?>"><label>バックアップID <input name="backup" required></label><button class="btn" name="operation" value="components.restoreplan">復元の影響を確認</button></form>
 <p>復元後は発行停止を維持します。検査を終え、発行・失効履歴の欠落を確認してから停止状態を解除してください。</p>
 <form method="post" action="/services/<?= View::e($site['name']) ?>/components"><?= Csrf::field() ?><input type="hidden" name="service" value="<?= View::e($site['name']) ?>"><input type="hidden" name="operation" value="components.resume"><label><input type="checkbox" name="accept_history_loss" value="1" required>履歴の欠落と二重稼働がないことを管理者として確認した</label><label>現在のパスワード <input type="password" name="password" autocomplete="current-password" required></label><button class="btn">復元後の停止状態を解除</button></form>
-</details><h2 class="process-heading">サイトのTLS証明書</h2><form method="post" action="/services/<?= View::e($site['name']) ?>/components"><?= Csrf::field() ?><input type="hidden" name="service" value="<?= View::e($site['name']) ?>"><label>許可済み証明書プロバイダーID <input name="provider" required></label><button class="btn" name="operation" value="tls.plan">更新・適用を確認</button></form>
+</details><h2 class="process-heading">サイトのTLS証明書</h2>
+<?php $certificate = $state['tls']['certificate'] ?? null; $selection = $state['tls']['selection'] ?? []; ?>
+<dl>
+<dt>選択中のプロバイダー</dt><dd><?= View::e($selection['provider'] ?? '未取得') ?></dd>
+<dt>配置済み証明書の有効期限</dt>
+<dd><?php if ($certificate): ?>
+<?= View::e(Time::display(gmdate('c', $certificate['expires']))) ?>（残り <?= (int)$certificate['days'] ?> 日）
+<?php if (!$certificate['matches']): ?><span class="tag t-warn">公開アドレスと不一致</span><?php
+elseif (!$certificate['valid']): ?><span class="tag t-warn">有効期間外</span><?php
+elseif ($certificate['days'] < 30): ?><span class="tag t-warn">更新時期</span><?php endif; ?>
+<?php else: ?><?= !empty($state['tls']['certificate_unavailable']) ? '証明書を読み取れません' : '未確認' ?><?php endif; ?></dd>
+</dl>
+<?php if (!empty($state['tls']['audit'])): ?>
+<details><summary>証明書の操作記録</summary><ul>
+<?php foreach (array_slice(array_reverse($state['tls']['audit']),0,10) as $entry): ?>
+<li><?= View::e(Time::display($entry['time'])) ?> ／ <?= View::e(['applied'=>'適用済み','failed-restored'=>'失敗・復旧済み','failed-restore-failed'=>'復旧が必要'][$entry['result']] ?? $entry['result']) ?></li>
+<?php endforeach; ?>
+</ul></details>
+<?php endif; ?>
+<form method="post" action="/services/<?= View::e($site['name']) ?>/components"><?= Csrf::field() ?><input type="hidden" name="service" value="<?= View::e($site['name']) ?>"><label>許可済み証明書プロバイダーID <input name="provider" required></label><button class="btn" name="operation" value="tls.plan">更新・適用を確認</button></form>
 <?php endif; ?>

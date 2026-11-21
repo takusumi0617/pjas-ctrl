@@ -22,7 +22,7 @@ final class ServerMonitor
     }
     private function units(): array
     {
-        $units=['apache2.service','php'.\Pjas\Shared\PhpRuntime::controlVersion().'-fpm.service','pjas-agentd.service','pjas-control-web.service','pjas-monitor.timer'];
+        $units=['apache2.service','php'.\Pjas\Shared\PhpRuntime::controlVersion().'-fpm.service','pjas-agentd.service','pjas-control-web.service','pjas-monitor.timer','pjas-security-api.service','pjas-security-defense.service'];
         foreach(glob('/lib/systemd/system/php*-fpm.service')?:[] as $file)if(preg_match('/\Aphp[0-9]+\.[0-9]+-fpm\.service\z/D',basename($file)))$units[]=basename($file);
         return array_values(array_unique($units));
     }

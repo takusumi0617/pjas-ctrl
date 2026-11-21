@@ -9,9 +9,10 @@ final class SiteTls
     {
         $root=rtrim($cfg['control_dir']??'/var/lib/pjas-control','/');
         $state=$root.'/tls-'.Spec::name($site).'.json';
-        if (!is_file($state)) return ['cert'=>$cfg['tls_cert_file']??'/etc/ssl/cloudflare/memo.takusumi.work.pem','key'=>$cfg['tls_key_file']??'/etc/ssl/cloudflare/memo.takusumi.work.key'];
+        $common=['cert'=>$cfg['tls_cert_file']??'/etc/ssl/cloudflare/memo.takusumi.work.pem','key'=>$cfg['tls_key_file']??'/etc/ssl/cloudflare/memo.takusumi.work.key'];
+        if (!is_file($state)) return $common;
         $s=(new ControlStore($cfg))->read('tls-'.$site);
-        if (($s['provider']??'common')==='common') return ['cert'=>$cfg['tls_cert_file'],'key'=>$cfg['tls_key_file']];
+        if (($s['provider']??'common')==='common') return $common;
         return ['cert'=>$root.'/tls/'.$site.'/current/certificate.pem','key'=>$root.'/tls/'.$site.'/current/key.pem'];
     }
     public static function decorate(array $cfg,string $site,string $body): string

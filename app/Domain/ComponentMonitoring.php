@@ -10,7 +10,7 @@ final class ComponentMonitoring
         $id=(int)$site['id'];
         try {
             AgentClient::call('components.maintain',['service'=>$site['name']],'monitor');
-            AgentClient::call('tls.renew',['service'=>$site['name']],'monitor');
+            CertificateMonitoring::renew($site, (bool)$policy['notifications']);
             $s=AgentClient::call('components.status',['service'=>$site['name']],'monitor');
             Alerting::check('components:'.$id,$id,!empty($s['configured']),$site['name'].' の依存環境・権限・秘密情報の状態',$policy['notifications']);
             foreach ($s['components'] as $component=>$row) {

@@ -56,7 +56,7 @@ final class Components
             }
             return;
         }
-        if (str_starts_with($op,'components.') || str_starts_with($op,'tls.') || in_array($op,['health.check','apache.render','apache.reload'],true)) return;
+        if (str_starts_with($op,'components.') || str_starts_with($op,'tls.') || in_array($op,['health.check','ops.certificate','apache.render','apache.reload'],true)) return;
         throw new OpException('隔離サイトはコンポーネント専用の操作を使用してください。共通ユーザー経由の操作は禁止されています');
     }
     private function locked(string $site, callable $fn, bool $recover = false): array

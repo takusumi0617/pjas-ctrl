@@ -75,13 +75,13 @@ final class Automation
         foreach(ServiceRepo::all() as $site){$policy=SitePolicy::get((int)$site['id']);
             DriftMonitoring::tick($site,(bool)$policy['notifications'],$now);
             $p=['service'=>Deployer::spec($site)];
+            CertificateMonitoring::check($site, (bool)$policy['notifications']);
             if (Db::one('SELECT service_id FROM component_sites WHERE service_id=?',[$site['id']])) { ComponentMonitoring::check($site,$policy); $stats['checked']++; continue; }
             try{$health=AgentClient::call('health.check',$p,'monitor');$message=$site['name'].': '.(!empty($health['paused'])?'公開停止中の応答':(!empty($health['ok'])?'正常に応答しています':'サイトの応答を確認できません（HTTP '.($health['status']?:'応答なし').'）'));
                 $notifications->check('health:'.$site['id'],(int)$site['id'],!empty($health['ok']),$message,$policy['notifications']);ServiceRepo::setState((int)$site['id'],!empty($health['ok'])?'healthy':'unhealthy');$stats['checked']++;
                 $daemons=AgentClient::call('daemon.list',['service'=>$site['name']],'monitor')['daemons'];foreach($daemons as $d){$active=$d['state']['ActiveState']??'';$expected=($d['state']['UnitFileState']??'')==='enabled';if(!$expected&&$active==='inactive')continue;
                     Alerting::check('daemon:'.$site['id'].':'.$d['unit'],(int)$site['id'],in_array($active,['active','activating'],true),$site['name'].' の常駐プログラム '.$d['unit'].' は '.$active.' です',$policy['notifications']);}
                 if(!$diskChecked){$disk=AgentClient::call('ops.resources',$p,'monitor');$free=$disk['total']>0?$disk['free']/$disk['total']:0;Alerting::check('host.disk',null,$free>=0.1&&$disk['free']>=1024*1024*1024,'サイト領域の空き容量: '.round($free*100,1).'%（'.round($disk['free']/1073741824,1).'GB）');$diskChecked=true;}
-                if($site['tls']){$cert=AgentClient::call('ops.certificate',$p,'monitor');Alerting::check('certificate:'.$site['id'],(int)$site['id'],$cert['valid']&&$cert['days']>=30,$site['name'].' の証明書: 残り'.$cert['days'].'日'.(!$cert['matches']?'・公開アドレスと不一致':''),$policy['notifications']);}
                 if($policy['backup_enabled']&&$policy['backup_last']<=$now-$policy['backup_hours']*3600){
                     $job=JobRepo::create((int)$site['id'],'backup','定期バックアップ','共有データ・DBの定期保存');AgentClient::call('ops.run',$p+['kind'=>'backup','job_id'=>$job,'reason'=>'scheduled'],'monitor');$policy['backup_last']=$now;SitePolicy::write((int)$site['id'],$policy);$stats['backups']++;
                 }

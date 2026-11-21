@@ -1,10 +1,11 @@
 <?php
 declare(strict_types=1);
 namespace Pjas\Agentd\Ops;
-use Pjas\Agentd\{ControlStore,Notifier,Paths,Spec,Proc,OpException,GitHubApp};
+use Pjas\Agentd\{ControlStore,Notifier,Paths,Spec,Proc,OpException,GitHubApp,SiteTls};
 require_once dirname(__DIR__).'/lib/ControlStore.php';
 require_once dirname(__DIR__).'/lib/Notifier.php';
 require_once dirname(__DIR__).'/lib/GitHubApp.php';
+require_once dirname(__DIR__).'/lib/SiteTls.php';
 final class Operations
 {
     private ControlStore $store;
@@ -105,8 +106,10 @@ final class Operations
     }
     public function certificate(array $params): array
     {
-        $domain=Spec::domain($params['service']['domain']??'');$file=$this->cfg['tls_cert_file']??'/etc/ssl/cloudflare/memo.takusumi.work.pem';
-        if(!is_file($file)||!($pem=file_get_contents($file))||!($cert=openssl_x509_parse($pem)))throw new OpException('Cloudflare証明書を読み取れません。サーバーの証明書設定を確認してください');
+        $site=Spec::name($params['service']['name']??'');
+        $domain=Spec::domain($params['service']['domain']??'');
+        $file=SiteTls::paths($this->cfg,$site)['cert'];
+        if(!is_file($file)||!($pem=file_get_contents($file))||!($cert=openssl_x509_parse($pem)))throw new OpException('サイトの証明書を読み取れません。サーバーの証明書設定を確認してください');
         $names=[];foreach(explode(',',$cert['extensions']['subjectAltName']??'') as $part)if(preg_match('/^DNS:(.+)$/',trim($part),$m))$names[]=$m[1];if(!$names&&!empty($cert['subject']['CN']))$names[]=$cert['subject']['CN'];
         $matches=false;foreach($names as $pattern)if(self::matchesDomain($pattern,$domain))$matches=true;
         return ['domain'=>$domain,'names'=>$names,'matches'=>$matches,'valid_from'=>$cert['validFrom_time_t'],'expires'=>$cert['validTo_time_t'],'days'=>(int)floor(($cert['validTo_time_t']-time())/86400),
