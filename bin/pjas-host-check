@@ -9,18 +9,20 @@ if (PHP_SAPI !== 'cli') {
     exit(2);
 }
 
-$usage = "使い方: sudo php8.5 bin/pjas-host-check [--component=pjas-cert]\n";
+$usage = "使い方: sudo php8.5 bin/pjas-host-check [--component=pjas-cert | --drift | --drift=pjas-cert]\n";
 if ($argv === [$argv[0], '--help']) {
     echo $usage;
     exit(0);
 }
 $component = null;
+$drift = false;
 if ($argc > 1) {
-    if ($argc !== 2 || !preg_match('/\A--component=([a-z0-9][a-z0-9-]{0,31})\z/D', $argv[1], $match)) {
+    if ($argc !== 2 || !preg_match('/\A(?:--drift|--(drift|component)=([a-z0-9][a-z0-9-]{0,31}))\z/D', $argv[1], $match)) {
         fwrite(STDERR, $usage);
         exit(2);
     }
-    $component = $match[1];
+    $component = $match[2] ?? null;
+    $drift = ($match[1] ?? 'drift') === 'drift';
 }
 if (!function_exists('posix_geteuid') || posix_geteuid() !== 0) {
     fwrite(STDERR, "SKIP 実ホストの検査はrootで実行してください\n");
@@ -37,6 +39,43 @@ require $root.'/shared/HostDiagnostics.php';
 require $root.'/agent/lib/Proc.php';
 
 try {
+    if ($drift) {
+        foreach (['OpException', 'ControlStore', 'ComponentDrift'] as $class) {
+            require $root.'/agent/lib/'.$class.'.php';
+        }
+        $store = new \Pjas\Agentd\ControlStore(require $root.'/agent/config.php');
+        $sites = $component === null ? [] : [$component];
+        if ($component === null && is_dir($store->root())) {
+            foreach (new DirectoryIterator($store->root()) as $entry) {
+                if (preg_match('/\Acomponents-([a-z0-9][a-z0-9-]{0,31})\.json\z/D', $entry->getFilename(), $name)) {
+                    $sites[] = $name[1];
+                }
+            }
+            sort($sites);
+        }
+        if (!$sites || !is_dir($store->root())) {
+            echo "SKIP 承認済みのコンポーネント構成がありません\n";
+            exit(0);
+        }
+        $failed = false;
+        foreach ($sites as $site) {
+            try {
+                $rows = \Pjas\Agentd\ComponentDrift::inspect($store->read('components-'.$site));
+                if (!$rows) {
+                    echo "SKIP $site — 照合対象の生成済み設定がありません\n";
+                }
+                foreach ($rows as $row) {
+                    $ok = $row['status'] === 'match';
+                    $failed = $failed || !$ok;
+                    printf("%s %s %s — %s\n", $ok ? 'PASS' : 'FAIL', $site, $row['path'], $row['detail']);
+                }
+            } catch (Throwable $e) {
+                echo "FAIL $site — 承認済み構成を読み取れません\n";
+                $failed = true;
+            }
+        }
+        exit($failed ? 1 : 0);
+    }
     $diagnostics = new HostDiagnostics(
         Proc::run(...),
         static function (string $line): void { echo $line, PHP_EOL; },
