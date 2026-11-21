@@ -213,7 +213,21 @@ final class ControlUpdate
     private function probe(string $token,string $dir): void
     {
         $file=$dir.'/probe-header';file_put_contents($file,'X-Pjas-Update-Probe: '.$token."\n");chmod($file,0600);
-        try{$code=$this->must(['/usr/bin/curl','--silent','--show-error','--max-time','20','--noproxy','*','--header','@'.$file,'--output','/dev/null','--write-out','%{http_code}','http://127.0.0.1:8184/login'],null,[],25);if($code!=='200')throw new OpException('更新後の管理画面を確認できません');}finally{unlink($file);}
+        try {
+            // systemdの起動完了通知より後に、ApacheがHTTPの待受を開始することがある。
+            $code=$this->must([
+                '/usr/bin/curl','--disable','--silent','--show-error',
+                '--retry','5','--retry-connrefused','--retry-delay','1','--retry-max-time','10',
+                '--max-time','10','--noproxy','*','--header','@'.$file,'--output','/dev/null',
+                '--write-out','%{http_code}','http://127.0.0.1:8184/login',
+            ],null,[],25);
+            if ($code!=='200') {
+                $status=preg_match('/\A[0-9]{3}\z/D',$code)?$code:'不明';
+                throw new OpException('更新後の管理画面を確認できません（HTTP '.$status.'）');
+            }
+        } finally {
+            unlink($file);
+        }
     }
     public function execute(string $id,bool $recover=false): array
     {
