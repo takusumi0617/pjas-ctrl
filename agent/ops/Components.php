@@ -59,14 +59,20 @@ final class Components
         if (str_starts_with($op,'components.') || str_starts_with($op,'tls.') || in_array($op,['health.check','apache.render','apache.reload'],true)) return;
         throw new OpException('隔離サイトはコンポーネント専用の操作を使用してください。共通ユーザー経由の操作は禁止されています');
     }
-    private function locked(string $site, callable $fn): array
+    private function locked(string $site, callable $fn, bool $recover = false): array
     {
         // Same lock as legacy deployment; configuration and publication cannot race.
         $path = $this->cfg['apache_sites'].'/.pjas-deploy-'.$site.'.lock';
         if (is_link($path)) throw new OpException('サイトロックが不正です');
         $f = fopen($path,'c');
         if (!$f || !flock($f,LOCK_EX|LOCK_NB)) throw new OpException('サイトは別の作業中です');
-        try { return $fn(); } finally { flock($f,LOCK_UN); fclose($f); }
+        try {
+            $transaction = $this->store->read('component-tx-'.$site);
+            if (!$recover && ($transaction['phase'] ?? '') === 'pending') {
+                throw new OpException('中断した設定適用を先に復旧してください（操作ID: '.$transaction['id'].'）');
+            }
+            return $fn();
+        } finally { flock($f,LOCK_UN); fclose($f); }
     }
     private function audit(string $site, string $action, array $p, string $outcome): void
     {
@@ -261,19 +267,35 @@ final class Components
             $preserveInitialized=$s && !empty($s['initialized'])
                 && in_array($s['phase']??'', ['initialized','ready','stopped'], true)
                 && ($s['manifest']??null)===$plan['source']['manifest'];
-            $files=$this->render($site,$rows); $old=[];
-            foreach ($s['files']??[] as $path=>$hash) if (!is_file($path) || hash_file('sha256',$path)!==$hash) throw new OpException('管理外の設定変更と競合しています');
+            $files=$this->render($site,$rows);
+            foreach ($s['files']??[] as $path=>$hash) if (is_link($path) || !is_file($path) || hash_file('sha256',$path)!==$hash) throw new OpException('管理外の設定変更と競合しています');
             $next=$s+['setup'=>[],'releases'=>[]];
             if (($s['manifest']??null)!==$plan['source']['manifest']) $next['initialized']=false;
             $next['phase']='registered'; $next['manifest']=$plan['source']['manifest']; $next['source']=$plan['source'];
             $next['units']=[]; foreach ($rows as $id=>$r) $next['units'][$id]=$this->unitFor($site,$id,$r);
             $next['revision']=$plan['hash']; $next['policy']=$plan['review']['policy']; $next['files']=[];
-            // Persist ownership before external effects so legacy operations remain blocked after failure.
-            $this->save($site,$next);
+            $id = bin2hex(random_bytes(16));
+            $journal = ['id'=>$id, 'phase'=>'pending', 'previous'=>$s, 'files'=>[]];
+            foreach (array_unique(array_merge(array_keys($files), array_keys($s['files']??[]))) as $path) {
+                if (is_link($path) || (file_exists($path) && !is_file($path))) throw new OpException('設定ファイルの種類が不正です');
+                $body = is_file($path) ? file_get_contents($path) : null;
+                if ($body === false) throw new OpException('適用前の設定を読み取れません');
+                if ($body !== null && !isset($s['files'][$path])) throw new OpException('承認台帳にない既存ファイルと競合しています');
+                $journal['files'][$path] = ['body'=>$body,'mode'=>$body === null ? 0644 : fileperms($path)&0777,
+                    'next'=>isset($files[$path]) ? hash('sha256',$files[$path]) : null];
+            }
+            $this->store->write('component-tx-'.$site,$journal);
             try {
+                // Ownership and the recovery record are durable before changing generated files.
+                $this->save($site,$next);
                 foreach ($rows as $id=>$r) $this->prepareRuntime($site,$id,$r);
-                foreach ($files as $path=>$body) { $old[$path]=is_file($path)?file_get_contents($path):null; $this->write($path,$body,0644); $next['files'][$path]=hash('sha256',$body); }
-                foreach ($s['files']??[] as $path=>$_) if (!isset($files[$path])) { $old[$path]=file_get_contents($path); unlink($path); }
+                foreach ($files as $path=>$body) {
+                    $this->write($path,$body,0644);
+                    $next['files'][$path]=hash('sha256',$body);
+                }
+                foreach ($s['files']??[] as $path=>$_) {
+                    if (!isset($files[$path]) && !unlink($path)) throw new OpException('旧設定を削除できません');
+                }
                 foreach ($rows as $id=>$r) if ($r['declaration']['type']==='php') {
                     $out=Proc::run([$r['profile']['fpm_binary'],'--test','--fpm-config',$this->fpmPath($site,$id)],null,20,$r['profile']['user']);
                     if ($out['code']!==0) throw new OpException('サイト別PHP-FPM設定を検証できません（ACL対応も確認してください）');
@@ -288,15 +310,59 @@ final class Components
                 }
                 // Keep the service stopped after reapply; an explicit start must verify health.
                 $next['phase']=$preserveInitialized?'initialized':'dependencies_checked';
-                $this->save($site,$next); $this->audit($site,'apply',$p,'ok');
+                $this->save($site,$next);
+                $this->store->write('component-tx-'.$site,['id'=>$journal['id'],'phase'=>'applied']);
             } catch (\Throwable $e) {
-                foreach ($old as $path=>$body) { if ($body===null) @unlink($path); else $this->write($path,$body,0644); }
-                Proc::run([$this->cfg['systemctl'],'daemon-reload'],null,20);
-                $next['phase']='configuration_failed'; $next['files']=$s['files']??[]; $this->save($site,$next); $this->audit($site,'apply',$p,'failed'); throw $e;
+                try {
+                    $this->rollbackConfiguration($site,$journal);
+                } catch (\Throwable $recovery) {
+                    throw new OpException('設定の復旧が未完了です（操作ID: '.$journal['id'].'）: '.$recovery->getMessage(),0,$e);
+                }
+                $this->audit($site,'apply',$p,'failed');
+                throw $e;
             }
-            return ['phase'=>$next['phase'],'revision'=>$next['revision']];
+            $this->audit($site,'apply',$p,'ok');
+            return ['phase'=>$next['phase'],'revision'=>$next['revision'],'operation_id'=>$journal['id']];
         });
     }
+
+    private function rollbackConfiguration(string $site, array $journal): void
+    {
+        foreach ($journal['files'] as $path=>$file) {
+            if (is_link($path) || (file_exists($path) && !is_file($path))) throw new OpException('復旧先の種類が変わっています');
+            $current = is_file($path) ? hash_file('sha256',$path) : null;
+            $previous = $file['body'] === null ? null : hash('sha256',$file['body']);
+            // /run may be empty after a reboot. Those generated files can be restored once their parent is available.
+            $volatile = str_starts_with($path,rtrim($this->cfg['component_run_dir']??'/run/pjas-components','/').'/');
+            if ($current !== $previous && $current !== $file['next'] && !($volatile && $current === null)) {
+                throw new OpException('設定に別の変更があり、復旧できません');
+            }
+        }
+        foreach ($journal['files'] as $path=>$file) {
+            if ($file['body'] !== null) {
+                if (!is_dir(dirname($path)) && str_starts_with($path,rtrim($this->cfg['component_run_dir']??'/run/pjas-components','/').'/')) continue;
+                $this->write($path,$file['body'],$file['mode']);
+            } elseif (is_file($path) && !unlink($path)) {
+                throw new OpException('適用中に追加した設定を削除できません');
+            }
+        }
+        Proc::must([$this->cfg['systemctl'],'daemon-reload'],null,20);
+        $this->save($site,$journal['previous']);
+        $this->store->write('component-tx-'.$site,['id'=>$journal['id'],'phase'=>'rolled_back']);
+    }
+
+    public function recoverConfiguration(string $site, string $id): array
+    {
+        $site = Spec::name($site);
+        return $this->locked($site,function () use ($site,$id) {
+            $journal = $this->store->read('component-tx-'.$site);
+            if (($journal['id']??null) !== $id) throw new OpException('復旧する操作IDを確認できません');
+            if ($journal['phase'] === 'pending') $this->rollbackConfiguration($site,$journal);
+            elseif ($journal['phase'] !== 'rolled_back') throw new OpException('この操作は復旧対象ではありません');
+            return ['id'=>$id,'phase'=>'rolled_back'];
+        },true);
+    }
+
     private function prepareRuntime(string $site,string $id,array $r): void
     {
         $root=rtrim($this->cfg['component_run_dir']??'/run/pjas-components','/');
@@ -685,7 +751,13 @@ final class Components
         if (!$s) return ['phase'=>'unregistered','components'=>[]];
         $result=['releases'=>$s['releases']??[],'current'=>$s['current']??null,'phase'=>$s['phase'],'revision'=>$s['revision'],'sha'=>$s['source']['sha'],'setup'=>$s['setup'],'components'=>[],'backup'=>$s['backup']??null,'restore_hold'=>$s['phase']==='restore_hold','audit'=>$this->store->read('component-audit-'.$site)];
         $result['drift']=\Pjas\Agentd\ComponentDrift::inspect($s);
+        $transaction=$this->store->read('component-tx-'.$site);
+        if (($transaction['phase']??'')==='pending') {
+            $result['configuration_recovery']=$transaction['id'];
+            return $result+['configured'=>false,'reason'=>'設定の復旧が必要です'];
+        }
         try {
+            $result['drift']=array_merge($result['drift'],\Pjas\Agentd\SiteDrift::inspect($this->cfg,$this->webSpec($site)));
             $rows=$this->assertApplied($site,$s);
             foreach ($rows as $id=>$r) {
                 $active=Proc::run([$this->cfg['systemctl'],'is-active','--',$this->unitFor($site,$id,$r)],null,5);
