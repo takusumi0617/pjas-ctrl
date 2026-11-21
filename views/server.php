@@ -19,7 +19,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8184/</code></pre><p 
 <div class="card"><div class="card-h">主要サービス</div><table><thead><tr><th>名前</th><th>状態</th><th>操作</th></tr></thead><tbody><?php foreach($snapshot['units']??[] as $u):if(!$u['loaded'])continue;?><tr><td><?= $e($u['unit']) ?></td><td><?= $e(['active'=>'稼働中','activating'=>'起動中','inactive'=>'停止','failed'=>'失敗'][$u['state']]??$u['state']) ?></td><td><?php if($u['unit']==='apache2.service'||preg_match('/\Aphp[0-9]+\.[0-9]+-fpm\.service\z/D',$u['unit'])):?><details><summary>再起動する</summary><form method="post" action="/server"><?= Csrf::field() ?><input type="hidden" name="action" value="restart"><input type="hidden" name="unit" value="<?= $e($u['unit']) ?>"><p>このサービスを使う全サイトに一時的な影響があります。管理用PHPの再起動では、稼働していた管理用HTTPも起動して確認します。設定の検査が通った場合だけ再起動します。</p><label><input type="checkbox" name="confirmed" required> サイトへの影響を確認しました</label><div class="field"><label>現在のパスワード</label><input type="password" name="password" autocomplete="current-password" required></div><button class="btn">確認して再起動</button></form></details><?php else:?>状態確認のみ<?php endif;?></td></tr><?php endforeach;?></tbody></table></div>
 <?php $securityUnits = array_column($snapshot['units'] ?? [], null, 'unit'); ?>
 <section class="card section-gap">
-<div class="card-h">pjas-security</div>
+<div class="card-h">pjas-security <span class="spacer"></span><a href="/server/security-events">検知・防御の管理</a></div>
 <div class="card-b"><dl>
 <?php foreach (['pjas-security-api.service'=>'API','pjas-security-defense.service'=>'防御サービス'] as $unitName=>$label):
     $unit = $securityUnits[$unitName] ?? null; ?>

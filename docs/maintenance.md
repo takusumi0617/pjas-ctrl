@@ -260,3 +260,25 @@ v2サイトの詳細にある「実行環境」で、選択中のTLSプロバイ
 
 「サーバーとctrl」の「pjas-security」には、同じホスト上のAPIと防御サービスの
 systemd状態を表示します。検知イベントやIP遮断の管理にはpjas-securityを使います。
+
+### ctrl から pjas-security の検知・防御を管理する
+
+ctrl のサーバー上の `config.php` に `pjas_security_origin` を追加します。
+値には pjas-security が設定している HTTPS オリジンを使い、パスは付けません。
+ctrl の稼働ホストから到達でき、証明書を検証できる接続先を指定します。
+pjas-security 側では既存のアクセス制限に従って ctrl の接続元を許可してください。
+
+```php
+'pjas_security_origin' => 'https://security.example.com',
+```
+
+「サーバーとctrl」から「検知・防御の管理」を開き、pjas-security の
+ユーザー名・パスワード・TOTP で接続します。Apache/Nginx のイベントは、
+記録されたホスト名が登録済みの公開アドレスと一意に一致する場合にサイトへ
+リンクします。内容・分類・重要度・IP・サイトで検索できます。
+
+一時遮断または解除を申請し、IP・期間・範囲・理由を確認してから承認します。
+承認には ctrl の現在のパスワードと、pjas-security のパスワード・TOTP が
+必要です。保護対象 IP の拒否、申請の期限・内容ハッシュの検証、遮断の実行は
+pjas-security が担当します。結果と同期状態を確認し、ctrl の監査ログと
+pjas-security の防御監査で申請 ID を照合できます。
